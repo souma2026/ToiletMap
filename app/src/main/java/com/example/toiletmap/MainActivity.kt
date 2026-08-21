@@ -1,5 +1,7 @@
 package com.example.toiletmap
 
+import com.example.toiletmap.screen.account.AccountScreen
+
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -143,34 +145,6 @@ fun MapScreen() {
 
         Text(
             text = "ここにGoogle Mapsを表示します",
-            modifier = Modifier.padding(top = 16.dp)
-        )
-    }
-}
-
-
-/*
- * =========================
- * アカウント画面
- * =========================
- */
-
-@Composable
-fun AccountScreen() {
-
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-
-        Text(
-            text = "アカウント画面",
-            style = MaterialTheme.typography.headlineMedium
-        )
-
-        Text(
-            text = "ここにユーザー情報を表示します",
             modifier = Modifier.padding(top = 16.dp)
         )
     }
