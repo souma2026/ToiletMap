@@ -1,6 +1,7 @@
 package com.example.toiletmap
 
 import com.example.toiletmap.screen.account.AccountScreen
+import com.example.toiletmap.ui.screen.AddToiletScreen
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -150,30 +151,3 @@ fun MapScreen() {
     }
 }
 
-
-/*
- * =========================
- * トイレ追加画面
- * =========================
- */
-
-@Composable
-fun AddToiletScreen() {
-
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-
-        Text(
-            text = "トイレ追加画面",
-            style = MaterialTheme.typography.headlineMedium
-        )
-
-        Text(
-            text = "ここからトイレを登録できるようにします",
-            modifier = Modifier.padding(top = 16.dp)
-        )
-    }
-}
