@@ -1,179 +1,130 @@
 package com.example.toiletmap
 
-import com.example.toiletmap.screen.account.AccountScreen
-
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import com.example.toiletmap.ui.theme.ToiletMapTheme
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.unit.dp
+import okhttp3.OkHttpClient
+import org.maplibre.android.MapLibre
+import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.maps.MapView
+import org.maplibre.android.maps.Style
+import org.maplibre.android.module.http.HttpRequestUtil
 
 class MainActivity : ComponentActivity() {
+
+    private lateinit var mapView: MapView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setContent {
-            ToiletMapTheme {
-                ToiletMapApp()
+        // MapLibreを初期化
+        MapLibre.getInstance(this)
+
+        // OSMに「ToiletMapというアプリからアクセスしています」と伝える
+        val okHttpClient = OkHttpClient.Builder()
+            .addNetworkInterceptor { chain ->
+
+                val request = chain.request()
+                    .newBuilder()
+                    .header(
+                        "User-Agent",
+                        "ToiletMap/1.0 (Android; com.example.toiletmap)"
+                    )
+                    .build()
+
+                chain.proceed(request)
             }
+            .build()
+
+        // MapLibreの通信に上で作ったOkHttpClientを使用
+        HttpRequestUtil.setOkHttpClient(okHttpClient)
+
+        // activity_main.xmlを表示
+        setContentView(R.layout.activity_main)
+
+        // XMLのMapViewを取得
+        mapView = findViewById(R.id.mapView)
+
+        // MapViewを初期化
+        mapView.onCreate(savedInstanceState)
+
+        mapView.getMapAsync { map ->
+
+            // OpenStreetMapのラスタータイル
+            val styleJson = """
+                {
+                  "version": 8,
+                  "sources": {
+                    "osm": {
+                      "type": "raster",
+                      "tiles": [
+                        "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      ],
+                      "tileSize": 256,
+                      "attribution": "© OpenStreetMap contributors"
+                    }
+                  },
+                  "layers": [
+                    {
+                      "id": "osm-layer",
+                      "type": "raster",
+                      "source": "osm"
+                    }
+                  ]
+                }
+            """.trimIndent()
+
+            map.setStyle(
+                Style.Builder().fromJson(styleJson)
+            )
+
+            // 東京駅を最初に表示
+            map.cameraPosition = CameraPosition.Builder()
+                .target(
+                    LatLng(
+                        35.681236,
+                        139.767125
+                    )
+                )
+                .zoom(14.0)
+                .build()
         }
     }
-}
 
-@Composable
-fun ToiletMapApp() {
-
-    // 現在選択している画面
-    // 0 = マップ
-    // 1 = アカウント
-    // 2 = 追加
-    var selectedScreen by rememberSaveable {
-        mutableIntStateOf(0)
+    override fun onStart() {
+        super.onStart()
+        mapView.onStart()
     }
 
-    Scaffold(
+    override fun onResume() {
+        super.onResume()
+        mapView.onResume()
+    }
 
-        // 画面下のボトムバー
-        bottomBar = {
+    override fun onPause() {
+        mapView.onPause()
+        super.onPause()
+    }
 
-            NavigationBar {
+    override fun onStop() {
+        mapView.onStop()
+        super.onStop()
+    }
 
-                // マップ
-                NavigationBarItem(
-                    selected = selectedScreen == 0,
-                    onClick = {
-                        selectedScreen = 0
-                    },
-                    icon = {
-                        Text("🗺")
-                    },
-                    label = {
-                        Text("マップ")
-                    }
-                )
+    override fun onDestroy() {
+        mapView.onDestroy()
+        super.onDestroy()
+    }
 
-                // アカウント
-                NavigationBarItem(
-                    selected = selectedScreen == 1,
-                    onClick = {
-                        selectedScreen = 1
-                    },
-                    icon = {
-                        Text("👤")
-                    },
-                    label = {
-                        Text("アカウント")
-                    }
-                )
+    override fun onLowMemory() {
+        super.onLowMemory()
+        mapView.onLowMemory()
+    }
 
-                // 追加
-                NavigationBarItem(
-                    selected = selectedScreen == 2,
-                    onClick = {
-                        selectedScreen = 2
-                    },
-                    icon = {
-                        Text("＋")
-                    },
-                    label = {
-                        Text("追加")
-                    }
-                )
-            }
-        }
-
-    ) { innerPadding ->
-
-        // ボトムバーより上の部分
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-
-            // 選択されている画面を表示
-            when (selectedScreen) {
-
-                0 -> MapScreen()
-
-                1 -> AccountScreen()
-
-                2 -> AddToiletScreen()
-            }
-        }
+    override fun onSaveInstanceState(outState: Bundle) {
+        mapView.onSaveInstanceState(outState)
+        super.onSaveInstanceState(outState)
     }
 }
 
-
-/*
- * =========================
- * マップ画面
- * =========================
- */
-
-@Composable
-fun MapScreen() {
-
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-
-        Text(
-            text = "マップ画面",
-            style = MaterialTheme.typography.headlineMedium
-        )
-
-        Text(
-            text = "ここにGoogle Mapsを表示します",
-            modifier = Modifier.padding(top = 16.dp)
-        )
-    }
-}
-
-
-/*
- * =========================
- * トイレ追加画面
- * =========================
- */
-
-@Composable
-fun AddToiletScreen() {
-
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-
-        Text(
-            text = "トイレ追加画面",
-            style = MaterialTheme.typography.headlineMedium
-        )
-
-        Text(
-            text = "ここからトイレを登録できるようにします",
-            modifier = Modifier.padding(top = 16.dp)
-        )
-    }
-}
+//MainActivityとlayout/activity_mainとbuild.gradle.kts(app)とAndroidManifestを変更した
