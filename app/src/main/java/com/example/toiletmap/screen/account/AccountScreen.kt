@@ -1,5 +1,6 @@
 package com.example.toiletmap.screen.account
 
+import android.util.Patterns
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,13 +31,46 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.toiletmap.data.repository.AccountRepository
 import kotlinx.coroutines.launch
+import java.text.Normalizer
+import java.util.Locale
+
+
+/*
+ * =========================================
+ * メールアドレスをSupabaseへ送る前に整形
+ * =========================================
+ *
+ * 全角文字などを半角相当に変換し、
+ * コピー時に混ざることがある
+ * 見えない文字も取り除く。
+ */
+private fun normalizeEmail(
+    email: String
+): String {
+
+    return Normalizer
+        .normalize(
+            email,
+            Normalizer.Form.NFKC
+        )
+        .trim()
+
+        // ゼロ幅スペースなどを削除
+        .replace("\u200B", "")
+        .replace("\u200C", "")
+        .replace("\u200D", "")
+        .replace("\uFEFF", "")
+
+        // メールアドレスは小文字へ統一
+        .lowercase(Locale.ROOT)
+}
 
 
 @Composable
 fun AccountScreen() {
 
     /*
-     * Supabaseのログイン状態を確認中かどうか
+     * Supabaseのログイン状態確認中
      */
     var checkingLogin by remember {
         mutableStateOf(true)
@@ -51,8 +85,7 @@ fun AccountScreen() {
 
 
     /*
-     * 画面を最初に表示したとき、
-     * Supabaseにログイン済みユーザーがいるか確認
+     * 最初にログイン状態を確認
      */
     LaunchedEffect(Unit) {
 
@@ -66,7 +99,7 @@ fun AccountScreen() {
 
     /*
      * =========================================
-     * ログイン確認中
+     * ログイン状態確認中
      * =========================================
      */
 
@@ -132,7 +165,7 @@ fun AccountScreen() {
 
 /*
  * =========================================
- * ログイン / 新規登録画面
+ * ログイン / アカウント登録画面
  * =========================================
  */
 
@@ -147,7 +180,7 @@ fun LoginAndRegisterScreen(
 
     /*
      * false = ログイン
-     * true = アカウント登録
+     * true  = 新規登録
      */
     var registerMode by remember {
         mutableStateOf(false)
@@ -179,7 +212,7 @@ fun LoginAndRegisterScreen(
 
 
     /*
-     * 通信中か
+     * Supabaseと通信中か
      */
     var loading by remember {
         mutableStateOf(false)
@@ -234,7 +267,7 @@ fun LoginAndRegisterScreen(
          * =========================================
          * ユーザー名
          *
-         * 新規登録時だけ表示
+         * 新規登録時のみ表示
          * =========================================
          */
 
@@ -354,7 +387,7 @@ fun LoginAndRegisterScreen(
 
         /*
          * =========================================
-         * ログイン / 登録ボタン
+         * 登録 / ログインボタン
          * =========================================
          */
 
@@ -368,7 +401,19 @@ fun LoginAndRegisterScreen(
             onClick = {
 
                 /*
+                 * =================================
+                 * メールアドレスを正規化
+                 * =================================
+                 */
+
+                val normalizedEmail =
+                    normalizeEmail(email)
+
+
+                /*
+                 * =================================
                  * 入力チェック
+                 * =================================
                  */
 
                 if (
@@ -384,11 +429,28 @@ fun LoginAndRegisterScreen(
 
 
                 if (
-                    email.trim().isEmpty()
+                    normalizedEmail.isEmpty()
                 ) {
 
                     message =
                         "メールアドレスを入力してください"
+
+                    return@Button
+                }
+
+
+                /*
+                 * Android側でも
+                 * メールアドレス形式を確認
+                 */
+                if (
+                    !Patterns.EMAIL_ADDRESS
+                        .matcher(normalizedEmail)
+                        .matches()
+                ) {
+
+                    message =
+                        "メールアドレスの形式が正しくありません"
 
                     return@Button
                 }
@@ -405,6 +467,12 @@ fun LoginAndRegisterScreen(
                 }
 
 
+                /*
+                 * Supabaseではパスワード設定によって
+                 * 最低文字数が決まる。
+                 *
+                 * とりあえず6文字未満を弾く。
+                 */
                 if (
                     password.length < 6
                 ) {
@@ -428,17 +496,23 @@ fun LoginAndRegisterScreen(
                     try {
 
                         /*
-                         * =================================
+                         * =========================
                          * 新規登録
-                         * =================================
+                         * =========================
                          */
 
                         if (registerMode) {
 
                             AccountRepository.signUp(
 
+                                /*
+                                 * ここが重要
+                                 *
+                                 * 入力されたemailではなく、
+                                 * 正規化したメールアドレスを送る。
+                                 */
                                 email =
-                                    email.trim(),
+                                    normalizedEmail,
 
                                 password =
                                     password,
@@ -449,10 +523,9 @@ fun LoginAndRegisterScreen(
 
 
                             /*
-                             * Confirm emailをOFFにしていれば
-                             * 登録直後にログイン状態になる
+                             * Confirm emailをOFFにしている場合、
+                             * 登録後すぐログイン状態になる。
                              */
-
                             if (
                                 AccountRepository.isLoggedIn()
                             ) {
@@ -476,24 +549,20 @@ fun LoginAndRegisterScreen(
                         } else {
 
                             /*
-                             * =================================
+                             * =========================
                              * ログイン
-                             * =================================
+                             * =========================
                              */
 
                             AccountRepository.signIn(
 
                                 email =
-                                    email.trim(),
+                                    normalizedEmail,
 
                                 password =
                                     password
                             )
 
-
-                            /*
-                             * ログイン成功
-                             */
 
                             if (
                                 AccountRepository.isLoggedIn()
@@ -512,12 +581,20 @@ fun LoginAndRegisterScreen(
                     } catch (e: Exception) {
 
                         /*
-                         * Supabaseからエラーが返ってきた場合
+                         * Supabaseから返された長い通信情報を
+                         * そのまま画面に表示しない。
                          */
 
                         message =
-                            e.message
-                                ?: "処理に失敗しました"
+                            if (registerMode) {
+
+                                "アカウント登録に失敗しました"
+
+                            } else {
+
+                                "ログインに失敗しました"
+                            }
+
 
                     } finally {
 
@@ -556,11 +633,14 @@ fun LoginAndRegisterScreen(
 
         /*
          * =========================================
-         * 登録 / ログイン切り替え
+         * ログイン / 新規登録の切り替え
          * =========================================
          */
 
         TextButton(
+            enabled =
+                !loading,
+
             onClick = {
 
                 registerMode =
@@ -587,7 +667,7 @@ fun LoginAndRegisterScreen(
 
         /*
          * =========================================
-         * メッセージ表示
+         * エラー等を表示
          * =========================================
          */
 
@@ -629,23 +709,18 @@ fun LoggedInAccountScreen(
 
 
     /*
-     * 現在ログインしているユーザー
+     * 現在ログイン中のSupabaseユーザー
      */
     val currentUser =
-        AccountRepository.getCurrentUser()
+        AccountRepository
+            .getCurrentUser()
 
 
-    /*
-     * メッセージ
-     */
     var message by remember {
         mutableStateOf("")
     }
 
 
-    /*
-     * ログアウト中か
-     */
     var loggingOut by remember {
         mutableStateOf(false)
     }
@@ -692,11 +767,8 @@ fun LoggedInAccountScreen(
 
 
         /*
-         * =========================================
-         * 仮プロフィール画像
-         *
-         * 写真は次の段階でSupabase Storageに接続
-         * =========================================
+         * プロフィール写真は
+         * 次の段階でSupabase Storageに接続
          */
 
         Text(
@@ -814,8 +886,7 @@ fun LoggedInAccountScreen(
                     } catch (e: Exception) {
 
                         message =
-                            e.message
-                                ?: "ログアウトに失敗しました"
+                            "ログアウトに失敗しました"
 
                     } finally {
 
@@ -839,12 +910,6 @@ fun LoggedInAccountScreen(
             )
         }
 
-
-        /*
-         * =========================================
-         * エラーメッセージ
-         * =========================================
-         */
 
         if (
             message.isNotEmpty()
