@@ -48,6 +48,10 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
+
+    // ★ これを追加
+    implementation("androidx.compose.material:material-icons-extended")
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
 
@@ -65,11 +69,7 @@ dependencies {
         "com.squareup.okhttp3:okhttp:4.12.0"
     )
 
-    // =========================================
     // Supabase
-    // 3.2.0ではなく3.2.1を使用
-    // =========================================
-
     implementation(
         platform(
             "io.github.jan-tennert.supabase:bom:3.2.1"
@@ -88,7 +88,6 @@ dependencies {
         "io.github.jan-tennert.supabase:storage-kt"
     )
 
-    // Ktor 3.2.0にはAndroidビルドの不具合があるため3.2.1
     implementation(
         "io.ktor:ktor-client-android:3.2.1"
     )
