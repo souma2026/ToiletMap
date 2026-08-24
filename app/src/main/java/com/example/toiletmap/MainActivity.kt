@@ -24,7 +24,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             ToiletMapTheme {
                 ToiletMapApp(
-                    mapView = mapController.mapView
+                    mapView = mapController.mapView,
+                    onAddToilet = { toilet ->
+                        mapController.addToilet(toilet)
+                    }
                 )
             }
         }
