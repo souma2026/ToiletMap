@@ -9,7 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModelProvider
-import com.example.toiletmap.map.MapLibreMapController
+import com.example.toiletmap.screen.map.MapLibreMapController
 import com.example.toiletmap.ui.ToiletMapApp
 import com.example.toiletmap.ui.theme.ToiletMapTheme
 import com.example.toiletmap.viewmodel.ToiletViewModel
