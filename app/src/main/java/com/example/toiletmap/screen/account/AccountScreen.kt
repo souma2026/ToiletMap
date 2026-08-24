@@ -1046,21 +1046,6 @@ fun ProfileScreen(
                         newDisplayUrl
 
 
-                    /*
-                     * サーバー側URL取得成功後は
-                     * ローカルURIから
-                     * サーバー画像表示へ切り替える
-                     */
-
-                    if (
-                        newDisplayUrl != null
-                    ) {
-
-                        localAvatarUri =
-                            null
-                    }
-
-
                     message =
                         "写真を変更しました"
 
@@ -1715,16 +1700,6 @@ fun ProfileScreen(
                             FontWeight.Bold
                     )
                 }
-
-
-                Text(
-
-                    text =
-                        "⭐",
-
-                    style =
-                        MaterialTheme.typography.headlineLarge
-                )
             }
         }
 
