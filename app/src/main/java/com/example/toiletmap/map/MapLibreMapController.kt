@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.example.toiletmap.map
 
 import android.os.Bundle
@@ -17,13 +19,14 @@ import org.maplibre.android.module.http.HttpRequestUtil
 
 class MapLibreMapController(
 
-    private val activity:
+    activity:
     ComponentActivity,
 
     savedInstanceState:
     Bundle?
 
 ) : DefaultLifecycleObserver {
+
 
     /*
      * =====================================
@@ -32,65 +35,43 @@ class MapLibreMapController(
      */
     val mapView: MapView
 
+
     /*
      * =====================================
      * MapLibreの地図本体
      * =====================================
-     *
-     * 地図読み込みが終わったら
-     * MapLibreMapがここに入る
      */
     private var mapLibreMap:
             MapLibreMap? = null
 
+
     /*
      * =====================================
-     * スタイルが読み込まれたか
+     * スタイル読み込み状態
      * =====================================
      */
     private var isStyleLoaded =
         false
 
+
     /*
      * =====================================
-     * トイレ一覧
+     * 描画用の最新データ
      * =====================================
      *
-     * mutableListOfなので
+     * これはトイレデータの管理場所ではない。
      *
-     * toilets.add(...)
+     * ViewModelから渡された最新状態を
+     * 地図が準備できるまで一時的に
+     * 覚えておくためだけに使用する。
      *
-     * で後からトイレを追加できる
-     *
-     * 注意：
-     * 現在はアプリを完全終了すると
-     * ユーザーが追加したトイレは消える
+     * 追加・削除などのデータ変更は
+     * このControllerでは行わない。
      */
-    private val toilets =
-        mutableListOf(
+    private var latestToiletsForRendering:
+            List<Toilet> =
+        emptyList()
 
-            /*
-             * 最初から表示している
-             * サンプルトイレ
-             */
-            Toilet(
-
-                name =
-                    "東京駅トイレ",
-
-                latitude =
-                    35.681236,
-
-                longitude =
-                    139.767125,
-
-                cleanliness =
-                    4,
-
-                comment =
-                    "東京駅の近くにあるトイレです"
-            )
-        )
 
     /*
      * =====================================
@@ -106,10 +87,11 @@ class MapLibreMapController(
             activity
         )
 
+
         /*
          * =====================================
          * OpenStreetMapへ送る
-         * User-Agentを設定
+         * User-Agent設定
          * =====================================
          */
         val okHttpClient =
@@ -139,50 +121,63 @@ class MapLibreMapController(
 
                 .build()
 
+
         HttpRequestUtil
             .setOkHttpClient(
                 okHttpClient
             )
 
+
         /*
          * =====================================
-         * MapViewを作成
+         * MapView作成
          * =====================================
          */
         mapView =
-            MapView(activity)
+            MapView(
+                activity
+            )
 
         mapView.onCreate(
             savedInstanceState
         )
+
 
         /*
          * 地図設定
          */
         setupMap()
 
+
         /*
-         * Activityのライフサイクルを監視
+         * Activityの
+         * ライフサイクル監視
          */
         activity
             .lifecycle
-            .addObserver(this)
+            .addObserver(
+                this
+            )
     }
+
 
     /*
      * =====================================
-     * 地図を設定
+     * 地図設定
      * =====================================
      */
-    @Suppress("DEPRECATION")
     private fun setupMap() {
 
-        mapView.getMapAsync { map ->
+        mapView.getMapAsync {
+                map ->
+
 
             /*
-             * 後から使えるように保存
+             * MapLibreMapを保存
              */
-            mapLibreMap = map
+            mapLibreMap =
+                map
+
 
             /*
              * =====================================
@@ -214,8 +209,11 @@ class MapLibreMapController(
                 }
                 """.trimIndent()
 
+
             /*
-             * 地図スタイルを設定
+             * =====================================
+             * 地図スタイル設定
+             * =====================================
              */
             map.setStyle(
 
@@ -227,17 +225,18 @@ class MapLibreMapController(
 
             ) {
 
+
                 /*
                  * スタイル読み込み完了
                  */
-                isStyleLoaded = true
+                isStyleLoaded =
+                    true
+
 
                 /*
                  * =====================================
-                 * 最初に表示する位置
+                 * 最初に表示する場所
                  * =====================================
-                 *
-                 * 東京駅周辺
                  */
                 map.cameraPosition =
 
@@ -258,114 +257,153 @@ class MapLibreMapController(
 
                         .build()
 
+
                 /*
                  * =====================================
-                 * 登録済みトイレを
-                 * 全部地図に表示
+                 * ViewModelから既にデータが
+                 * 渡されていれば表示
                  * =====================================
                  */
-                toilets.forEach {
-                        toilet ->
-
-                    addMarkerToMap(
-
-                        map = map,
-
-                        toilet = toilet
-                    )
-                }
+                renderLatestToilets()
             }
         }
     }
 
+
     /*
      * =====================================
-     * 新しいトイレを追加
+     * ViewModelのトイレ一覧を受け取る
      * =====================================
      *
-     * AddToiletScreen
+     * このControllerでは
+     * トイレを追加・削除しない。
      *
-     * ↓
-     *
-     * ToiletMapApp
-     *
-     * ↓
-     *
-     * MainActivity
-     *
-     * ↓
-     *
-     * この関数
+     * 渡された一覧を
+     * 地図へ描画するだけ。
      */
-    fun addToilet(
-        toilet: Toilet
+    fun showToilets(
+        toilets: List<Toilet>
     ) {
 
         /*
-         * トイレ一覧へ追加
+         * 最新の描画対象を保存
          */
-        toilets.add(
-            toilet
-        )
+        latestToiletsForRendering =
+            toilets
+
 
         /*
-         * 現在の地図を取得
+         * 地図が準備できていれば
+         * 描画する
          */
-        val map =
-            mapLibreMap
-
-        /*
-         * 地図とスタイルの準備が
-         * 完了している場合
-         */
-        if (
-            map != null &&
-            isStyleLoaded
-        ) {
-
-            /*
-             * 地図へピン追加
-             */
-            addMarkerToMap(
-
-                map = map,
-
-                toilet = toilet
-            )
-
-            /*
-             * =====================================
-             * 登録した場所へ
-             * 地図を移動
-             * =====================================
-             */
-            map.cameraPosition =
-
-                CameraPosition
-                    .Builder()
-
-                    .target(
-
-                        LatLng(
-
-                            toilet.latitude,
-
-                            toilet.longitude
-                        )
-                    )
-
-                    .zoom(
-                        16.0
-                    )
-
-                    .build()
-        }
+        renderLatestToilets()
     }
+
 
     /*
      * =====================================
-     * トイレを1個
-     * 地図上のピンとして表示
+     * 最新のトイレ一覧を
+     * 地図へ描画
+     * =====================================
+     */
+    @Suppress("DEPRECATION")
+    private fun renderLatestToilets() {
+
+        val map =
+            mapLibreMap
+                ?: return
+
+
+        /*
+         * スタイルがまだなら
+         * 描画しない
+         */
+        if (!isStyleLoaded) {
+            return
+        }
+
+
+        /*
+         * =====================================
+         * 一度すべてのマーカーを削除
+         * =====================================
+         *
+         * その後ViewModelから来た
+         * 最新の一覧を描画し直す
+         */
+        map.clear()
+
+
+        /*
+         * =====================================
+         * 最新一覧をすべて表示
+         * =====================================
+         */
+        latestToiletsForRendering
+            .forEach {
+                    toilet ->
+
+                addMarkerToMap(
+
+                    map = map,
+
+                    toilet =
+                        toilet
+                )
+            }
+    }
+
+
+    /*
+     * =====================================
+     * 登録したトイレへ
+     * カメラ移動
+     * =====================================
+     *
+     * データ管理ではなく
+     * 地図表示だけを担当する
+     */
+    fun focusOnToilet(
+        toilet: Toilet
+    ) {
+
+        val map =
+            mapLibreMap
+                ?: return
+
+
+        if (!isStyleLoaded) {
+            return
+        }
+
+
+        map.cameraPosition =
+
+            CameraPosition
+                .Builder()
+
+                .target(
+
+                    LatLng(
+
+                        toilet.latitude,
+
+                        toilet.longitude
+                    )
+                )
+
+                .zoom(
+                    16.0
+                )
+
+                .build()
+    }
+
+
+    /*
+     * =====================================
+     * トイレ1件を
+     * マーカーとして表示
      * =====================================
      */
     @Suppress("DEPRECATION")
@@ -376,14 +414,11 @@ class MapLibreMapController(
         toilet: Toilet
     ) {
 
+
         /*
          * =====================================
-         * 清潔度を★にする
+         * 清潔度を★表示へ変換
          * =====================================
-         *
-         * cleanliness = 4なら
-         *
-         * ★★★★☆
          */
         val stars =
 
@@ -396,17 +431,14 @@ class MapLibreMapController(
                                 toilet.cleanliness
                     )
 
+
         /*
          * =====================================
-         * ピンを押したときに表示する情報
+         * ピンを押したときの詳細
          * =====================================
          */
-
         val detailText =
 
-            /*
-             * コメントが空の場合
-             */
             if (
                 toilet.comment
                     .isBlank()
@@ -416,24 +448,19 @@ class MapLibreMapController(
 
             } else {
 
-                /*
-                 * コメントがある場合
-                 */
                 "清潔度：$stars　${toilet.comment}"
             }
 
+
         /*
          * =====================================
-         * 実際にピンを追加
+         * マーカー追加
          * =====================================
          */
         map.addMarker(
 
             MarkerOptions()
 
-                /*
-                 * ピンの位置
-                 */
                 .position(
 
                     LatLng(
@@ -444,21 +471,16 @@ class MapLibreMapController(
                     )
                 )
 
-                /*
-                 * ピンを押したときのタイトル
-                 */
                 .title(
                     toilet.name
                 )
 
-                /*
-                 * ピンを押したときの詳細
-                 */
                 .snippet(
                     detailText
                 )
         )
     }
+
 
     /*
      * =====================================
@@ -468,40 +490,39 @@ class MapLibreMapController(
      */
 
     override fun onStart(
-        owner:
-        LifecycleOwner
+        owner: LifecycleOwner
     ) {
 
         mapView.onStart()
     }
 
+
     override fun onResume(
-        owner:
-        LifecycleOwner
+        owner: LifecycleOwner
     ) {
 
         mapView.onResume()
     }
 
+
     override fun onPause(
-        owner:
-        LifecycleOwner
+        owner: LifecycleOwner
     ) {
 
         mapView.onPause()
     }
 
+
     override fun onStop(
-        owner:
-        LifecycleOwner
+        owner: LifecycleOwner
     ) {
 
         mapView.onStop()
     }
 
+
     override fun onDestroy(
-        owner:
-        LifecycleOwner
+        owner: LifecycleOwner
     ) {
 
         mapView.onDestroy()
@@ -513,14 +534,14 @@ class MapLibreMapController(
             )
     }
 
+
     /*
      * =====================================
      * 状態保存
      * =====================================
      */
     fun onSaveInstanceState(
-        outState:
-        Bundle
+        outState: Bundle
     ) {
 
         mapView
@@ -528,6 +549,7 @@ class MapLibreMapController(
                 outState
             )
     }
+
 
     /*
      * =====================================
