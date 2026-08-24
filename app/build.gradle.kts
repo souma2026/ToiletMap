@@ -25,9 +25,7 @@ android {
     }
 
     buildTypes {
-
         release {
-
             optimization {
                 enable = false
             }
