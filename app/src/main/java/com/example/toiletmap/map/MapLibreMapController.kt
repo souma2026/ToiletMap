@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.example.toiletmap.map
 
 import android.os.Bundle
@@ -17,7 +19,7 @@ import org.maplibre.android.module.http.HttpRequestUtil
 
 class MapLibreMapController(
 
-    private val activity:
+    activity:
     ComponentActivity,
 
     savedInstanceState:
