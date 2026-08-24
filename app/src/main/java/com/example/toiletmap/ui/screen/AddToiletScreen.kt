@@ -16,89 +16,120 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.example.toiletmap.data.ToiletDataProcessor
-import com.example.toiletmap.data.model.Toilet
+import kotlin.math.roundToInt
 
 @Composable
 fun AddToiletScreen(
-    onToiletCreated: (Toilet) -> Unit = {}
+
+    /*
+     * 現在入力されているトイレ名
+     */
+    toiletName: String,
+
+    /*
+     * 清潔度
+     * 1 ～ 5
+     */
+    cleanliness: Int,
+
+    /*
+     * コメント
+     */
+    comment: String,
+
+    /*
+     * 地図上で選択した場所
+     *
+     * まだ選択していない場合は null
+     */
+    latitude: Double?,
+    longitude: Double?,
+
+    /*
+     * 入力内容が変更されたときの処理
+     */
+    onToiletNameChange: (String) -> Unit,
+
+    onCleanlinessChange: (Int) -> Unit,
+
+    onCommentChange: (String) -> Unit,
+
+    /*
+     * 「地図上で場所を選ぶ」
+     * が押されたとき
+     */
+    onSelectLocation: () -> Unit,
+
+    /*
+     * 登録ボタン
+     */
+    onAddToilet: () -> Unit
 ) {
 
-    // -----------------------------
-    // 入力データ
-    // -----------------------------
-
-    // トイレ名
-    var toiletName by remember {
-        mutableStateOf("")
-    }
-
-    // 場所
-    var location by remember {
-        mutableStateOf("")
-    }
-
-    // 利用可能時間
-    var openingHours by remember {
-        mutableStateOf("")
-    }
-
-    // コメント
-    var comment by remember {
-        mutableStateOf("")
-    }
-
-    // きれいさ 1〜5
-    var cleanliness by remember {
-        mutableFloatStateOf(3f)
-    }
-
-
-    // -----------------------------
-    // エラー状態
-    // -----------------------------
-
-    var toiletNameError by remember {
+    /*
+     * =====================================
+     * 登録ボタンを押したか
+     * =====================================
+     *
+     * 未入力エラーを表示するために使う
+     */
+    var triedToSubmit by remember {
         mutableStateOf(false)
     }
 
-    var locationError by remember {
-        mutableStateOf(false)
-    }
+    /*
+     * トイレ名が空か
+     */
+    val nameIsEmpty =
+        toiletName.isBlank()
 
+    /*
+     * 場所が選択されていないか
+     */
+    val locationIsEmpty =
+        latitude == null ||
+                longitude == null
 
-    // -----------------------------
-    // 登録後メッセージ
-    // -----------------------------
-
-    var message by remember {
-        mutableStateOf("")
-    }
-
-
-    // -----------------------------
-    // 画面
-    // -----------------------------
-
+    /*
+     * =====================================
+     * 画面全体
+     * =====================================
+     */
     Column(
+
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+
+            /*
+             * 画面が小さいスマホでも
+             * 下までスクロールできるようにする
+             */
+            .verticalScroll(
+                rememberScrollState()
+            )
+
             .padding(24.dp),
 
-        verticalArrangement = Arrangement.Top
+        verticalArrangement =
+            Arrangement.Top
     ) {
 
-        // タイトル
+        /*
+         * =====================================
+         * タイトル
+         * =====================================
+         */
         Text(
-            text = "トイレ情報を追加",
-            style = MaterialTheme.typography.headlineMedium
+            text = "トイレを追加",
+            style =
+                MaterialTheme
+                    .typography
+                    .headlineMedium
         )
 
         Spacer(
@@ -222,149 +253,338 @@ fun AddToiletScreen(
         // -----------------------------
 
         Text(
-            text = "きれいさ：${cleanliness.toInt()} / 5"
-        )
-
-        Slider(
-            value = cleanliness,
-
-            onValueChange = {
-                cleanliness = it
-            },
-
-            valueRange = 1f..5f,
-
-            steps = 3
+            text =
+                "トイレの情報を入力して、地図上から場所を選択してください。",
+            modifier =
+                Modifier.padding(top = 8.dp)
         )
 
         Spacer(
-            modifier = Modifier.height(16.dp)
+            modifier =
+                Modifier.height(24.dp)
         )
 
-
-        // -----------------------------
-        // コメント
-        // -----------------------------
-
+        /*
+         * =====================================
+         * トイレ名
+         * =====================================
+         */
         OutlinedTextField(
-            value = comment,
 
-            onValueChange = {
-                comment = it
-            },
+            value = toiletName,
+
+            onValueChange =
+                onToiletNameChange,
 
             label = {
-                Text("コメント")
+                Text(
+                    text = "トイレ名 *"
+                )
             },
 
-            placeholder = {
-                Text("例：駅の東口付近にあります")
-            },
+            singleLine = true,
 
-            modifier = Modifier.fillMaxWidth(),
+            /*
+             * 登録しようとしたのに
+             * 名前が空なら赤くする
+             */
+            isError =
+                triedToSubmit &&
+                        nameIsEmpty,
 
-            minLines = 3
-        )
+            supportingText = {
 
-        Spacer(
-            modifier = Modifier.height(24.dp)
-        )
+                if (
+                    triedToSubmit &&
+                    nameIsEmpty
+                ) {
 
-
-        // -----------------------------
-        // 登録ボタン
-        // -----------------------------
-
-        Button(
-            onClick = {
-
-                // -----------------------------
-                // 1. 入力チェック
-                // -----------------------------
-
-                val validationResult =
-                    ToiletDataProcessor.validate(
-                        toiletName = toiletName,
-                        location = location
+                    Text(
+                        text =
+                            "ここが未入力です"
                     )
-
-                toiletNameError =
-                    validationResult.toiletNameError
-
-                locationError =
-                    validationResult.locationError
-
-
-                // -----------------------------
-                // 2. 正しい場合だけデータを作る
-                // -----------------------------
-
-                if (validationResult.isValid) {
-
-                    val toilet =
-                        ToiletDataProcessor.createToilet(
-                            toiletName = toiletName,
-                            location = location,
-                            openingHours = openingHours,
-                            cleanliness = cleanliness,
-                            comment = comment
-                        )
-
-
-                    // -----------------------------
-                    // 3. 作成したToiletを外へ渡す
-                    // -----------------------------
-
-                    onToiletCreated(toilet)
-
-
-                    // -----------------------------
-                    // 4. 成功メッセージ
-                    // -----------------------------
-
-                    message =
-                        "トイレデータを作成しました！"
-
-
-                    // -----------------------------
-                    // 5. 入力内容を初期化
-                    // -----------------------------
-
-                    toiletName = ""
-
-                    location = ""
-
-                    openingHours = ""
-
-                    cleanliness = 3f
-
-                    comment = ""
-                } else {
-
-                    message = ""
                 }
             },
 
-            modifier = Modifier.fillMaxWidth()
+            modifier =
+                Modifier.fillMaxWidth()
+        )
+
+        Spacer(
+            modifier =
+                Modifier.height(16.dp)
+        )
+
+        /*
+         * =====================================
+         * 清潔度
+         * =====================================
+         */
+
+        /*
+         * ★★★★★
+         * の形式で表示
+         */
+        Text(
+
+            text =
+                "清潔度：" +
+                        "★".repeat(cleanliness) +
+                        "☆".repeat(
+                            5 - cleanliness
+                        ),
+
+            style =
+                MaterialTheme
+                    .typography
+                    .titleMedium
+        )
+
+        /*
+         * 1～5を選択できるスライダー
+         */
+        Slider(
+
+            value =
+                cleanliness.toFloat(),
+
+            onValueChange = { value ->
+
+                onCleanlinessChange(
+
+                    value
+                        .roundToInt()
+                        .coerceIn(
+                            1,
+                            5
+                        )
+                )
+            },
+
+            valueRange =
+                1f..5f,
+
+            /*
+             * 1 2 3 4 5
+             * の5段階
+             */
+            steps = 3,
+
+            modifier =
+                Modifier.fillMaxWidth()
+        )
+
+        Spacer(
+            modifier =
+                Modifier.height(16.dp)
+        )
+
+        /*
+         * =====================================
+         * コメント
+         * =====================================
+         */
+        OutlinedTextField(
+
+            value = comment,
+
+            onValueChange =
+                onCommentChange,
+
+            label = {
+
+                Text(
+                    text = "コメント"
+                )
+            },
+
+            placeholder = {
+
+                Text(
+                    text =
+                        "例：駅の改札近く。洋式で比較的きれいです。"
+                )
+            },
+
+            minLines = 3,
+
+            modifier =
+                Modifier.fillMaxWidth()
+        )
+
+        Spacer(
+            modifier =
+                Modifier.height(24.dp)
+        )
+
+        /*
+         * =====================================
+         * 場所
+         * =====================================
+         */
+        Text(
+
+            text = "場所 *",
+
+            style =
+                MaterialTheme
+                    .typography
+                    .titleMedium
+        )
+
+        /*
+         * 場所が選択済みの場合
+         */
+        if (
+            latitude != null &&
+            longitude != null
         ) {
 
-            Text("登録する")
+            Text(
+
+                text =
+                    "選択済み\n" +
+                            "緯度：${"%.6f".format(latitude)}\n" +
+                            "経度：${"%.6f".format(longitude)}",
+
+                modifier =
+                    Modifier.padding(
+                        top = 8.dp
+                    )
+            )
+
+        } else {
+
+            /*
+             * まだ場所が選ばれていない
+             */
+            Text(
+
+                text =
+                    "まだ場所が選択されていません",
+
+                modifier =
+                    Modifier.padding(
+                        top = 8.dp
+                    )
+            )
         }
 
+        /*
+         * =====================================
+         * 地図から場所を選ぶボタン
+         * =====================================
+         */
+        Button(
 
-        // -----------------------------
-        // メッセージ
-        // -----------------------------
+            onClick =
+                onSelectLocation,
 
-        if (message.isNotEmpty()) {
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    top = 12.dp
+                )
+        ) {
 
-            Spacer(
-                modifier = Modifier.height(16.dp)
-            )
+            /*
+             * まだ選んでない
+             */
+            if (
+                latitude == null ||
+                longitude == null
+            ) {
+
+                Text(
+                    text =
+                        "地図上で場所を選ぶ"
+                )
+
+            } else {
+
+                /*
+                 * 一度選択済みの場合
+                 */
+                Text(
+                    text =
+                        "場所を選び直す"
+                )
+            }
+        }
+
+        /*
+         * 場所未入力エラー
+         */
+        if (
+            triedToSubmit &&
+            locationIsEmpty
+        ) {
 
             Text(
-                text = message
+
+                text =
+                    "場所が未入力です。地図上で場所を選択してください。",
+
+                color =
+                    MaterialTheme
+                        .colorScheme
+                        .error,
+
+                modifier =
+                    Modifier.padding(
+                        top = 8.dp
+                    )
             )
         }
+
+        Spacer(
+            modifier =
+                Modifier.height(28.dp)
+        )
+
+        /*
+         * =====================================
+         * 登録ボタン
+         * =====================================
+         */
+        Button(
+
+            onClick = {
+
+                /*
+                 * 登録しようとした
+                 */
+                triedToSubmit = true
+
+                /*
+                 * 名前と場所の両方が
+                 * 入力されている場合のみ登録
+                 */
+                if (
+                    !nameIsEmpty &&
+                    !locationIsEmpty
+                ) {
+
+                    onAddToilet()
+
+                    triedToSubmit = false
+                }
+            },
+
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+        ) {
+
+            Text(
+                text =
+                    "このトイレを登録"
+            )
+        }
+
+        Spacer(
+            modifier =
+                Modifier.height(24.dp)
+        )
     }
 }
