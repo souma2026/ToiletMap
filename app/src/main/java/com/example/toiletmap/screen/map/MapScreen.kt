@@ -56,7 +56,10 @@ import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.model.Toilet
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
-
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.heightIn
 
 // =============================================
 // マップ画面専用カラー
@@ -622,7 +625,6 @@ private fun FinderHeader(
             //
             // 入力可能な検索欄
             // =============================================
-
             OutlinedTextField(
 
                 value = searchText,
@@ -639,11 +641,9 @@ private fun FinderHeader(
 
                 singleLine = true
             )
-            }
         }
     }
 }
-
 
 // =============================================
 // トイレ追加場所を選択中の案内
@@ -928,16 +928,14 @@ private fun ToiletDetailCard(
     Card(
 
         modifier =
-            modifier.shadow(
-
-                elevation =
-                    14.dp,
-
-                shape =
-                    RoundedCornerShape(
-                        24.dp
-                    )
-            ),
+            modifier
+                .heightIn(
+                    max = 380.dp
+                )
+                .shadow(
+                    elevation = 14.dp,
+                    shape = RoundedCornerShape(24.dp)
+                ),
 
         shape =
             RoundedCornerShape(
@@ -965,9 +963,13 @@ private fun ToiletDetailCard(
         Column(
 
             modifier =
-                Modifier.padding(
-                    18.dp
-                ),
+                Modifier
+                    .padding(
+                        18.dp
+                    )
+                    .verticalScroll(
+                        rememberScrollState()
+                    ),
 
             verticalArrangement =
                 Arrangement.spacedBy(
