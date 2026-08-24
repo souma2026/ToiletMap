@@ -21,11 +21,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 
-/*
- * =====================================
- * 色
- * =====================================
- */
 private val FinderDark =
     Color(0xFF12313A)
 
@@ -33,11 +28,6 @@ private val FinderMuted =
     Color(0xFF748186)
 
 
-/*
- * =====================================
- * 距離付きトイレ
- * =====================================
- */
 private data class ToiletWithDistance(
 
     val toilet:
@@ -48,35 +38,31 @@ private data class ToiletWithDistance(
 )
 
 
-/*
- * =====================================
- * 未清掃トイレ一覧画面
- * =====================================
- */
 @Composable
 fun ListOfUncleanedScreen(
 
     toilets:
     List<UncleanedToilet>,
 
-    onToiletClick:
+    /*
+     * =====================================
+     * 「地図で見る」が押されたとき
+     * =====================================
+     */
+    onShowOnMap:
         (UncleanedToilet) -> Unit =
         {}
 
 ) {
 
-    /*
-     * =====================================
-     * 現在地
-     * =====================================
-     */
+
     val locationState =
         rememberCurrentLocationState()
 
 
     /*
      * =====================================
-     * 距離順に並べる
+     * 現在地から近い順
      * =====================================
      */
     val sortedToilets =
@@ -99,7 +85,8 @@ fun ListOfUncleanedScreen(
             } else {
 
                 toilets
-                    .map { toilet ->
+                    .map {
+                            toilet ->
 
                         ToiletWithDistance(
 
@@ -118,18 +105,12 @@ fun ListOfUncleanedScreen(
                         )
                     }
                     .sortedBy {
-
                         it.distanceMeters
                     }
             }
         }
 
 
-    /*
-     * =====================================
-     * 画面
-     * =====================================
-     */
     Column(
 
         modifier =
@@ -142,13 +123,10 @@ fun ListOfUncleanedScreen(
     ) {
 
 
-        /*
-         * タイトル
-         */
         Text(
 
             text =
-                "清掃待ちのトイレ",
+                "未清掃のトイレ",
 
             color =
                 FinderDark,
@@ -177,7 +155,6 @@ fun ListOfUncleanedScreen(
 
 
         Spacer(
-
             modifier =
                 Modifier.height(
                     16.dp
@@ -187,7 +164,7 @@ fun ListOfUncleanedScreen(
 
         /*
          * =====================================
-         * 位置情報権限なし
+         * 位置情報許可なし
          * =====================================
          */
         if (
@@ -195,7 +172,6 @@ fun ListOfUncleanedScreen(
         ) {
 
             MessageArea(
-
                 message =
                     "現在地を取得するには\n位置情報の許可が必要です"
             )
@@ -206,7 +182,7 @@ fun ListOfUncleanedScreen(
 
         /*
          * =====================================
-         * 現在地なし
+         * 現在地取得失敗
          * =====================================
          */
         if (
@@ -214,7 +190,6 @@ fun ListOfUncleanedScreen(
         ) {
 
             MessageArea(
-
                 message =
                     "現在地を取得できませんでした"
             )
@@ -225,7 +200,7 @@ fun ListOfUncleanedScreen(
 
         /*
          * =====================================
-         * 未清掃トイレなし
+         * 未清掃なし
          * =====================================
          */
         if (
@@ -233,9 +208,8 @@ fun ListOfUncleanedScreen(
         ) {
 
             MessageArea(
-
                 message =
-                    "清掃待ちのトイレはありません"
+                    "未清掃のトイレはありません"
             )
 
             return@Column
@@ -244,7 +218,7 @@ fun ListOfUncleanedScreen(
 
         /*
          * =====================================
-         * トイレ一覧
+         * 一覧
          * =====================================
          */
         LazyColumn(
@@ -256,17 +230,18 @@ fun ListOfUncleanedScreen(
 
         ) {
 
+
             items(
 
                 items =
                     sortedToilets,
 
                 key = {
-
                     it.toilet.id
                 }
 
-            ) { item ->
+            ) {
+                    item ->
 
 
                 UncleanedToiletCard(
@@ -277,9 +252,13 @@ fun ListOfUncleanedScreen(
                     distanceMeters =
                         item.distanceMeters,
 
-                    onClick = {
 
-                        onToiletClick(
+                    /*
+                     * 地図で見る
+                     */
+                    onShowOnMap = {
+
+                        onShowOnMap(
                             item.toilet
                         )
                     }
@@ -290,14 +269,12 @@ fun ListOfUncleanedScreen(
 }
 
 
-/*
- * =====================================
- * メッセージ表示
- * =====================================
- */
 @Composable
 private fun MessageArea(
-    message: String
+
+    message:
+    String
+
 ) {
 
     Box(

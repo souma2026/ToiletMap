@@ -47,6 +47,16 @@ fun ToiletMapApp(
 
 
     /*
+     * =====================================
+     * 未清掃一覧から
+     * 地図で見る
+     * =====================================
+     */
+    onShowUncleanedToiletOnMap:
+        (UncleanedToilet) -> Unit,
+
+
+    /*
      * トイレ詳細を閉じる
      */
     onDismissSelectedToilet:
@@ -287,7 +297,36 @@ fun ToiletMapApp(
                     ListOfUncleanedScreen(
 
                         toilets =
-                            uncleanedToilets
+                            uncleanedToilets,
+
+
+                        /*
+                         * =====================================
+                         * 地図で見る
+                         * =====================================
+                         */
+                        onShowOnMap = {
+                                toilet ->
+
+
+                            /*
+                             * =====================================
+                             * Mapへ移動
+                             *
+                             * 2 = Map
+                             * =====================================
+                             */
+                            selectedScreen =
+                                2
+
+
+                            /*
+                             * MainActivityへ通知
+                             */
+                            onShowUncleanedToiletOnMap(
+                                toilet
+                            )
+                        }
                     )
                 }
 
