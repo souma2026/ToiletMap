@@ -3,11 +3,11 @@ package com.example.toiletmap
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.lifecycle.ViewModelProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.example.toiletmap.map.MapLibreMapController
+import com.example.toiletmap.model.Toilet
 import com.example.toiletmap.ui.ToiletMapApp
 import com.example.toiletmap.ui.theme.ToiletMapTheme
 import com.example.toiletmap.viewmodel.ToiletViewModel
@@ -22,13 +22,11 @@ class MainActivity : ComponentActivity() {
     private lateinit var mapController:
             MapLibreMapController
 
-    /*
-     * =====================================
-     * トイレデータ管理
-     * =====================================
-     */
-    private lateinit var toiletViewModel:
-            ToiletViewModel
+    // 現在タップされているトイレ
+    private var selectedToilet by mutableStateOf<Toilet?>(null)
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
 
     override fun onCreate(
@@ -39,124 +37,64 @@ class MainActivity : ComponentActivity() {
             savedInstanceState
         )
 
+        // 地図上のピンが押されたとき
+        mapController.setOnToiletMarkerClickListener { toilet ->
+            selectedToilet = toilet
+        }
 
-        /*
-         * =====================================
-         * ViewModel取得
-         * =====================================
-         */
-        toiletViewModel =
-            ViewModelProvider(this)[
-                ToiletViewModel::class.java
-            ]
-
-
-        /*
-         * =====================================
-         * MapLibre準備
-         * =====================================
-         */
-        mapController =
-            MapLibreMapController(
-                activity = this,
-                savedInstanceState =
-                    savedInstanceState
-            )
-
-
-        /*
-         * =====================================
-         * Compose画面
-         * =====================================
-         */
         setContent {
 
             ToiletMapTheme {
 
-                /*
-                 * =====================================
-                 * ViewModelのトイレ一覧を監視
-                 * =====================================
-                 *
-                 * toiletsが変更されると
-                 * Compose側も変更を検知する
-                 */
-                val toilets by
-                toiletViewModel
-                    .toilets
-                    .collectAsState()
-
-
-                /*
-                 * =====================================
-                 * トイレ一覧が変更されたら
-                 * 地図を更新
-                 * =====================================
-                 */
-                LaunchedEffect(
-                    toilets
-                ) {
-
-                    mapController
-                        .showToilets(
-                            toilets
-                        )
-                }
-
-
-                /*
-                 * =====================================
-                 * アプリ本体
-                 * =====================================
-                 */
                 ToiletMapApp(
 
-                    mapView =
-                        mapController.mapView,
+                    mapView = mapController.mapView,
 
-                    /*
-                     * =====================================
-                     * 新しいトイレが登録された
-                     * =====================================
-                     */
+                    selectedToilet = selectedToilet,
+
+                    // 詳細画面を閉じる
+                    onDismissSelectedToilet = {
+                        selectedToilet = null
+                    },
+
+                    // 清掃を依頼する
+                    onRequestCleaning = { toilet ->
+
+                        selectedToilet =
+                            mapController.requestCleaning(
+                                toilet.id
+                            )
+                    },
+
+                    // 清掃済みにする
+                    onMarkCleaned = { toilet ->
+
+                        selectedToilet =
+                            mapController.markCleaned(
+                                toilet.id
+                            )
+                    },
+
+                    // 新しいトイレを登録
                     onAddToilet = { toilet ->
 
-                        /*
-                         * ViewModelだけに追加する
-                         */
-                        toiletViewModel
-                            .addToilet(
-                                toilet
-                            )
+                        mapController.addToilet(
+                            toilet
+                        )
 
-                        /*
-                         * 登録した場所へ
-                         * カメラを移動
-                         */
-                        mapController
-                            .focusOnToilet(
-                                toilet
-                            )
+                        // 登録直後にそのトイレを選択状態にする
+                        selectedToilet = toilet
                     }
                 )
             }
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
 
-    /*
-     * =====================================
-     * MapView状態保存
-     * =====================================
-     */
-    override fun onSaveInstanceState(
-        outState: Bundle
-    ) {
-
-        mapController
-            .onSaveInstanceState(
-                outState
-            )
+        mapController.onSaveInstanceState(
+            outState
+        )
 
         super.onSaveInstanceState(
             outState
@@ -173,7 +111,6 @@ class MainActivity : ComponentActivity() {
 
         super.onLowMemory()
 
-        mapController
-            .onLowMemory()
+        mapController.onLowMemory()
     }
 }
