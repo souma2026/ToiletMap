@@ -32,11 +32,8 @@ object AccountRepository {
             Email
         ) {
 
-            this.email =
-                email
-
-            this.password =
-                password
+            this.email = email
+            this.password = password
 
             data =
                 buildJsonObject {
@@ -63,11 +60,8 @@ object AccountRepository {
             Email
         ) {
 
-            this.email =
-                email
-
-            this.password =
-                password
+            this.email = email
+            this.password = password
         }
     }
 
@@ -83,7 +77,7 @@ object AccountRepository {
 
 
     // =========================================
-    // 現在ユーザー
+    // 現在のユーザー
     // =========================================
 
     fun getCurrentUser() =
@@ -133,6 +127,7 @@ object AccountRepository {
             .from("profiles")
             .update(
                 {
+
                     set(
                         "username",
                         userName
@@ -152,7 +147,7 @@ object AccountRepository {
 
 
     // =========================================
-    // プロフィール画像URL変更
+    // プロフィール画像URL更新
     // =========================================
 
     private suspend fun updateAvatarUrl(
@@ -164,6 +159,7 @@ object AccountRepository {
             .from("profiles")
             .update(
                 {
+
                     set(
                         "avatar_url",
                         avatarUrl
@@ -183,7 +179,7 @@ object AccountRepository {
 
 
     // =========================================
-    // プロフィール写真アップロード
+    // プロフィール画像アップロード
     // =========================================
 
     suspend fun uploadAvatar(
@@ -197,26 +193,16 @@ object AccountRepository {
                 .from("avatars")
 
 
-        /*
-         * ユーザーごとのフォルダ
-         *
-         * avatars/
-         *   UUID/
-         *     profile.jpg
-         */
         val path =
             "$userId/profile.jpg"
 
 
         bucket.upload(
-            path =
-                path,
-            data =
-                imageBytes
+            path = path,
+            data = imageBytes
         ) {
 
-            upsert =
-                true
+            upsert = true
         }
 
 
@@ -227,22 +213,83 @@ object AccountRepository {
 
 
         /*
-         * 同じファイル名を上書きするので
-         * Coilキャッシュ対策として時刻を付加
+         * 同じファイル名を上書きするため、
+         * Coilのキャッシュ対策として
+         * URLへ現在時刻を付ける。
          */
         val url =
             "$publicUrl?v=${System.currentTimeMillis()}"
 
 
+        /*
+         * profiles.avatar_url に
+         * 実際に表示可能なURLを保存する。
+         */
         updateAvatarUrl(
-            userId =
-                userId,
-            avatarUrl =
-                url
+            userId = userId,
+            avatarUrl = url
         )
 
 
         return url
+    }
+
+
+    // =========================================
+    // 保存済みavatar_urlから
+    // 表示可能URLを取得
+    //
+    // 過去に Storage path だけ保存した場合にも対応
+    // =========================================
+
+    fun getAvatarDisplayUrl(
+        storedAvatarValue: String?
+    ): String? {
+
+        if (storedAvatarValue.isNullOrBlank()) {
+
+            return null
+        }
+
+
+        /*
+         * すでにURLならそのまま使用
+         */
+        if (
+            storedAvatarValue.startsWith("https://") ||
+            storedAvatarValue.startsWith("http://")
+        ) {
+
+            return storedAvatarValue
+        }
+
+
+        /*
+         * 過去に
+         *
+         * UUID/profile.jpg
+         *
+         * のようなStorage pathを保存していた場合
+         */
+        val path =
+            storedAvatarValue
+                .substringBefore("?")
+                .trimStart('/')
+
+
+        val bucket =
+            supabase
+                .storage
+                .from("avatars")
+
+
+        val publicUrl =
+            bucket.publicUrl(
+                path
+            )
+
+
+        return "$publicUrl?v=${System.currentTimeMillis()}"
     }
 
 
@@ -268,6 +315,7 @@ object AccountRepository {
             }
             .decodeList<ToiletEditHistory>()
             .sortedByDescending {
+
                 it.editedAt
             }
     }
@@ -275,8 +323,6 @@ object AccountRepository {
 
     // =========================================
     // 履歴追加
-    //
-    // 他の画面から将来使用する
     // =========================================
 
     suspend fun addHistory(
@@ -291,14 +337,9 @@ object AccountRepository {
 
         val history =
             NewToiletEditHistory(
-                userId =
-                    user.id,
-
-                toiletName =
-                    toiletName,
-
-                action =
-                    action
+                userId = user.id,
+                toiletName = toiletName,
+                action = action
             )
 
 

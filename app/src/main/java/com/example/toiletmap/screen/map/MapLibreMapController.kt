@@ -1,6 +1,4 @@
-@file:Suppress("DEPRECATION")
-
-package com.example.toiletmap.map
+package com.example.toiletmap.screen.map
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
