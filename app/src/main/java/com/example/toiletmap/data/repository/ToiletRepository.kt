@@ -1,75 +1,78 @@
 package com.example.toiletmap.data.repository
 
+import com.example.toiletmap.data.supabase.SupabaseClientProvider
 import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.model.Toilet
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.Serializable
+
+
+/*
+ * =====================================
+ * Supabaseへ新しいトイレを登録するとき用
+ * =====================================
+ *
+ * ToiletをそのままINSERTすると
+ * created_at = null まで送ってしまう可能性があるため、
+ * 登録専用のデータを分けている。
+ *
+ * created_at はSupabase側で自動作成される。
+ */
+@Serializable
+private data class NewToilet(
+
+    val id: String,
+
+    val name: String,
+
+    val latitude: Double,
+
+    val longitude: Double,
+
+    val cleanliness: Int,
+
+    val comment: String,
+
+    val cleaning_status: String,
+
+    val last_cleaned_at_millis: Long?,
+
+    val created_by: String
+)
+
 
 class ToiletRepository {
 
     /*
      * =====================================
-     * トイレデータ
+     * Supabase
      * =====================================
-     *
-     * トイレデータの唯一の管理場所。
-     *
-     * 将来Supabaseを導入するときは
-     * このRepositoryの中を
-     * Supabaseとの読み書きに変更する。
      */
-    private val _toilets =
-        MutableStateFlow(
+    private val supabase =
+        SupabaseClientProvider.client
 
-            listOf(
-
-                /*
-                 * サンプルトイレ
-                 */
-                Toilet(
-
-                    name =
-                        "東京駅トイレ",
-
-                    latitude =
-                        35.681236,
-
-                    longitude =
-                        139.767125,
-
-                    cleanliness =
-                        4,
-
-                    comment =
-                        "東京駅の近くにあるトイレです",
-
-                    /*
-                     * 最初は通常状態
-                     * → 赤いピン
-                     */
-                    cleaningStatus =
-                        CleaningStatus.NORMAL,
-
-                    /*
-                     * サンプルとして
-                     * 2時間前に清掃された状態
-                     */
-                    lastCleanedAtMillis =
-                        System.currentTimeMillis() -
-                                (
-                                        2L *
-                                                60L *
-                                                60L *
-                                                1000L
-                                        )
-                )
-            )
-        )
 
     /*
      * =====================================
-     * 外部公開用
+     * アプリ内で使用するトイレ一覧
+     * =====================================
+     *
+     * Supabaseから取得した内容を
+     * ここに保存する。
+     */
+    private val _toilets =
+        MutableStateFlow<List<Toilet>>(
+            emptyList()
+        )
+
+
+    /*
+     * =====================================
+     * ViewModelへ公開するデータ
      * =====================================
      */
     val toilets:
@@ -79,147 +82,237 @@ class ToiletRepository {
 
     /*
      * =====================================
-     * トイレ追加
+     * Supabaseからトイレ一覧を取得
      * =====================================
      */
-    fun addToilet(
+    suspend fun loadToilets() {
+
+        val loadedToilets =
+            supabase
+                .from("toilets")
+                .select()
+                .decodeList<Toilet>()
+
+
+        /*
+         * StateFlowを更新
+         */
+        _toilets.value =
+            loadedToilets
+    }
+
+
+    /*
+     * =====================================
+     * 新しいトイレを登録
+     * =====================================
+     */
+    suspend fun addToilet(
         toilet: Toilet
     ) {
 
-        _toilets.value +=
-            toilet
+        /*
+         * 現在ログインしているユーザーを取得
+         */
+        val currentUser =
+            supabase
+                .auth
+                .currentUserOrNull()
+                ?: throw IllegalStateException(
+                    "トイレを登録するにはログインが必要です"
+                )
+
+
+        /*
+         * =====================================
+         * Supabase登録用データ
+         * =====================================
+         */
+        val newToilet =
+            NewToilet(
+
+                id =
+                    toilet.id,
+
+                name =
+                    toilet.name,
+
+                latitude =
+                    toilet.latitude,
+
+                longitude =
+                    toilet.longitude,
+
+                cleanliness =
+                    toilet.cleanliness,
+
+                comment =
+                    toilet.comment,
+
+                cleaning_status =
+                    toilet
+                        .cleaningStatus
+                        .name,
+
+                last_cleaned_at_millis =
+                    toilet.lastCleanedAtMillis,
+
+                /*
+                 * 登録したユーザーのUUID
+                 */
+                created_by =
+                    currentUser.id
+            )
+
+
+        /*
+         * =====================================
+         * SupabaseへINSERT
+         * =====================================
+         */
+        supabase
+            .from("toilets")
+            .insert(
+                newToilet
+            )
+
+
+        /*
+         * =====================================
+         * 登録後に最新一覧を取得
+         * =====================================
+         */
+        loadToilets()
     }
 
 
     /*
      * =====================================
-     * 清掃依頼
+     * 清掃を依頼する
      * =====================================
      */
-    fun requestCleaning(
+    suspend fun requestCleaning(
         toiletId: String
     ) {
 
         /*
-         * 対象トイレを探す
+         * ログイン確認
          */
-        val toilet =
-            _toilets
-                .value
-                .firstOrNull {
+        supabase
+            .auth
+            .currentUserOrNull()
+            ?: throw IllegalStateException(
+                "清掃を依頼するにはログインが必要です"
+            )
 
-                    it.id ==
-                            toiletId
-                }
-                ?: return
 
         /*
-         * 通常状態以外なら
-         * 何もしない
-         */
-        if (
-            toilet.cleaningStatus !=
-            CleaningStatus.NORMAL
-        ) {
-
-            return
-        }
-
-        /*
+         * =====================================
          * NORMAL
          * ↓
          * REQUESTED
+         * =====================================
          */
-        updateToilet(
+        supabase
+            .from("toilets")
+            .update(
+                {
 
-            toilet.copy(
+                    set(
+                        "cleaning_status",
+                        CleaningStatus
+                            .REQUESTED
+                            .name
+                    )
+                }
+            ) {
 
-                cleaningStatus =
-                    CleaningStatus.REQUESTED
-            )
-        )
+                filter {
+
+                    eq(
+                        "id",
+                        toiletId
+                    )
+                }
+            }
+
+
+        /*
+         * 更新後の最新データ取得
+         */
+        loadToilets()
     }
 
 
     /*
      * =====================================
-     * 清掃完了
+     * 「清掃しました」
      * =====================================
      */
-    fun markCleaned(
+    suspend fun markCleaned(
         toiletId: String
     ) {
 
         /*
-         * 対象トイレを探す
+         * ログイン確認
          */
-        val toilet =
-            _toilets
-                .value
-                .firstOrNull {
+        supabase
+            .auth
+            .currentUserOrNull()
+            ?: throw IllegalStateException(
+                "清掃状態を変更するにはログインが必要です"
+            )
 
-                    it.id ==
-                            toiletId
-                }
-                ?: return
 
         /*
-         * 清掃待ち状態以外では
-         * 「清掃しました」を行わない
+         * 現在時刻
          */
-        if (
-            toilet.cleaningStatus !=
-            CleaningStatus.REQUESTED
-        ) {
+        val now =
+            System.currentTimeMillis()
 
-            return
-        }
 
         /*
+         * =====================================
          * REQUESTED
          * ↓
          * NORMAL
          *
          * 前回清掃時間も更新
+         * =====================================
          */
-        updateToilet(
+        supabase
+            .from("toilets")
+            .update(
+                {
 
-            toilet.copy(
-
-                cleaningStatus =
-                    CleaningStatus.NORMAL,
-
-                lastCleanedAtMillis =
-                    System.currentTimeMillis()
-            )
-        )
-    }
+                    set(
+                        "cleaning_status",
+                        CleaningStatus
+                            .NORMAL
+                            .name
+                    )
 
 
-    /*
-     * =====================================
-     * トイレ情報更新
-     * =====================================
-     */
-    private fun updateToilet(
-        updatedToilet: Toilet
-    ) {
+                    set(
+                        "last_cleaned_at_millis",
+                        now
+                    )
+                }
+            ) {
 
-        _toilets.value =
-            _toilets.value.map {
-                    toilet ->
+                filter {
 
-                if (
-                    toilet.id ==
-                    updatedToilet.id
-                ) {
-
-                    updatedToilet
-
-                } else {
-
-                    toilet
+                    eq(
+                        "id",
+                        toiletId
+                    )
                 }
             }
+
+
+        /*
+         * 更新後の最新データ取得
+         */
+        loadToilets()
     }
 }

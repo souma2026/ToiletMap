@@ -1,7 +1,16 @@
 package com.example.toiletmap.model
 
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import java.util.UUID
 
+
+/*
+ * =====================================
+ * 清掃状態
+ * =====================================
+ */
+@Serializable
 enum class CleaningStatus {
 
     // 通常状態：赤いピン
@@ -11,30 +20,112 @@ enum class CleaningStatus {
     REQUESTED
 }
 
+
+/*
+ * =====================================
+ * トイレ情報
+ * =====================================
+ *
+ * Supabaseの
+ * public.toilets
+ * と対応するデータ
+ */
+@Serializable
 data class Toilet(
 
-    // 各トイレを区別するID
-    val id: String = UUID.randomUUID().toString(),
+    /*
+     * 各トイレを区別するID
+     */
+    val id: String =
+        UUID.randomUUID().toString(),
 
-    // トイレ名
+
+    /*
+     * トイレ名
+     */
     val name: String,
 
-    // 緯度
+
+    /*
+     * 緯度
+     */
     val latitude: Double,
 
-    // 経度
+
+    /*
+     * 経度
+     */
     val longitude: Double,
 
-    // 清潔度 1～5
+
+    /*
+     * 清潔度 1～5
+     */
     val cleanliness: Int,
 
-    // コメント
+
+    /*
+     * コメント
+     */
     val comment: String,
 
-    // 清掃状態
-    val cleaningStatus: CleaningStatus = CleaningStatus.NORMAL,
 
-    // 前回「清掃しました」を押した時刻
-    // まだ清掃した記録がない場合は null
-    val lastCleanedAtMillis: Long? = null
+    /*
+     * =====================================
+     * 清掃状態
+     *
+     * Kotlin側
+     * cleaningStatus
+     *
+     * Supabase側
+     * cleaning_status
+     * =====================================
+     */
+    @SerialName("cleaning_status")
+    val cleaningStatus:
+    CleaningStatus =
+        CleaningStatus.NORMAL,
+
+
+    /*
+     * =====================================
+     * 前回清掃時刻
+     *
+     * Kotlin側
+     * lastCleanedAtMillis
+     *
+     * Supabase側
+     * last_cleaned_at_millis
+     * =====================================
+     */
+    @SerialName("last_cleaned_at_millis")
+    val lastCleanedAtMillis:
+    Long? =
+        null,
+
+
+    /*
+     * =====================================
+     * 登録したユーザーID
+     *
+     * Supabase AuthのUUID
+     * =====================================
+     */
+    @SerialName("created_by")
+    val createdBy:
+    String? =
+        null,
+
+
+    /*
+     * =====================================
+     * 登録日時
+     *
+     * Supabase側で自動作成
+     * =====================================
+     */
+    @SerialName("created_at")
+    val createdAt:
+    String? =
+        null
 )
