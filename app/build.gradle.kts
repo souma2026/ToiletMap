@@ -90,10 +90,9 @@ dependencies {
     // =========================================
     // Material Icons
     //
-    // Icons.Filled.Add
-    // Icons.Filled.Person
-    // Icons.Filled.Place
-    // などを使用するため
+    // Icons.Filled.*
+    // Icons.Outlined.*
+    // を使用するため
     // =========================================
 
     implementation(
@@ -144,18 +143,15 @@ dependencies {
         )
     )
 
-
     // Supabase Auth
     implementation(
         "io.github.jan-tennert.supabase:auth-kt"
     )
 
-
     // Supabase Database
     implementation(
         "io.github.jan-tennert.supabase:postgrest-kt"
     )
-
 
     // Supabase Storage
     implementation(
@@ -166,7 +162,7 @@ dependencies {
     // =========================================
     // Ktor
     //
-    // Supabaseの通信で使用
+    // Supabase通信
     // =========================================
 
     implementation(
