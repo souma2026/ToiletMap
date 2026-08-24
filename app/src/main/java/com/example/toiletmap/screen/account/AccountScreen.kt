@@ -1,531 +1,226 @@
 package com.example.toiletmap.screen.account
 
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.sizeIn
-import coil3.compose.AsyncImage
-import org.json.JSONArray
-import org.json.JSONObject
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.example.toiletmap.data.repository.AccountRepository
+import kotlinx.coroutines.launch
 
-
-/*
- * ==========================================
- * トイレ編集履歴のデータ
- * ==========================================
- */
-
-data class ToiletEditHistory(
-    val toiletName: String,
-    val action: String,
-    val editedAt: String
-)
-
-
-/*
- * ==========================================
- * アカウント情報を保存するためのクラス
- * ==========================================
- *
- * 現在はSharedPreferencesを使用しています。
- *
- * 将来的には、この部分をFirebaseなどに
- * 置き換えることができます。
- */
-
-object AccountStorage {
-
-    private const val PREFS_NAME = "account_data"
-
-    private const val KEY_USER_NAME = "user_name"
-    private const val KEY_POINTS = "points"
-    private const val KEY_IMAGE_URI = "image_uri"
-    private const val KEY_HISTORY = "toilet_edit_history"
-
-
-    /*
-     * SharedPreferencesを取得
-     */
-    private fun getPreferences(
-        context: Context
-    ) = context.getSharedPreferences(
-        PREFS_NAME,
-        Context.MODE_PRIVATE
-    )
-
-
-    /*
-     * ==========================================
-     * ユーザー名
-     * ==========================================
-     */
-
-    fun loadUserName(context: Context): String {
-
-        return getPreferences(context)
-            .getString(
-                KEY_USER_NAME,
-                "テストユーザー"
-            ) ?: "テストユーザー"
-    }
-
-
-    fun saveUserName(
-        context: Context,
-        userName: String
-    ) {
-
-        getPreferences(context)
-            .edit()
-            .putString(
-                KEY_USER_NAME,
-                userName
-            )
-            .apply()
-    }
-
-
-    /*
-     * ==========================================
-     * ポイント
-     * ==========================================
-     */
-
-    fun loadPoints(context: Context): Int {
-
-        return getPreferences(context)
-            .getInt(
-                KEY_POINTS,
-                120
-            )
-    }
-
-
-    fun savePoints(
-        context: Context,
-        points: Int
-    ) {
-
-        getPreferences(context)
-            .edit()
-            .putInt(
-                KEY_POINTS,
-                points
-            )
-            .apply()
-    }
-
-
-    /*
-     * ポイントを加算する
-     *
-     * 例：
-     * AccountStorage.addPoints(context, 10)
-     */
-    fun addPoints(
-        context: Context,
-        amount: Int
-    ): Int {
-
-        val currentPoints =
-            loadPoints(context)
-
-        val newPoints =
-            currentPoints + amount
-
-        savePoints(
-            context,
-            newPoints
-        )
-
-        return newPoints
-    }
-
-
-    /*
-     * ==========================================
-     * プロフィール画像
-     * ==========================================
-     */
-
-    fun loadImageUri(
-        context: Context
-    ): String? {
-
-        return getPreferences(context)
-            .getString(
-                KEY_IMAGE_URI,
-                null
-            )
-    }
-
-
-    fun saveImageUri(
-        context: Context,
-        uri: String
-    ) {
-
-        getPreferences(context)
-            .edit()
-            .putString(
-                KEY_IMAGE_URI,
-                uri
-            )
-            .apply()
-    }
-
-
-    /*
-     * ==========================================
-     * トイレ編集履歴
-     * ==========================================
-     */
-
-    fun loadHistory(
-        context: Context
-    ): List<ToiletEditHistory> {
-
-        val jsonString =
-            getPreferences(context)
-                .getString(
-                    KEY_HISTORY,
-                    "[]"
-                ) ?: "[]"
-
-        return try {
-
-            val jsonArray =
-                JSONArray(jsonString)
-
-            val historyList =
-                mutableListOf<ToiletEditHistory>()
-
-            for (i in 0 until jsonArray.length()) {
-
-                val jsonObject =
-                    jsonArray.getJSONObject(i)
-
-                historyList.add(
-                    ToiletEditHistory(
-                        toiletName =
-                            jsonObject.getString("toiletName"),
-
-                        action =
-                            jsonObject.getString("action"),
-
-                        editedAt =
-                            jsonObject.getString("editedAt")
-                    )
-                )
-            }
-
-            historyList
-
-        } catch (e: Exception) {
-
-            emptyList()
-        }
-    }
-
-
-    /*
-     * 履歴を保存する
-     */
-    private fun saveHistory(
-        context: Context,
-        historyList: List<ToiletEditHistory>
-    ) {
-
-        val jsonArray =
-            JSONArray()
-
-        historyList.forEach { history ->
-
-            val jsonObject =
-                JSONObject()
-
-            jsonObject.put(
-                "toiletName",
-                history.toiletName
-            )
-
-            jsonObject.put(
-                "action",
-                history.action
-            )
-
-            jsonObject.put(
-                "editedAt",
-                history.editedAt
-            )
-
-            jsonArray.put(
-                jsonObject
-            )
-        }
-
-        getPreferences(context)
-            .edit()
-            .putString(
-                KEY_HISTORY,
-                jsonArray.toString()
-            )
-            .apply()
-    }
-
-
-    /*
-     * 新しい編集履歴を追加
-     */
-    fun addHistory(
-        context: Context,
-        toiletName: String,
-        action: String
-    ) {
-
-        val historyList =
-            loadHistory(context)
-                .toMutableList()
-
-        val dateFormat =
-            SimpleDateFormat(
-                "yyyy/MM/dd HH:mm",
-                Locale.JAPAN
-            )
-
-        val currentTime =
-            dateFormat.format(
-                Date()
-            )
-
-        val newHistory =
-            ToiletEditHistory(
-                toiletName = toiletName,
-                action = action,
-                editedAt = currentTime
-            )
-
-        // 一番新しい履歴を上に表示
-        historyList.add(
-            0,
-            newHistory
-        )
-
-        saveHistory(
-            context,
-            historyList
-        )
-    }
-}
-
-
-/*
- * ==========================================
- * アカウント画面
- * ==========================================
- */
 
 @Composable
 fun AccountScreen() {
 
-    val context =
-        LocalContext.current
-
+    /*
+     * Supabaseのログイン状態を確認中かどうか
+     */
+    var checkingLogin by remember {
+        mutableStateOf(true)
+    }
 
     /*
-     * ==========================================
-     * ユーザー名
-     * ==========================================
+     * ログイン状態
      */
-
-    var userName by rememberSaveable {
-
-        mutableStateOf(
-            AccountStorage.loadUserName(context)
-        )
-    }
-
-    var editingUserName by rememberSaveable {
-
-        mutableStateOf(
-            userName
-        )
-    }
-
-    var isEditingUserName by rememberSaveable {
-
+    var isLoggedIn by remember {
         mutableStateOf(false)
     }
 
 
     /*
-     * ==========================================
-     * ポイント
-     * ==========================================
+     * 画面を最初に表示したとき、
+     * Supabaseにログイン済みユーザーがいるか確認
      */
+    LaunchedEffect(Unit) {
 
-    var points by rememberSaveable {
+        isLoggedIn =
+            AccountRepository.isLoggedIn()
 
-        mutableIntStateOf(
-            AccountStorage.loadPoints(context)
-        )
+        checkingLogin =
+            false
     }
 
 
     /*
-     * ==========================================
-     * プロフィール画像
-     * ==========================================
+     * =========================================
+     * ログイン確認中
+     * =========================================
      */
 
-    var selectedImageUriString by rememberSaveable {
+    if (checkingLogin) {
 
-        mutableStateOf(
-            AccountStorage.loadImageUri(context)
-        )
-    }
+        Column(
+            modifier =
+                Modifier.fillMaxSize(),
 
-    val selectedImageUri: Uri? =
-        selectedImageUriString?.let {
-            Uri.parse(it)
+            horizontalAlignment =
+                Alignment.CenterHorizontally
+        ) {
+
+            Spacer(
+                modifier =
+                    Modifier.height(100.dp)
+            )
+
+            CircularProgressIndicator()
         }
 
-
-    /*
-     * ==========================================
-     * 編集履歴
-     * ==========================================
-     */
-
-    val editHistory =
-        remember {
-
-            mutableStateListOf<ToiletEditHistory>()
-                .apply {
-
-                    addAll(
-                        AccountStorage.loadHistory(context)
-                    )
-                }
-        }
-
-    var showHistory by rememberSaveable {
-
-        mutableStateOf(false)
+        return
     }
 
 
     /*
-     * ==========================================
-     * Photo Picker
-     * ==========================================
+     * =========================================
+     * ログイン済み
+     * =========================================
      */
 
-    val photoPickerLauncher =
-        rememberLauncherForActivityResult(
+    if (isLoggedIn) {
 
-            contract =
-                ActivityResultContracts.PickVisualMedia()
+        LoggedInAccountScreen(
 
-        ) { uri ->
+            onLogout = {
 
-            if (uri != null) {
-
-                /*
-                 * 写真へのアクセス権をできるだけ保持
-                 */
-                try {
-
-                    context
-                        .contentResolver
-                        .takePersistableUriPermission(
-                            uri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        )
-
-                } catch (_: SecurityException) {
-
-                    // 端末によって永続権限を取得できない場合がある
-                }
-
-                selectedImageUriString =
-                    uri.toString()
-
-                AccountStorage.saveImageUri(
-                    context,
-                    uri.toString()
-                )
+                isLoggedIn =
+                    false
             }
-        }
+        )
+
+        return
+    }
 
 
     /*
-     * ==========================================
-     * 画面
-     * ==========================================
+     * =========================================
+     * 未ログイン
+     * =========================================
      */
+
+    LoginAndRegisterScreen(
+
+        onLoginSuccess = {
+
+            isLoggedIn =
+                true
+        }
+    )
+}
+
+
+/*
+ * =========================================
+ * ログイン / 新規登録画面
+ * =========================================
+ */
+
+@Composable
+fun LoginAndRegisterScreen(
+    onLoginSuccess: () -> Unit
+) {
+
+    val scope =
+        rememberCoroutineScope()
+
+
+    /*
+     * false = ログイン
+     * true = アカウント登録
+     */
+    var registerMode by remember {
+        mutableStateOf(false)
+    }
+
+
+    /*
+     * 入力内容
+     */
+    var userName by remember {
+        mutableStateOf("")
+    }
+
+    var email by remember {
+        mutableStateOf("")
+    }
+
+    var password by remember {
+        mutableStateOf("")
+    }
+
+
+    /*
+     * メッセージ
+     */
+    var message by remember {
+        mutableStateOf("")
+    }
+
+
+    /*
+     * 通信中か
+     */
+    var loading by remember {
+        mutableStateOf(false)
+    }
+
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(
                 rememberScrollState()
-            ),
+            )
+            .padding(24.dp),
+
         horizontalAlignment =
             Alignment.CenterHorizontally
     ) {
 
-        Spacer(
-            modifier =
-                Modifier.height(40.dp)
-        )
-
 
         /*
+         * =========================================
          * タイトル
+         * =========================================
          */
 
         Text(
-            text = "アカウント",
+            text =
+                if (registerMode) {
+
+                    "アカウント登録"
+
+                } else {
+
+                    "ログイン"
+                },
+
             style =
-                MaterialTheme.typography.headlineMedium
+                MaterialTheme.typography.headlineMedium,
+
+            modifier =
+                Modifier.fillMaxWidth()
         )
 
 
@@ -536,85 +231,21 @@ fun AccountScreen() {
 
 
         /*
-         * ==========================================
-         * プロフィール画像
-         * ==========================================
-         */
-
-        if (selectedImageUri != null) {
-
-            AsyncImage(
-                model =
-                    selectedImageUri,
-
-                contentDescription =
-                    "プロフィール画像",
-
-                modifier =
-                    Modifier
-                        .size(120.dp)
-                        .clip(CircleShape),
-
-                contentScale =
-                    ContentScale.Crop
-            )
-
-        } else {
-
-            Text(
-                text = "👤",
-                style =
-                    MaterialTheme.typography.displayLarge
-            )
-        }
-
-
-        Spacer(
-            modifier =
-                Modifier.height(20.dp)
-        )
-
-
-        Button(
-            onClick = {
-
-                photoPickerLauncher.launch(
-
-                    PickVisualMediaRequest(
-                        ActivityResultContracts
-                            .PickVisualMedia
-                            .ImageOnly
-                    )
-                )
-            }
-        ) {
-
-            Text(
-                text = "写真を選択"
-            )
-        }
-
-
-        Spacer(
-            modifier =
-                Modifier.height(30.dp)
-        )
-
-
-        /*
-         * ==========================================
+         * =========================================
          * ユーザー名
-         * ==========================================
+         *
+         * 新規登録時だけ表示
+         * =========================================
          */
 
-        if (isEditingUserName) {
+        if (registerMode) {
 
             OutlinedTextField(
                 value =
-                    editingUserName,
+                    userName,
 
                 onValueChange = {
-                    editingUserName = it
+                    userName = it
                 },
 
                 label = {
@@ -623,114 +254,95 @@ fun AccountScreen() {
                     )
                 },
 
-                singleLine = true
+                modifier =
+                    Modifier.fillMaxWidth(),
+
+                singleLine =
+                    true
             )
 
 
             Spacer(
                 modifier =
-                    Modifier.height(10.dp)
+                    Modifier.height(16.dp)
             )
-
-
-            Row {
-
-                Button(
-                    onClick = {
-
-                        val newName =
-                            editingUserName.trim()
-
-                        if (newName.isNotEmpty()) {
-
-                            userName =
-                                newName
-
-                            AccountStorage
-                                .saveUserName(
-                                    context,
-                                    newName
-                                )
-
-                            isEditingUserName =
-                                false
-                        }
-                    }
-                ) {
-
-                    Text(
-                        text = "保存"
-                    )
-                }
-
-
-                Spacer(
-                    modifier =
-                        Modifier.size(10.dp)
-                )
-
-
-                TextButton(
-                    onClick = {
-
-                        editingUserName =
-                            userName
-
-                        isEditingUserName =
-                            false
-                    }
-                ) {
-
-                    Text(
-                        text = "キャンセル"
-                    )
-                }
-            }
-
-        } else {
-
-            Text(
-                text =
-                    "ユーザー名：$userName"
-            )
-
-
-            TextButton(
-                onClick = {
-
-                    editingUserName =
-                        userName
-
-                    isEditingUserName =
-                        true
-                }
-            ) {
-
-                Text(
-                    text = "ユーザー名を変更"
-                )
-            }
         }
+
+
+        /*
+         * =========================================
+         * メールアドレス
+         * =========================================
+         */
+
+        OutlinedTextField(
+            value =
+                email,
+
+            onValueChange = {
+                email = it
+            },
+
+            label = {
+                Text(
+                    text = "メールアドレス"
+                )
+            },
+
+            modifier =
+                Modifier.fillMaxWidth(),
+
+            keyboardOptions =
+                KeyboardOptions(
+                    keyboardType =
+                        KeyboardType.Email
+                ),
+
+            singleLine =
+                true
+        )
 
 
         Spacer(
             modifier =
-                Modifier.height(20.dp)
+                Modifier.height(16.dp)
         )
 
 
         /*
-         * ==========================================
-         * ポイント
-         * ==========================================
+         * =========================================
+         * パスワード
+         * =========================================
          */
 
-        Text(
-            text =
-                "ポイント：$points pt",
+        OutlinedTextField(
+            value =
+                password,
 
-            style =
-                MaterialTheme.typography.titleMedium
+            onValueChange = {
+                password = it
+            },
+
+            label = {
+                Text(
+                    text = "パスワード"
+                )
+            },
+
+            modifier =
+                Modifier.fillMaxWidth(),
+
+            visualTransformation =
+                PasswordVisualTransformation(),
+
+            keyboardOptions =
+                KeyboardOptions(
+                    keyboardType =
+                        KeyboardType.Password
+                ),
+
+            singleLine =
+                true
         )
 
 
@@ -741,14 +353,389 @@ fun AccountScreen() {
 
 
         /*
-         * ==========================================
-         * 編集履歴
-         * ==========================================
+         * =========================================
+         * ログイン / 登録ボタン
+         * =========================================
+         */
+
+        Button(
+            modifier =
+                Modifier.fillMaxWidth(),
+
+            enabled =
+                !loading,
+
+            onClick = {
+
+                /*
+                 * 入力チェック
+                 */
+
+                if (
+                    registerMode &&
+                    userName.trim().isEmpty()
+                ) {
+
+                    message =
+                        "ユーザー名を入力してください"
+
+                    return@Button
+                }
+
+
+                if (
+                    email.trim().isEmpty()
+                ) {
+
+                    message =
+                        "メールアドレスを入力してください"
+
+                    return@Button
+                }
+
+
+                if (
+                    password.isEmpty()
+                ) {
+
+                    message =
+                        "パスワードを入力してください"
+
+                    return@Button
+                }
+
+
+                if (
+                    password.length < 6
+                ) {
+
+                    message =
+                        "パスワードは6文字以上入力してください"
+
+                    return@Button
+                }
+
+
+                loading =
+                    true
+
+                message =
+                    ""
+
+
+                scope.launch {
+
+                    try {
+
+                        /*
+                         * =================================
+                         * 新規登録
+                         * =================================
+                         */
+
+                        if (registerMode) {
+
+                            AccountRepository.signUp(
+
+                                email =
+                                    email.trim(),
+
+                                password =
+                                    password,
+
+                                userName =
+                                    userName.trim()
+                            )
+
+
+                            /*
+                             * Confirm emailをOFFにしていれば
+                             * 登録直後にログイン状態になる
+                             */
+
+                            if (
+                                AccountRepository.isLoggedIn()
+                            ) {
+
+                                onLoginSuccess()
+
+                            } else {
+
+                                /*
+                                 * Confirm emailがONの場合
+                                 */
+
+                                message =
+                                    "登録しました。確認メールを確認してからログインしてください。"
+
+                                registerMode =
+                                    false
+                            }
+
+
+                        } else {
+
+                            /*
+                             * =================================
+                             * ログイン
+                             * =================================
+                             */
+
+                            AccountRepository.signIn(
+
+                                email =
+                                    email.trim(),
+
+                                password =
+                                    password
+                            )
+
+
+                            /*
+                             * ログイン成功
+                             */
+
+                            if (
+                                AccountRepository.isLoggedIn()
+                            ) {
+
+                                onLoginSuccess()
+
+                            } else {
+
+                                message =
+                                    "ログインできませんでした"
+                            }
+                        }
+
+
+                    } catch (e: Exception) {
+
+                        /*
+                         * Supabaseからエラーが返ってきた場合
+                         */
+
+                        message =
+                            e.message
+                                ?: "処理に失敗しました"
+
+                    } finally {
+
+                        loading =
+                            false
+                    }
+                }
+            }
+        ) {
+
+            Text(
+                text =
+                    when {
+
+                        loading -> {
+                            "処理中..."
+                        }
+
+                        registerMode -> {
+                            "アカウント登録"
+                        }
+
+                        else -> {
+                            "ログイン"
+                        }
+                    }
+            )
+        }
+
+
+        Spacer(
+            modifier =
+                Modifier.height(15.dp)
+        )
+
+
+        /*
+         * =========================================
+         * 登録 / ログイン切り替え
+         * =========================================
+         */
+
+        TextButton(
+            onClick = {
+
+                registerMode =
+                    !registerMode
+
+                message =
+                    ""
+            }
+        ) {
+
+            Text(
+                text =
+                    if (registerMode) {
+
+                        "すでにアカウントを持っている"
+
+                    } else {
+
+                        "新しいアカウントを作成"
+                    }
+            )
+        }
+
+
+        /*
+         * =========================================
+         * メッセージ表示
+         * =========================================
+         */
+
+        if (
+            message.isNotEmpty()
+        ) {
+
+            Spacer(
+                modifier =
+                    Modifier.height(20.dp)
+            )
+
+
+            Text(
+                text =
+                    message,
+
+                color =
+                    MaterialTheme.colorScheme.error
+            )
+        }
+    }
+}
+
+
+/*
+ * =========================================
+ * ログイン後のアカウント画面
+ * =========================================
+ */
+
+@Composable
+fun LoggedInAccountScreen(
+    onLogout: () -> Unit
+) {
+
+    val scope =
+        rememberCoroutineScope()
+
+
+    /*
+     * 現在ログインしているユーザー
+     */
+    val currentUser =
+        AccountRepository.getCurrentUser()
+
+
+    /*
+     * メッセージ
+     */
+    var message by remember {
+        mutableStateOf("")
+    }
+
+
+    /*
+     * ログアウト中か
+     */
+    var loggingOut by remember {
+        mutableStateOf(false)
+    }
+
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(
+                rememberScrollState()
+            ),
+
+        horizontalAlignment =
+            Alignment.CenterHorizontally
+    ) {
+
+
+        /*
+         * =========================================
+         * タイトル
+         * =========================================
          */
 
         Text(
             text =
-                "トイレ編集履歴：${editHistory.size}件",
+                "アカウント",
+
+            style =
+                MaterialTheme.typography.headlineMedium,
+
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = 24.dp,
+                    top = 20.dp
+                )
+        )
+
+
+        Spacer(
+            modifier =
+                Modifier.height(50.dp)
+        )
+
+
+        /*
+         * =========================================
+         * 仮プロフィール画像
+         *
+         * 写真は次の段階でSupabase Storageに接続
+         * =========================================
+         */
+
+        Text(
+            text =
+                "👤",
+
+            style =
+                MaterialTheme.typography.displayLarge
+        )
+
+
+        Spacer(
+            modifier =
+                Modifier.height(30.dp)
+        )
+
+
+        /*
+         * =========================================
+         * メールアドレス
+         * =========================================
+         */
+
+        Text(
+            text =
+                "ログイン中のメールアドレス"
+        )
+
+
+        Spacer(
+            modifier =
+                Modifier.height(8.dp)
+        )
+
+
+        Text(
+            text =
+                currentUser?.email
+                    ?: "取得できませんでした",
 
             style =
                 MaterialTheme.typography.titleMedium
@@ -757,123 +744,125 @@ fun AccountScreen() {
 
         Spacer(
             modifier =
-                Modifier.height(10.dp)
+                Modifier.height(40.dp)
         )
 
 
-        Button(
+        /*
+         * =========================================
+         * UID
+         *
+         * 開発中の確認用
+         * =========================================
+         */
+
+        Text(
+            text =
+                "ユーザーID"
+        )
+
+
+        Spacer(
+            modifier =
+                Modifier.height(8.dp)
+        )
+
+
+        Text(
+            text =
+                currentUser?.id
+                    ?: "取得できませんでした"
+        )
+
+
+        Spacer(
+            modifier =
+                Modifier.height(40.dp)
+        )
+
+
+        /*
+         * =========================================
+         * ログアウト
+         * =========================================
+         */
+
+        OutlinedButton(
+            enabled =
+                !loggingOut,
+
             onClick = {
 
-                /*
-                 * 最新の履歴を読み直す
-                 */
-                editHistory.clear()
+                loggingOut =
+                    true
 
-                editHistory.addAll(
-                    AccountStorage.loadHistory(context)
-                )
+                message =
+                    ""
 
-                showHistory =
-                    !showHistory
+
+                scope.launch {
+
+                    try {
+
+                        AccountRepository
+                            .signOut()
+
+
+                        onLogout()
+
+
+                    } catch (e: Exception) {
+
+                        message =
+                            e.message
+                                ?: "ログアウトに失敗しました"
+
+                    } finally {
+
+                        loggingOut =
+                            false
+                    }
+                }
             }
         ) {
 
             Text(
                 text =
-                    if (showHistory) {
-                        "履歴を閉じる"
+                    if (loggingOut) {
+
+                        "ログアウト中..."
+
                     } else {
-                        "履歴を見る"
+
+                        "ログアウト"
                     }
             )
         }
 
 
-        Spacer(
-            modifier =
-                Modifier.height(20.dp)
-        )
-
-
         /*
-         * ==========================================
-         * 履歴一覧
-         * ==========================================
+         * =========================================
+         * エラーメッセージ
+         * =========================================
          */
 
-        if (showHistory) {
+        if (
+            message.isNotEmpty()
+        ) {
 
-            if (editHistory.isEmpty()) {
-
-                Text(
-                    text =
-                        "まだ編集履歴はありません"
-                )
-
-            } else {
-
-                editHistory.forEach { history ->
-
-                    Card(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                    ) {
-
-                        Column(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .sizeIn(
-                                        minHeight = 100.dp
-                                    )
-                                    .padding(16.dp)
-                        ) {
-
-                            Text(
-                                text =
-                                    history.toiletName,
-
-                                style =
-                                    MaterialTheme.typography.titleMedium
-                            )
+            Spacer(
+                modifier =
+                    Modifier.height(20.dp)
+            )
 
 
-                            Spacer(
-                                modifier =
-                                    Modifier.height(8.dp)
-                            )
+            Text(
+                text =
+                    message,
 
-
-                            Text(
-                                text =
-                                    history.action
-                            )
-
-
-                            Spacer(
-                                modifier =
-                                    Modifier.height(8.dp)
-                            )
-
-
-                            Text(
-                                text =
-                                    history.editedAt,
-
-                                style =
-                                    MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(10.dp)
-                    )
-                }
-            }
+                color =
+                    MaterialTheme.colorScheme.error
+            )
         }
 
 
