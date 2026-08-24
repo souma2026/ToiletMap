@@ -16,8 +16,9 @@ enum class CleaningStatus {
 
 data class Toilet(
 
-    // トイレを区別するためのID
-    val id: String = UUID.randomUUID().toString(),
+    // 各トイレを区別するID
+    val id: String =
+        UUID.randomUUID().toString(),
 
     // トイレ名
     val name: String,
@@ -28,12 +29,13 @@ data class Toilet(
     // 経度
     val longitude: Double,
 
-    // 清潔度
+    // 清潔度 1～5
     val cleanliness: Int,
 
     // コメント
     val comment: String,
 
     // 清掃状態
-    val cleaningStatus: CleaningStatus = CleaningStatus.NORMAL
+    val cleaningStatus: CleaningStatus =
+        CleaningStatus.NORMAL
 )

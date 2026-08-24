@@ -27,81 +27,64 @@ import org.maplibre.android.maps.MapView
 @Composable
 fun MapScreen(
 
-    mapView:
-    MapView,
+    mapView: MapView,
 
-    isSelectingLocation:
-    Boolean = false,
+    // 新しいトイレの場所を選択中か
+    isSelectingLocation: Boolean = false,
 
-    selectedToilet:
-    Toilet? = null,
+    // 現在タップされているトイレ
+    selectedToilet: Toilet? = null,
 
-    onDismissSelectedToilet:
-        () -> Unit = {},
+    onDismissSelectedToilet: () -> Unit = {},
 
-    onRequestCleaning:
-        (Toilet) -> Unit = {},
+    onRequestCleaning: (Toilet) -> Unit = {},
 
-    onMarkCleaned:
-        (Toilet) -> Unit = {},
+    onMarkCleaned: (Toilet) -> Unit = {},
 
+    // 地図をタップした場所
     onLocationSelected:
         (Double, Double) -> Unit =
         { _, _ -> },
 
     onCancelLocationSelection:
         () -> Unit = {}
-
 ) {
 
     /*
      * =====================================
-     * 新しいトイレの場所選択
+     * 新しいトイレの場所を選択
      * =====================================
      */
     DisposableEffect(
-
         mapView,
-
         isSelectingLocation
-
     ) {
 
-        var disposed =
-            false
-
-        var clickListener:
-                MapLibreMap.OnMapClickListener? =
-            null
+        var disposed = false
 
         var targetMap:
                 MapLibreMap? =
             null
 
-        if (
-            isSelectingLocation
-        ) {
+        var clickListener:
+                MapLibreMap.OnMapClickListener? =
+            null
 
-            mapView.getMapAsync {
-                    map ->
+        if (isSelectingLocation) {
 
-                if (
-                    !disposed
-                ) {
+            mapView.getMapAsync { map ->
 
-                    targetMap =
-                        map
+                if (!disposed) {
+
+                    targetMap = map
 
                     val listener =
 
                         MapLibreMap
-                            .OnMapClickListener {
-                                    point ->
+                            .OnMapClickListener { point ->
 
                                 onLocationSelected(
-
                                     point.latitude,
-
                                     point.longitude
                                 )
 
@@ -120,8 +103,7 @@ fun MapScreen(
 
         onDispose {
 
-            disposed =
-                true
+            disposed = true
 
             val map =
                 targetMap
@@ -142,22 +124,23 @@ fun MapScreen(
     }
 
     Box(
-
         modifier =
-            Modifier
-                .fillMaxSize()
-
+            Modifier.fillMaxSize()
     ) {
 
         /*
          * =====================================
-         * MapLibre地図
+         * MapLibre
          * =====================================
          */
         AndroidView(
 
             factory = {
 
+                /*
+                 * 同じMapViewを
+                 * Composeで再利用するための処理
+                 */
                 (
                         mapView.parent
                                 as?
@@ -171,47 +154,32 @@ fun MapScreen(
             },
 
             modifier =
-                Modifier
-                    .fillMaxSize()
+                Modifier.fillMaxSize()
         )
 
         /*
          * =====================================
-         * 場所選択モード
+         * 新しいトイレの場所選択中
          * =====================================
          */
-        if (
-            isSelectingLocation
-        ) {
+        if (isSelectingLocation) {
 
             Card(
-
                 modifier =
                     Modifier
                         .fillMaxWidth()
-
-                        .padding(
-                            16.dp
-                        )
-
+                        .padding(16.dp)
                         .align(
                             Alignment.TopCenter
                         )
-
             ) {
 
                 Column(
-
                     modifier =
-                        Modifier
-                            .padding(
-                                16.dp
-                            )
-
+                        Modifier.padding(16.dp)
                 ) {
 
                     Text(
-
                         text =
                             "トイレの場所を選択",
 
@@ -222,27 +190,22 @@ fun MapScreen(
                     )
 
                     Text(
-
                         text =
                             "ピンを置きたい場所を地図上で1回タップしてください。",
 
                         modifier =
-                            Modifier
-                                .padding(
-                                    top = 4.dp
-                                )
+                            Modifier.padding(
+                                top = 4.dp
+                            )
                     )
 
                     TextButton(
-
                         onClick =
                             onCancelLocationSelection
-
                     ) {
 
                         Text(
-                            text =
-                                "キャンセル"
+                            "キャンセル"
                         )
                     }
                 }
@@ -251,7 +214,7 @@ fun MapScreen(
 
         /*
          * =====================================
-         * 既存トイレを押したとき
+         * 既存のトイレのピンをタップした場合
          * =====================================
          */
         if (
@@ -267,9 +230,6 @@ fun MapScreen(
                 onDismiss =
                     onDismissSelectedToilet,
 
-                /*
-                 * 清掃を依頼する
-                 */
                 onRequestCleaning = {
 
                     onRequestCleaning(
@@ -277,9 +237,6 @@ fun MapScreen(
                     )
                 },
 
-                /*
-                 * 清掃しました
-                 */
                 onMarkCleaned = {
 
                     onMarkCleaned(
@@ -292,35 +249,33 @@ fun MapScreen(
                         .align(
                             Alignment.BottomCenter
                         )
-
                         .fillMaxWidth()
-
-                        .padding(
-                            16.dp
-                        )
+                        .padding(16.dp)
             )
         }
     }
 }
 
+
+/*
+ * =====================================
+ * トイレ詳細カード
+ * =====================================
+ */
+
 @Composable
 private fun ToiletCleaningCard(
 
-    toilet:
-    Toilet,
+    toilet: Toilet,
 
-    onDismiss:
-        () -> Unit,
+    onDismiss: () -> Unit,
 
-    onRequestCleaning:
-        () -> Unit,
+    onRequestCleaning: () -> Unit,
 
-    onMarkCleaned:
-        () -> Unit,
+    onMarkCleaned: () -> Unit,
 
-    modifier:
-    Modifier = Modifier
-
+    modifier: Modifier =
+        Modifier
 ) {
 
     val stars =
@@ -335,26 +290,21 @@ private fun ToiletCleaningCard(
                 )
 
     Card(
-
         modifier =
             modifier
-
     ) {
 
         Column(
 
             modifier =
-                Modifier
-                    .padding(
-                        16.dp
-                    ),
+                Modifier.padding(
+                    16.dp
+                ),
 
             verticalArrangement =
-                Arrangement
-                    .spacedBy(
-                        8.dp
-                    )
-
+                Arrangement.spacedBy(
+                    8.dp
+                )
         ) {
 
             /*
@@ -363,21 +313,16 @@ private fun ToiletCleaningCard(
             Row(
 
                 modifier =
-                    Modifier
-                        .fillMaxWidth(),
+                    Modifier.fillMaxWidth(),
 
                 horizontalArrangement =
-                    Arrangement
-                        .SpaceBetween,
+                    Arrangement.SpaceBetween,
 
                 verticalAlignment =
-                    Alignment
-                        .CenterVertically
-
+                    Alignment.CenterVertically
             ) {
 
                 Text(
-
                     text =
                         toilet.name,
 
@@ -388,15 +333,12 @@ private fun ToiletCleaningCard(
                 )
 
                 TextButton(
-
                     onClick =
                         onDismiss
-
                 ) {
 
                     Text(
-                        text =
-                            "閉じる"
+                        "閉じる"
                     )
                 }
             }
@@ -405,9 +347,7 @@ private fun ToiletCleaningCard(
              * 清潔度
              */
             Text(
-
-                text =
-                    "清潔度：$stars"
+                "清潔度：$stars"
             )
 
             /*
@@ -419,15 +359,13 @@ private fun ToiletCleaningCard(
             ) {
 
                 Text(
-
-                    text =
-                        toilet.comment
+                    toilet.comment
                 )
             }
 
             /*
              * =====================================
-             * 状態によってボタンを変更
+             * 清掃状態
              * =====================================
              */
             when (
@@ -435,15 +373,12 @@ private fun ToiletCleaningCard(
             ) {
 
                 /*
-                 * =================================
                  * 通常
-                 * =================================
                  */
                 CleaningStatus.NORMAL -> {
 
                     Text(
-                        text =
-                            "状態：通常"
+                        "状態：通常"
                     )
 
                     Button(
@@ -452,30 +387,22 @@ private fun ToiletCleaningCard(
                             onRequestCleaning,
 
                         modifier =
-                            Modifier
-                                .fillMaxWidth()
-
+                            Modifier.fillMaxWidth()
                     ) {
 
                         Text(
-
-                            text =
-                                "清掃を依頼する"
+                            "清掃を依頼する"
                         )
                     }
                 }
 
                 /*
-                 * =================================
                  * 清掃依頼中
-                 * =================================
                  */
                 CleaningStatus.REQUESTED -> {
 
                     Text(
-
-                        text =
-                            "状態：清掃依頼中"
+                        "状態：清掃依頼中"
                     )
 
                     Button(
@@ -484,30 +411,22 @@ private fun ToiletCleaningCard(
                             onMarkCleaned,
 
                         modifier =
-                            Modifier
-                                .fillMaxWidth()
-
+                            Modifier.fillMaxWidth()
                     ) {
 
                         Text(
-
-                            text =
-                                "清掃しました"
+                            "清掃しました"
                         )
                     }
                 }
 
                 /*
-                 * =================================
                  * 清掃済み
-                 * =================================
                  */
                 CleaningStatus.CLEANED -> {
 
                     Text(
-
-                        text =
-                            "状態：清掃済み"
+                        "状態：清掃済み"
                     )
                 }
             }
