@@ -32,6 +32,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -50,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.model.Toilet
 import org.maplibre.android.maps.MapLibreMap
@@ -86,6 +88,10 @@ private val FinderRed =
 fun MapScreen(
 
     mapView: MapView,
+
+    searchText: String = "",
+
+    onSearchTextChange: (String) -> Unit = {} ,
 
     // トイレ追加時に
     // 地図から位置を選択しているか
@@ -264,6 +270,10 @@ fun MapScreen(
 
         FinderHeader(
 
+            searchText = searchText,
+
+            onSearchTextChange = onSearchTextChange,
+
             modifier =
                 Modifier.align(
                     Alignment.TopCenter
@@ -355,6 +365,10 @@ fun MapScreen(
 @Composable
 private fun FinderHeader(
 
+    searchText: String,
+
+    onSearchTextChange: (String) -> Unit,
+
     modifier: Modifier =
         Modifier
 
@@ -376,7 +390,8 @@ private fun FinderHeader(
 
         modifier =
             modifier
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .zIndex(10f),
 
         color =
             Color(
@@ -605,128 +620,25 @@ private fun FinderHeader(
             // =============================================
             // 検索バー
             //
-            // 今は見た目だけ
-            // 押しても何も起こらない
+            // 入力可能な検索欄
             // =============================================
 
-            Surface(
+            OutlinedTextField(
 
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(
-                            48.dp
-                        )
-                        .border(
+                value = searchText,
 
-                            width =
-                                1.dp,
+                onValueChange = onSearchTextChange,
 
-                            color =
-                                FinderBorder,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
 
-                            shape =
-                                RoundedCornerShape(
-                                    16.dp
-                                )
-                        ),
+                placeholder = {
+                    Text("場所や施設名を検索")
+                },
 
-                color =
-                    Color.White,
-
-                shape =
-                    RoundedCornerShape(
-                        16.dp
-                    ),
-
-                shadowElevation =
-                    1.dp
-
-            ) {
-
-                Row(
-
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .padding(
-                                horizontal = 14.dp
-                            ),
-
-                    verticalAlignment =
-                        Alignment.CenterVertically
-
-                ) {
-
-
-                    Icon(
-
-                        imageVector =
-                            Icons
-                                .Outlined
-                                .Search,
-
-                        contentDescription =
-                            null,
-
-                        tint =
-                            FinderMuted,
-
-                        modifier =
-                            Modifier.size(
-                                22.dp
-                            )
-                    )
-
-
-                    Spacer(
-
-                        modifier =
-                            Modifier.width(
-                                10.dp
-                            )
-                    )
-
-
-                    Text(
-
-                        text =
-                            "場所や施設名を検索",
-
-                        modifier =
-                            Modifier.weight(
-                                1f
-                            ),
-
-                        color =
-                            FinderMuted,
-
-                        style =
-                            MaterialTheme
-                                .typography
-                                .bodyMedium
-                    )
-
-
-                    Icon(
-
-                        imageVector =
-                            Icons
-                                .Outlined
-                                .Menu,
-
-                        contentDescription =
-                            "検索条件",
-
-                        tint =
-                            FinderMuted,
-
-                        modifier =
-                            Modifier.size(
-                                22.dp
-                            )
-                    )
-                }
+                singleLine = true
+            )
             }
         }
     }
