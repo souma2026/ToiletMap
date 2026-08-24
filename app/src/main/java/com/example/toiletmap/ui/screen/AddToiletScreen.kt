@@ -132,6 +132,126 @@ fun AddToiletScreen(
                     .headlineMedium
         )
 
+        Spacer(
+            modifier = Modifier.height(24.dp)
+        )
+
+
+        // -----------------------------
+        // トイレ名
+        // -----------------------------
+
+        OutlinedTextField(
+            value = toiletName,
+
+            onValueChange = {
+
+                toiletName = it
+
+                // 入力されたらエラー解除
+                if (it.isNotBlank()) {
+                    toiletNameError = false
+                }
+            },
+
+            label = {
+                Text("トイレ名")
+            },
+
+            placeholder = {
+                Text("例：○○駅 公衆トイレ")
+            },
+
+            isError = toiletNameError,
+
+            supportingText = {
+
+                if (toiletNameError) {
+                    Text("トイレ名を入力してください")
+                }
+            },
+
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(
+            modifier = Modifier.height(16.dp)
+        )
+
+
+        // -----------------------------
+        // 場所
+        // -----------------------------
+
+        OutlinedTextField(
+            value = location,
+
+            onValueChange = {
+
+                location = it
+
+                // 入力されたらエラー解除
+                if (it.isNotBlank()) {
+                    locationError = false
+                }
+            },
+
+            label = {
+                Text("場所")
+            },
+
+            placeholder = {
+                Text("例：○○駅 東口")
+            },
+
+            isError = locationError,
+
+            supportingText = {
+
+                if (locationError) {
+                    Text("場所を入力してください")
+                }
+            },
+
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(
+            modifier = Modifier.height(16.dp)
+        )
+
+
+        // -----------------------------
+        // 利用可能時間
+        // -----------------------------
+
+        OutlinedTextField(
+            value = openingHours,
+
+            onValueChange = {
+                openingHours = it
+            },
+
+            label = {
+                Text("利用可能時間")
+            },
+
+            placeholder = {
+                Text("例：24時間")
+            },
+
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(
+            modifier = Modifier.height(24.dp)
+        )
+
+
+        // -----------------------------
+        // きれいさ
+        // -----------------------------
+
         Text(
             text =
                 "トイレの情報を入力して、地図上から場所を選択してください。",
