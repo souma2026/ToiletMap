@@ -1,49 +1,35 @@
 package com.example.toiletmap.screen.account
 
+import android.net.Uri
+import android.util.Log
 import android.util.Patterns
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.example.toiletmap.data.repository.AccountRepository
+import com.example.toiletmap.model.ToiletEditHistory
+import com.example.toiletmap.model.UserProfile
 import kotlinx.coroutines.launch
 import java.text.Normalizer
 import java.util.Locale
 
 
-/*
- * =========================================
- * メールアドレスをSupabaseへ送る前に整形
- * =========================================
- *
- * 全角文字などを半角相当に変換し、
- * コピー時に混ざることがある
- * 見えない文字も取り除く。
- */
 private fun normalizeEmail(
     email: String
 ): String {
@@ -54,87 +40,66 @@ private fun normalizeEmail(
             Normalizer.Form.NFKC
         )
         .trim()
-
-        // ゼロ幅スペースなどを削除
         .replace("\u200B", "")
         .replace("\u200C", "")
         .replace("\u200D", "")
         .replace("\uFEFF", "")
-
-        // メールアドレスは小文字へ統一
         .lowercase(Locale.ROOT)
+}
+
+
+/*
+ * ログイン失敗理由を
+ * ユーザーに分かる形へ変換
+ */
+private fun friendlyAuthError(
+    error: Exception
+): String {
+
+    val text =
+        error.message
+            ?.lowercase()
+            ?: ""
+
+
+    return when {
+
+        "invalid login credentials" in text -> {
+            "メールアドレスまたはパスワードが正しくありません"
+        }
+
+        "email not confirmed" in text -> {
+            "メールアドレスの確認が完了していません"
+        }
+
+        "user already registered" in text -> {
+            "このメールアドレスはすでに登録されています"
+        }
+
+        "rate limit" in text -> {
+            "短時間に操作が集中しました。少し待ってから再試行してください"
+        }
+
+        else -> {
+            "処理に失敗しました"
+        }
+    }
 }
 
 
 @Composable
 fun AccountScreen() {
 
-    /*
-     * Supabaseのログイン状態確認中
-     */
-    var checkingLogin by remember {
-        mutableStateOf(true)
-    }
-
-    /*
-     * ログイン状態
-     */
     var isLoggedIn by remember {
-        mutableStateOf(false)
-    }
-
-
-    /*
-     * 最初にログイン状態を確認
-     */
-    LaunchedEffect(Unit) {
-
-        isLoggedIn =
+        mutableStateOf(
             AccountRepository.isLoggedIn()
-
-        checkingLogin =
-            false
+        )
     }
 
-
-    /*
-     * =========================================
-     * ログイン状態確認中
-     * =========================================
-     */
-
-    if (checkingLogin) {
-
-        Column(
-            modifier =
-                Modifier.fillMaxSize(),
-
-            horizontalAlignment =
-                Alignment.CenterHorizontally
-        ) {
-
-            Spacer(
-                modifier =
-                    Modifier.height(100.dp)
-            )
-
-            CircularProgressIndicator()
-        }
-
-        return
-    }
-
-
-    /*
-     * =========================================
-     * ログイン済み
-     * =========================================
-     */
 
     if (isLoggedIn) {
 
-        LoggedInAccountScreen(
-
+        ProfileScreen(
             onLogout = {
 
                 isLoggedIn =
@@ -142,32 +107,18 @@ fun AccountScreen() {
             }
         )
 
-        return
+    } else {
+
+        LoginAndRegisterScreen(
+            onLoginSuccess = {
+
+                isLoggedIn =
+                    true
+            }
+        )
     }
-
-
-    /*
-     * =========================================
-     * 未ログイン
-     * =========================================
-     */
-
-    LoginAndRegisterScreen(
-
-        onLoginSuccess = {
-
-            isLoggedIn =
-                true
-        }
-    )
 }
 
-
-/*
- * =========================================
- * ログイン / アカウント登録画面
- * =========================================
- */
 
 @Composable
 fun LoginAndRegisterScreen(
@@ -178,18 +129,10 @@ fun LoginAndRegisterScreen(
         rememberCoroutineScope()
 
 
-    /*
-     * false = ログイン
-     * true  = 新規登録
-     */
     var registerMode by remember {
         mutableStateOf(false)
     }
 
-
-    /*
-     * 入力内容
-     */
     var userName by remember {
         mutableStateOf("")
     }
@@ -202,18 +145,10 @@ fun LoginAndRegisterScreen(
         mutableStateOf("")
     }
 
-
-    /*
-     * メッセージ
-     */
     var message by remember {
         mutableStateOf("")
     }
 
-
-    /*
-     * Supabaseと通信中か
-     */
     var loading by remember {
         mutableStateOf(false)
     }
@@ -225,51 +160,28 @@ fun LoginAndRegisterScreen(
             .verticalScroll(
                 rememberScrollState()
             )
-            .padding(24.dp),
-
-        horizontalAlignment =
-            Alignment.CenterHorizontally
+            .padding(24.dp)
     ) {
 
-
-        /*
-         * =========================================
-         * タイトル
-         * =========================================
-         */
 
         Text(
             text =
                 if (registerMode) {
-
                     "アカウント登録"
-
                 } else {
-
                     "ログイン"
                 },
 
             style =
-                MaterialTheme.typography.headlineMedium,
-
-            modifier =
-                Modifier.fillMaxWidth()
+                MaterialTheme.typography.headlineMedium
         )
 
 
         Spacer(
             modifier =
-                Modifier.height(40.dp)
+                Modifier.height(30.dp)
         )
 
-
-        /*
-         * =========================================
-         * ユーザー名
-         *
-         * 新規登録時のみ表示
-         * =========================================
-         */
 
         if (registerMode) {
 
@@ -282,9 +194,7 @@ fun LoginAndRegisterScreen(
                 },
 
                 label = {
-                    Text(
-                        text = "ユーザー名"
-                    )
+                    Text("ユーザー名")
                 },
 
                 modifier =
@@ -297,16 +207,10 @@ fun LoginAndRegisterScreen(
 
             Spacer(
                 modifier =
-                    Modifier.height(16.dp)
+                    Modifier.height(15.dp)
             )
         }
 
-
-        /*
-         * =========================================
-         * メールアドレス
-         * =========================================
-         */
 
         OutlinedTextField(
             value =
@@ -317,9 +221,7 @@ fun LoginAndRegisterScreen(
             },
 
             label = {
-                Text(
-                    text = "メールアドレス"
-                )
+                Text("メールアドレス")
             },
 
             modifier =
@@ -338,15 +240,9 @@ fun LoginAndRegisterScreen(
 
         Spacer(
             modifier =
-                Modifier.height(16.dp)
+                Modifier.height(15.dp)
         )
 
-
-        /*
-         * =========================================
-         * パスワード
-         * =========================================
-         */
 
         OutlinedTextField(
             value =
@@ -357,9 +253,7 @@ fun LoginAndRegisterScreen(
             },
 
             label = {
-                Text(
-                    text = "パスワード"
-                )
+                Text("パスワード")
             },
 
             modifier =
@@ -381,15 +275,9 @@ fun LoginAndRegisterScreen(
 
         Spacer(
             modifier =
-                Modifier.height(30.dp)
+                Modifier.height(25.dp)
         )
 
-
-        /*
-         * =========================================
-         * 登録 / ログインボタン
-         * =========================================
-         */
 
         Button(
             modifier =
@@ -400,25 +288,13 @@ fun LoginAndRegisterScreen(
 
             onClick = {
 
-                /*
-                 * =================================
-                 * メールアドレスを正規化
-                 * =================================
-                 */
-
                 val normalizedEmail =
                     normalizeEmail(email)
 
 
-                /*
-                 * =================================
-                 * 入力チェック
-                 * =================================
-                 */
-
                 if (
                     registerMode &&
-                    userName.trim().isEmpty()
+                    userName.isBlank()
                 ) {
 
                     message =
@@ -428,21 +304,6 @@ fun LoginAndRegisterScreen(
                 }
 
 
-                if (
-                    normalizedEmail.isEmpty()
-                ) {
-
-                    message =
-                        "メールアドレスを入力してください"
-
-                    return@Button
-                }
-
-
-                /*
-                 * Android側でも
-                 * メールアドレス形式を確認
-                 */
                 if (
                     !Patterns.EMAIL_ADDRESS
                         .matcher(normalizedEmail)
@@ -456,23 +317,6 @@ fun LoginAndRegisterScreen(
                 }
 
 
-                if (
-                    password.isEmpty()
-                ) {
-
-                    message =
-                        "パスワードを入力してください"
-
-                    return@Button
-                }
-
-
-                /*
-                 * Supabaseではパスワード設定によって
-                 * 最低文字数が決まる。
-                 *
-                 * とりあえず6文字未満を弾く。
-                 */
                 if (
                     password.length < 6
                 ) {
@@ -495,106 +339,52 @@ fun LoginAndRegisterScreen(
 
                     try {
 
-                        /*
-                         * =========================
-                         * 新規登録
-                         * =========================
-                         */
-
                         if (registerMode) {
 
-                            AccountRepository.signUp(
-
-                                /*
-                                 * ここが重要
-                                 *
-                                 * 入力されたemailではなく、
-                                 * 正規化したメールアドレスを送る。
-                                 */
-                                email =
+                            AccountRepository
+                                .signUp(
                                     normalizedEmail,
-
-                                password =
                                     password,
-
-                                userName =
                                     userName.trim()
-                            )
-
-
-                            /*
-                             * Confirm emailをOFFにしている場合、
-                             * 登録後すぐログイン状態になる。
-                             */
-                            if (
-                                AccountRepository.isLoggedIn()
-                            ) {
-
-                                onLoginSuccess()
-
-                            } else {
-
-                                /*
-                                 * Confirm emailがONの場合
-                                 */
-
-                                message =
-                                    "登録しました。確認メールを確認してからログインしてください。"
-
-                                registerMode =
-                                    false
-                            }
-
+                                )
 
                         } else {
 
-                            /*
-                             * =========================
-                             * ログイン
-                             * =========================
-                             */
-
-                            AccountRepository.signIn(
-
-                                email =
+                            AccountRepository
+                                .signIn(
                                     normalizedEmail,
-
-                                password =
                                     password
-                            )
+                                )
+                        }
 
 
-                            if (
-                                AccountRepository.isLoggedIn()
-                            ) {
+                        if (
+                            AccountRepository.isLoggedIn()
+                        ) {
 
-                                onLoginSuccess()
+                            onLoginSuccess()
 
-                            } else {
+                        } else {
 
-                                message =
-                                    "ログインできませんでした"
-                            }
+                            message =
+                                "ログイン状態を確認できませんでした"
                         }
 
 
                     } catch (e: Exception) {
 
                         /*
-                         * Supabaseから返された長い通信情報を
-                         * そのまま画面に表示しない。
+                         * Logcatには本当の原因を残す
                          */
+                        Log.e(
+                            "AccountAuth",
+                            "Auth failed",
+                            e
+                        )
+
 
                         message =
-                            if (registerMode) {
-
-                                "アカウント登録に失敗しました"
-
-                            } else {
-
-                                "ログインに失敗しました"
-                            }
-
+                            friendlyAuthError(e)
 
                     } finally {
 
@@ -606,41 +396,23 @@ fun LoginAndRegisterScreen(
         ) {
 
             Text(
-                text =
-                    when {
+                if (loading) {
 
-                        loading -> {
-                            "処理中..."
-                        }
+                    "処理中..."
 
-                        registerMode -> {
-                            "アカウント登録"
-                        }
+                } else if (registerMode) {
 
-                        else -> {
-                            "ログイン"
-                        }
-                    }
+                    "アカウント登録"
+
+                } else {
+
+                    "ログイン"
+                }
             )
         }
 
 
-        Spacer(
-            modifier =
-                Modifier.height(15.dp)
-        )
-
-
-        /*
-         * =========================================
-         * ログイン / 新規登録の切り替え
-         * =========================================
-         */
-
         TextButton(
-            enabled =
-                !loading,
-
             onClick = {
 
                 registerMode =
@@ -652,34 +424,19 @@ fun LoginAndRegisterScreen(
         ) {
 
             Text(
-                text =
-                    if (registerMode) {
+                if (registerMode) {
 
-                        "すでにアカウントを持っている"
+                    "すでにアカウントを持っている"
 
-                    } else {
+                } else {
 
-                        "新しいアカウントを作成"
-                    }
+                    "新しいアカウントを作成"
+                }
             )
         }
 
 
-        /*
-         * =========================================
-         * エラー等を表示
-         * =========================================
-         */
-
-        if (
-            message.isNotEmpty()
-        ) {
-
-            Spacer(
-                modifier =
-                    Modifier.height(20.dp)
-            )
-
+        if (message.isNotBlank()) {
 
             Text(
                 text =
@@ -693,27 +450,72 @@ fun LoginAndRegisterScreen(
 }
 
 
-/*
- * =========================================
- * ログイン後のアカウント画面
- * =========================================
- */
-
 @Composable
-fun LoggedInAccountScreen(
+fun ProfileScreen(
     onLogout: () -> Unit
 ) {
+
+    val context =
+        LocalContext.current
 
     val scope =
         rememberCoroutineScope()
 
 
-    /*
-     * 現在ログイン中のSupabaseユーザー
-     */
     val currentUser =
         AccountRepository
             .getCurrentUser()
+
+
+    if (currentUser == null) {
+
+        LaunchedEffect(Unit) {
+            onLogout()
+        }
+
+        return
+    }
+
+
+    val userId =
+        currentUser.id
+
+
+    var profile by remember {
+        mutableStateOf<UserProfile?>(null)
+    }
+
+
+    var history by remember {
+        mutableStateOf<List<ToiletEditHistory>>(
+            emptyList()
+        )
+    }
+
+
+    var editingName by remember {
+        mutableStateOf("")
+    }
+
+
+    var editing by remember {
+        mutableStateOf(false)
+    }
+
+
+    var showHistory by remember {
+        mutableStateOf(false)
+    }
+
+
+    var loading by remember {
+        mutableStateOf(true)
+    }
+
+
+    var uploading by remember {
+        mutableStateOf(false)
+    }
 
 
     var message by remember {
@@ -721,9 +523,121 @@ fun LoggedInAccountScreen(
     }
 
 
-    var loggingOut by remember {
-        mutableStateOf(false)
+    suspend fun reloadProfile() {
+
+        profile =
+            AccountRepository
+                .loadProfile(
+                    userId
+                )
+
+        editingName =
+            profile?.username
+                ?: ""
     }
+
+
+    LaunchedEffect(userId) {
+
+        try {
+
+            reloadProfile()
+
+            history =
+                AccountRepository
+                    .loadHistory(
+                        userId
+                    )
+
+        } catch (e: Exception) {
+
+            message =
+                "プロフィール取得に失敗しました"
+
+        } finally {
+
+            loading =
+                false
+        }
+    }
+
+
+    val photoPicker =
+        rememberLauncherForActivityResult(
+
+            contract =
+                ActivityResultContracts
+                    .PickVisualMedia()
+
+        ) { uri: Uri? ->
+
+            if (uri == null) {
+                return@rememberLauncherForActivityResult
+            }
+
+
+            scope.launch {
+
+                uploading =
+                    true
+
+                try {
+
+                    val bytes =
+                        context
+                            .contentResolver
+                            .openInputStream(uri)
+                            ?.use {
+                                it.readBytes()
+                            }
+
+
+                    if (bytes == null) {
+
+                        message =
+                            "写真を読み込めませんでした"
+
+                        return@launch
+                    }
+
+
+                    val newUrl =
+                        AccountRepository
+                            .uploadAvatar(
+                                userId,
+                                bytes
+                            )
+
+
+                    profile =
+                        profile?.copy(
+                            avatarUrl =
+                                newUrl
+                        )
+
+
+                    message =
+                        "写真を変更しました"
+
+
+                } catch (e: Exception) {
+
+                    Log.e(
+                        "AccountPhoto",
+                        "Photo upload failed",
+                        e
+                    )
+
+                    message =
+                        "写真の変更に失敗しました"
+
+                } finally {
+
+                    uploading =
+                        false
+                }
+            }
+        }
 
 
     Column(
@@ -737,12 +651,6 @@ fun LoggedInAccountScreen(
             Alignment.CenterHorizontally
     ) {
 
-
-        /*
-         * =========================================
-         * タイトル
-         * =========================================
-         */
 
         Text(
             text =
@@ -762,21 +670,237 @@ fun LoggedInAccountScreen(
 
         Spacer(
             modifier =
-                Modifier.height(50.dp)
+                Modifier.height(30.dp)
+        )
+
+
+        if (loading) {
+
+            CircularProgressIndicator()
+
+            return@Column
+        }
+
+
+        /*
+         * プロフィール写真
+         */
+
+        if (
+            !profile?.avatarUrl.isNullOrBlank()
+        ) {
+
+            AsyncImage(
+                model =
+                    profile?.avatarUrl,
+
+                contentDescription =
+                    "プロフィール画像",
+
+                modifier =
+                    Modifier
+                        .size(120.dp)
+                        .clip(CircleShape),
+
+                contentScale =
+                    ContentScale.Crop
+            )
+
+        } else {
+
+            Text(
+                text =
+                    "👤",
+
+                style =
+                    MaterialTheme.typography.displayLarge
+            )
+        }
+
+
+        Spacer(
+            modifier =
+                Modifier.height(15.dp)
+        )
+
+
+        Button(
+            enabled =
+                !uploading,
+
+            onClick = {
+
+                photoPicker.launch(
+                    PickVisualMediaRequest(
+                        ActivityResultContracts
+                            .PickVisualMedia
+                            .ImageOnly
+                    )
+                )
+            }
+        ) {
+
+            Text(
+                if (uploading) {
+
+                    "アップロード中..."
+
+                } else {
+
+                    "写真を変更"
+                }
+            )
+        }
+
+
+        Spacer(
+            modifier =
+                Modifier.height(30.dp)
         )
 
 
         /*
-         * プロフィール写真は
-         * 次の段階でSupabase Storageに接続
+         * ユーザー名
+         */
+
+        if (editing) {
+
+            OutlinedTextField(
+                value =
+                    editingName,
+
+                onValueChange = {
+                    editingName = it
+                },
+
+                label = {
+                    Text("ユーザー名")
+                },
+
+                singleLine =
+                    true
+            )
+
+
+            Row {
+
+                Button(
+                    onClick = {
+
+                        if (
+                            editingName.isBlank()
+                        ) {
+
+                            message =
+                                "ユーザー名を入力してください"
+
+                            return@Button
+                        }
+
+
+                        scope.launch {
+
+                            try {
+
+                                AccountRepository
+                                    .updateUserName(
+                                        userId,
+                                        editingName.trim()
+                                    )
+
+
+                                profile =
+                                    profile?.copy(
+                                        username =
+                                            editingName.trim()
+                                    )
+
+
+                                editing =
+                                    false
+
+
+                            } catch (e: Exception) {
+
+                                message =
+                                    "ユーザー名変更に失敗しました"
+                            }
+                        }
+                    }
+                ) {
+
+                    Text("保存")
+                }
+
+
+                TextButton(
+                    onClick = {
+
+                        editingName =
+                            profile?.username
+                                ?: ""
+
+                        editing =
+                            false
+                    }
+                ) {
+
+                    Text("キャンセル")
+                }
+            }
+
+        } else {
+
+            Text(
+                text =
+                    "ユーザー名：${profile?.username ?: ""}"
+            )
+
+
+            TextButton(
+                onClick = {
+
+                    editing =
+                        true
+                }
+            ) {
+
+                Text(
+                    "ユーザー名を変更"
+                )
+            }
+        }
+
+
+        Spacer(
+            modifier =
+                Modifier.height(15.dp)
+        )
+
+
+        Text(
+            text =
+                currentUser.email
+                    ?: ""
+        )
+
+
+        Spacer(
+            modifier =
+                Modifier.height(20.dp)
+        )
+
+
+        /*
+         * ポイント
          */
 
         Text(
             text =
-                "👤",
+                "ポイント：${profile?.points ?: 0} pt",
 
             style =
-                MaterialTheme.typography.displayLarge
+                MaterialTheme.typography.titleMedium
         )
 
 
@@ -787,90 +911,147 @@ fun LoggedInAccountScreen(
 
 
         /*
-         * =========================================
-         * メールアドレス
-         * =========================================
+         * 履歴
          */
 
         Text(
             text =
-                "ログイン中のメールアドレス"
-        )
-
-
-        Spacer(
-            modifier =
-                Modifier.height(8.dp)
-        )
-
-
-        Text(
-            text =
-                currentUser?.email
-                    ?: "取得できませんでした",
+                "トイレ編集履歴：${history.size}件",
 
             style =
                 MaterialTheme.typography.titleMedium
         )
 
 
-        Spacer(
-            modifier =
-                Modifier.height(40.dp)
-        )
-
-
-        /*
-         * =========================================
-         * UID
-         *
-         * 開発中の確認用
-         * =========================================
-         */
-
-        Text(
-            text =
-                "ユーザーID"
-        )
-
-
-        Spacer(
-            modifier =
-                Modifier.height(8.dp)
-        )
-
-
-        Text(
-            text =
-                currentUser?.id
-                    ?: "取得できませんでした"
-        )
-
-
-        Spacer(
-            modifier =
-                Modifier.height(40.dp)
-        )
-
-
-        /*
-         * =========================================
-         * ログアウト
-         * =========================================
-         */
-
-        OutlinedButton(
-            enabled =
-                !loggingOut,
-
+        Button(
             onClick = {
 
-                loggingOut =
-                    true
+                showHistory =
+                    !showHistory
 
-                message =
-                    ""
 
+                if (showHistory) {
+
+                    scope.launch {
+
+                        try {
+
+                            history =
+                                AccountRepository
+                                    .loadHistory(
+                                        userId
+                                    )
+
+                        } catch (e: Exception) {
+
+                            message =
+                                "履歴取得に失敗しました"
+                        }
+                    }
+                }
+            }
+        ) {
+
+            Text(
+                if (showHistory) {
+
+                    "履歴を閉じる"
+
+                } else {
+
+                    "履歴を見る"
+                }
+            )
+        }
+
+
+        if (showHistory) {
+
+            Spacer(
+                modifier =
+                    Modifier.height(15.dp)
+            )
+
+
+            if (history.isEmpty()) {
+
+                Text(
+                    "まだ履歴はありません"
+                )
+
+            } else {
+
+                history.forEach { item ->
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                horizontal = 24.dp,
+                                vertical = 5.dp
+                            )
+                    ) {
+
+                        Column(
+                            modifier =
+                                Modifier.padding(16.dp)
+                        ) {
+
+                            Text(
+                                text =
+                                    item.toiletName,
+
+                                style =
+                                    MaterialTheme.typography.titleMedium
+                            )
+
+
+                            Text(
+                                text =
+                                    item.action
+                            )
+
+
+                            Text(
+                                text =
+                                    item.editedAt
+                                        .replace(
+                                            "T",
+                                            " "
+                                        )
+                                        .take(16),
+
+                                style =
+                                    MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+
+        if (message.isNotBlank()) {
+
+            Spacer(
+                modifier =
+                    Modifier.height(20.dp)
+            )
+
+            Text(
+                message
+            )
+        }
+
+
+        Spacer(
+            modifier =
+                Modifier.height(30.dp)
+        )
+
+
+        OutlinedButton(
+            onClick = {
 
                 scope.launch {
 
@@ -879,54 +1060,19 @@ fun LoggedInAccountScreen(
                         AccountRepository
                             .signOut()
 
-
                         onLogout()
-
 
                     } catch (e: Exception) {
 
                         message =
                             "ログアウトに失敗しました"
-
-                    } finally {
-
-                        loggingOut =
-                            false
                     }
                 }
             }
         ) {
 
             Text(
-                text =
-                    if (loggingOut) {
-
-                        "ログアウト中..."
-
-                    } else {
-
-                        "ログアウト"
-                    }
-            )
-        }
-
-
-        if (
-            message.isNotEmpty()
-        ) {
-
-            Spacer(
-                modifier =
-                    Modifier.height(20.dp)
-            )
-
-
-            Text(
-                text =
-                    message,
-
-                color =
-                    MaterialTheme.colorScheme.error
+                "ログアウト"
             )
         }
 
