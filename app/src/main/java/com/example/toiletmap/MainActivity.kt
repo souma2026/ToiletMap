@@ -9,32 +9,42 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModelProvider
+import com.example.toiletmap.model.CleaningStatus
+import com.example.toiletmap.screen.listofuncleaned.UncleanedToilet
 import com.example.toiletmap.screen.map.MapLibreMapController
 import com.example.toiletmap.ui.ToiletMapApp
 import com.example.toiletmap.ui.theme.ToiletMapTheme
 import com.example.toiletmap.viewmodel.ToiletViewModel
 
+
 class MainActivity : ComponentActivity() {
 
-    private lateinit var mapController: MapLibreMapController
+    private lateinit var mapController:
+            MapLibreMapController
 
-    private lateinit var toiletViewModel: ToiletViewModel
+    private lateinit var toiletViewModel:
+            ToiletViewModel
+
 
     /*
-     * 選択中のトイレそのものではなく
-     * トイレのIDだけを保持する。
-     *
-     * Repositoryのトイレ情報が更新された場合でも
-     * 最新のToiletを一覧から取得できる。
+     * =====================================
+     * 選択中トイレID
+     * =====================================
      */
     private var selectedToiletId by
-    mutableStateOf<String?>(null)
+    mutableStateOf<String?>(
+        null
+    )
+
 
     override fun onCreate(
         savedInstanceState: Bundle?
     ) {
 
-        super.onCreate(savedInstanceState)
+        super.onCreate(
+            savedInstanceState
+        )
+
 
         /*
          * =====================================
@@ -42,9 +52,11 @@ class MainActivity : ComponentActivity() {
          * =====================================
          */
         toiletViewModel =
+
             ViewModelProvider(this)[
                 ToiletViewModel::class.java
             ]
+
 
         /*
          * =====================================
@@ -52,11 +64,16 @@ class MainActivity : ComponentActivity() {
          * =====================================
          */
         mapController =
+
             MapLibreMapController(
-                activity = this,
+
+                activity =
+                    this,
+
                 savedInstanceState =
                     savedInstanceState
             )
+
 
         /*
          * =====================================
@@ -71,6 +88,7 @@ class MainActivity : ComponentActivity() {
                     toilet.id
             }
 
+
         /*
          * =====================================
          * Compose
@@ -80,34 +98,87 @@ class MainActivity : ComponentActivity() {
 
             ToiletMapTheme {
 
+
                 /*
-                 * ViewModelのトイレ一覧を監視
+                 * =====================================
+                 * Supabaseから取得した
+                 * トイレ一覧
+                 * =====================================
                  */
                 val toilets by
+
                 toiletViewModel
                     .toilets
                     .collectAsState()
 
+
                 /*
-                 * 選択されているトイレの
-                 * 最新データを取得
+                 * =====================================
+                 * 選択中トイレ
+                 * =====================================
                  */
                 val selectedToilet =
-                    toilets.firstOrNull {
-                            toilet ->
 
-                        toilet.id ==
-                                selectedToiletId
-                    }
+                    toilets
+                        .firstOrNull {
+                                toilet ->
+
+                            toilet.id ==
+                                    selectedToiletId
+                        }
+
 
                 /*
                  * =====================================
-                 * トイレ一覧が更新されたら
-                 * 地図も更新
+                 * 清掃待ちトイレ
                  * =====================================
                  *
-                 * MapLibreMapController自身では
-                 * トイレデータを管理しない。
+                 * CleaningStatus.REQUESTED
+                 * のトイレだけ取得
+                 *
+                 * Toilet
+                 * ↓
+                 * UncleanedToilet
+                 * =====================================
+                 */
+                val uncleanedToilets =
+
+                    toilets
+                        .filter {
+                                toilet ->
+
+                            toilet.cleaningStatus ==
+                                    CleaningStatus.REQUESTED
+                        }
+                        .map {
+                                toilet ->
+
+                            UncleanedToilet(
+
+                                id =
+                                    toilet.id,
+
+                                name =
+                                    toilet.name,
+
+                                latitude =
+                                    toilet.latitude,
+
+                                longitude =
+                                    toilet.longitude,
+
+                                lastCleanedAtMillis =
+                                    toilet.lastCleanedAtMillis
+                            )
+                        }
+
+
+                /*
+                 * =====================================
+                 * トイレ一覧更新
+                 * ↓
+                 * 地図更新
+                 * =====================================
                  */
                 LaunchedEffect(
                     toilets
@@ -119,6 +190,7 @@ class MainActivity : ComponentActivity() {
                         )
                 }
 
+
                 /*
                  * =====================================
                  * アプリ本体
@@ -129,17 +201,26 @@ class MainActivity : ComponentActivity() {
                     mapView =
                         mapController.mapView,
 
+
                     selectedToilet =
                         selectedToilet,
 
+
+                    uncleanedToilets =
+                        uncleanedToilets,
+
+
                     /*
-                     * 詳細を閉じる
+                     * =====================================
+                     * トイレ詳細を閉じる
+                     * =====================================
                      */
                     onDismissSelectedToilet = {
 
                         selectedToiletId =
                             null
                     },
+
 
                     /*
                      * =====================================
@@ -155,6 +236,7 @@ class MainActivity : ComponentActivity() {
                             )
                     },
 
+
                     /*
                      * =====================================
                      * 清掃完了
@@ -169,6 +251,7 @@ class MainActivity : ComponentActivity() {
                             )
                     },
 
+
                     /*
                      * =====================================
                      * 新しいトイレ登録
@@ -177,23 +260,17 @@ class MainActivity : ComponentActivity() {
                     onAddToilet = {
                             toilet ->
 
-                        /*
-                         * Repositoryへ追加
-                         */
+
                         toiletViewModel
                             .addToilet(
                                 toilet
                             )
 
-                        /*
-                         * 登録したトイレを選択状態にする
-                         */
+
                         selectedToiletId =
                             toilet.id
 
-                        /*
-                         * 登録した位置へ地図移動
-                         */
+
                         mapController
                             .focusOnToilet(
                                 toilet
@@ -203,6 +280,7 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
 
     /*
      * =====================================
@@ -222,6 +300,7 @@ class MainActivity : ComponentActivity() {
             outState
         )
     }
+
 
     /*
      * =====================================

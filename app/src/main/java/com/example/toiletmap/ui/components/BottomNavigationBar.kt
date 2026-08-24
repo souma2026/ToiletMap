@@ -6,15 +6,19 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -29,6 +33,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 
+/*
+ * =========================================
+ * 色
+ * =========================================
+ */
 private val NavGreen =
     Color(
         0xFF0B8377
@@ -40,6 +49,17 @@ private val NavGray =
     )
 
 
+/*
+ * =========================================
+ * BottomNavigation
+ *
+ * 0 = 未清掃
+ * 1 = レビュー・状態更新
+ * 2 = Map
+ * 3 = 追加
+ * 4 = アカウント
+ * =========================================
+ */
 @Composable
 fun BottomNavigationBar(
 
@@ -50,12 +70,12 @@ fun BottomNavigationBar(
 
 ) {
 
+
     /*
      * =========================================
      * 全体
      * =========================================
      */
-
     Box(
 
         modifier =
@@ -73,7 +93,6 @@ fun BottomNavigationBar(
          * 白いナビゲーションバー
          * =========================================
          */
-
         Surface(
 
             modifier =
@@ -104,11 +123,9 @@ fun BottomNavigationBar(
                     Modifier
                         .fillMaxWidth()
                         .padding(
-                            horizontal = 20.dp
+                            horizontal =
+                                4.dp
                         ),
-
-                horizontalArrangement =
-                    Arrangement.SpaceBetween,
 
                 verticalAlignment =
                     Alignment.CenterVertically
@@ -118,82 +135,199 @@ fun BottomNavigationBar(
 
                 /*
                  * =========================================
-                 * マップ
+                 * 左側
+                 *
+                 * 未清掃
+                 * 更新
                  * =========================================
                  */
-
-                BottomNavItem(
-
-                    label =
-                        "マップ",
-
-                    icon =
-                        Icons
-                            .Outlined
-                            .Map,
-
-                    selected =
-                        selectedScreen ==
-                                0,
-
-                    onClick = {
-
-                        onScreenSelected(
-                            0
-                        )
-                    }
-                )
-
-
-                /*
-                 * 真ん中の追加ボタン用スペース
-                 */
-                Box(
+                Row(
 
                     modifier =
-                        Modifier.size(
-                            86.dp
+                        Modifier.weight(
+                            1f
+                        ),
+
+                    horizontalArrangement =
+                        Arrangement.SpaceEvenly,
+
+                    verticalAlignment =
+                        Alignment.CenterVertically
+
+                ) {
+
+
+                    /*
+                     * =========================================
+                     * 0
+                     *
+                     * 未清掃
+                     * =========================================
+                     */
+                    BottomNavItem(
+
+                        label =
+                            "未清掃",
+
+                        icon =
+                            Icons
+                                .Outlined
+                                .Warning,
+
+                        selected =
+                            selectedScreen ==
+                                    0,
+
+                        onClick = {
+
+                            onScreenSelected(
+                                0
+                            )
+                        }
+                    )
+
+
+                    /*
+                     * =========================================
+                     * 1
+                     *
+                     * レビュー・状態更新
+                     * =========================================
+                     */
+                    BottomNavItem(
+
+                        label =
+                            "更新",
+
+                        icon =
+                            Icons
+                                .Outlined
+                                .Edit,
+
+                        selected =
+                            selectedScreen ==
+                                    1,
+
+                        onClick = {
+
+                            onScreenSelected(
+                                1
+                            )
+                        }
+                    )
+                }
+
+
+                /*
+                 * =========================================
+                 * 中央Mapボタン用スペース
+                 * =========================================
+                 */
+                Spacer(
+
+                    modifier =
+                        Modifier.width(
+                            76.dp
                         )
                 )
 
 
                 /*
                  * =========================================
+                 * 右側
+                 *
+                 * 追加
                  * アカウント
                  * =========================================
                  */
+                Row(
 
-                BottomNavItem(
+                    modifier =
+                        Modifier.weight(
+                            1f
+                        ),
 
-                    label =
-                        "アカウント",
+                    horizontalArrangement =
+                        Arrangement.SpaceEvenly,
 
-                    icon =
-                        Icons
-                            .Outlined
-                            .Person,
+                    verticalAlignment =
+                        Alignment.CenterVertically
 
-                    selected =
-                        selectedScreen ==
-                                1,
+                ) {
 
-                    onClick = {
 
-                        onScreenSelected(
-                            1
-                        )
-                    }
-                )
+                    /*
+                     * =========================================
+                     * 3
+                     *
+                     * トイレ追加
+                     * =========================================
+                     */
+                    BottomNavItem(
+
+                        label =
+                            "追加",
+
+                        icon =
+                            Icons
+                                .Filled
+                                .Add,
+
+                        selected =
+                            selectedScreen ==
+                                    3,
+
+                        onClick = {
+
+                            onScreenSelected(
+                                3
+                            )
+                        }
+                    )
+
+
+                    /*
+                     * =========================================
+                     * 4
+                     *
+                     * アカウント
+                     * =========================================
+                     */
+                    BottomNavItem(
+
+                        label =
+                            "アカウント",
+
+                        icon =
+                            Icons
+                                .Outlined
+                                .Person,
+
+                        selected =
+                            selectedScreen ==
+                                    4,
+
+                        onClick = {
+
+                            onScreenSelected(
+                                4
+                            )
+                        }
+                    )
+                }
             }
         }
 
 
         /*
          * =========================================
-         * 真ん中の追加ボタン
+         * 中央
+         *
+         * Mapボタン
+         *
+         * 2 = Map
          * =========================================
          */
-
         Column(
 
             modifier =
@@ -232,10 +366,6 @@ fun BottomNavigationBar(
                         )
                         .clickable {
 
-                            /*
-                             * ToiletMapAppでは
-                             * 2 = 追加画面
-                             */
                             onScreenSelected(
                                 2
                             )
@@ -246,22 +376,23 @@ fun BottomNavigationBar(
 
             ) {
 
+
                 Icon(
 
                     imageVector =
                         Icons
-                            .Filled
-                            .Add,
+                            .Outlined
+                            .Map,
 
                     contentDescription =
-                        "追加",
+                        "マップ",
 
                     tint =
                         Color.White,
 
                     modifier =
                         Modifier.size(
-                            32.dp
+                            31.dp
                         )
                 )
             }
@@ -270,11 +401,12 @@ fun BottomNavigationBar(
             Text(
 
                 text =
-                    "追加",
+                    "マップ",
 
                 modifier =
                     Modifier.padding(
-                        top = 3.dp
+                        top =
+                            3.dp
                     ),
 
                 color =
@@ -318,7 +450,6 @@ fun BottomNavigationBar(
  * 左右のナビゲーション項目
  * =========================================
  */
-
 @Composable
 private fun BottomNavItem(
 
@@ -352,8 +483,11 @@ private fun BottomNavItem(
         modifier =
             Modifier
                 .size(
-                    width = 92.dp,
-                    height = 64.dp
+                    width =
+                        68.dp,
+
+                    height =
+                        64.dp
                 )
                 .clickable(
 
@@ -383,7 +517,7 @@ private fun BottomNavItem(
 
             modifier =
                 Modifier.size(
-                    25.dp
+                    24.dp
                 )
         )
 
@@ -395,14 +529,26 @@ private fun BottomNavItem(
 
             modifier =
                 Modifier.padding(
-                    top = 4.dp
+                    top =
+                        4.dp
                 ),
 
             color =
                 color,
 
             fontSize =
-                11.sp,
+
+                if (
+                    label ==
+                    "アカウント"
+                ) {
+
+                    9.sp
+
+                } else {
+
+                    10.sp
+                },
 
             fontWeight =
 
