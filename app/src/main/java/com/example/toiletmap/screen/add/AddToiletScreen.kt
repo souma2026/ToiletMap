@@ -1,4 +1,4 @@
-package com.example.toiletmap.ui.screen
+package com.example.toiletmap.screen.add
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

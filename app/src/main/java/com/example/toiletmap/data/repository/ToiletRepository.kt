@@ -1,4 +1,4 @@
-package com.example.toiletmap.repository
+package com.example.toiletmap.data.repository
 
 import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.model.Toilet
