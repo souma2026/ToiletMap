@@ -1,6 +1,5 @@
 package com.example.toiletmap.screen.listofuncleaned
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,6 +10,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.Map
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -26,11 +28,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 
-/*
- * =====================================
- * 色
- * =====================================
- */
 private val FinderDark =
     Color(0xFF12313A)
 
@@ -44,11 +41,6 @@ private val FinderAmber =
     Color(0xFFF2B544)
 
 
-/*
- * =====================================
- * トイレカード
- * =====================================
- */
 @Composable
 fun UncleanedToiletCard(
 
@@ -56,19 +48,14 @@ fun UncleanedToiletCard(
 
     distanceMeters: Float,
 
-    onClick: () -> Unit
+    onShowOnMap: () -> Unit
 
 ) {
 
     Card(
 
         modifier =
-            Modifier
-                .fillMaxWidth()
-                .clickable {
-
-                    onClick()
-                },
+            Modifier.fillMaxWidth(),
 
         shape =
             RoundedCornerShape(
@@ -77,21 +64,20 @@ fun UncleanedToiletCard(
 
         colors =
             CardDefaults.cardColors(
-
                 containerColor =
                     Color.White
             ),
 
         elevation =
             CardDefaults.cardElevation(
-
                 defaultElevation =
                     3.dp
             )
 
     ) {
 
-        Row(
+
+        Column(
 
             modifier =
                 Modifier
@@ -100,59 +86,12 @@ fun UncleanedToiletCard(
                         16.dp
                     ),
 
-            verticalAlignment =
-                Alignment.CenterVertically
+            verticalArrangement =
+                Arrangement.spacedBy(
+                    12.dp
+                )
 
         ) {
-
-
-            /*
-             * =====================================
-             * 位置アイコン
-             * =====================================
-             */
-            Surface(
-
-                color =
-                    FinderGreen.copy(
-                        alpha = 0.1f
-                    ),
-
-                shape =
-                    RoundedCornerShape(
-                        12.dp
-                    )
-
-            ) {
-
-                Icon(
-
-                    imageVector =
-                        Icons
-                            .Outlined
-                            .LocationOn,
-
-                    contentDescription =
-                        null,
-
-                    tint =
-                        FinderGreen,
-
-                    modifier =
-                        Modifier.padding(
-                            10.dp
-                        )
-                )
-            }
-
-
-            Spacer(
-
-                modifier =
-                    Modifier.width(
-                        12.dp
-                    )
-            )
 
 
             /*
@@ -160,109 +99,225 @@ fun UncleanedToiletCard(
              * トイレ情報
              * =====================================
              */
-            Column(
+            Row(
 
                 modifier =
-                    Modifier.weight(
-                        1f
-                    ),
+                    Modifier.fillMaxWidth(),
 
-                verticalArrangement =
-                    Arrangement.spacedBy(
-                        3.dp
-                    )
+                verticalAlignment =
+                    Alignment.CenterVertically
 
             ) {
 
-                Text(
 
-                    text =
-                        toilet.name,
+                /*
+                 * 場所アイコン
+                 */
+                Surface(
 
                     color =
-                        FinderDark,
-
-                    style =
-                        MaterialTheme
-                            .typography
-                            .titleMedium,
-
-                    fontWeight =
-                        FontWeight.Bold
-                )
-
-
-                Text(
-
-                    text =
-                        formatDistance(
-                            distanceMeters
+                        FinderGreen.copy(
+                            alpha = 0.1f
                         ),
 
-                    color =
-                        FinderMuted,
+                    shape =
+                        RoundedCornerShape(
+                            12.dp
+                        )
 
-                    fontSize =
-                        13.sp
-                )
+                ) {
 
+                    Icon(
 
-                Text(
+                        imageVector =
+                            Icons
+                                .Outlined
+                                .LocationOn,
 
-                    text =
-                        "前回清掃：${
-                            formatElapsedSinceCleaning(
-                                toilet.lastCleanedAtMillis
+                        contentDescription =
+                            null,
+
+                        tint =
+                            FinderGreen,
+
+                        modifier =
+                            Modifier.padding(
+                                10.dp
                             )
-                        }",
+                    )
+                }
+
+
+                Spacer(
+                    modifier =
+                        Modifier.width(
+                            12.dp
+                        )
+                )
+
+
+                /*
+                 * 名前・距離・清掃時間
+                 */
+                Column(
+
+                    modifier =
+                        Modifier.weight(
+                            1f
+                        ),
+
+                    verticalArrangement =
+                        Arrangement.spacedBy(
+                            3.dp
+                        )
+
+                ) {
+
+
+                    Text(
+
+                        text =
+                            toilet.name,
+
+                        color =
+                            FinderDark,
+
+                        style =
+                            MaterialTheme
+                                .typography
+                                .titleMedium,
+
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+
+
+                    Text(
+
+                        text =
+                            formatDistance(
+                                distanceMeters
+                            ),
+
+                        color =
+                            FinderMuted,
+
+                        fontSize =
+                            13.sp
+                    )
+
+
+                    Text(
+
+                        text =
+                            "前回清掃：${
+                                formatElapsedSinceCleaning(
+                                    toilet.lastCleanedAtMillis
+                                )
+                            }",
+
+                        color =
+                            FinderMuted,
+
+                        fontSize =
+                            12.sp
+                    )
+                }
+
+
+                /*
+                 * 清掃待ち表示
+                 */
+                Surface(
 
                     color =
-                        FinderMuted,
+                        FinderAmber.copy(
+                            alpha = 0.15f
+                        ),
 
-                    fontSize =
-                        12.sp
-                )
+                    shape =
+                        RoundedCornerShape(
+                            8.dp
+                        )
+
+                ) {
+
+                    Text(
+
+                        text =
+                            "清掃待ち",
+
+                        modifier =
+                            Modifier.padding(
+                                horizontal =
+                                    9.dp,
+                                vertical =
+                                    5.dp
+                            ),
+
+                        color =
+                            FinderAmber,
+
+                        fontSize =
+                            12.sp,
+
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+                }
             }
 
 
             /*
              * =====================================
-             * 清掃待ち
+             * 地図で見る
              * =====================================
              */
-            Surface(
+            Button(
 
-                color =
-                    FinderAmber.copy(
-                        alpha = 0.15f
-                    ),
+                onClick =
+                    onShowOnMap,
+
+                modifier =
+                    Modifier.fillMaxWidth(),
 
                 shape =
                     RoundedCornerShape(
-                        8.dp
+                        12.dp
+                    ),
+
+                colors =
+                    ButtonDefaults.buttonColors(
+                        containerColor =
+                            FinderGreen
                     )
 
             ) {
 
-                Text(
 
-                    text =
-                        "清掃待ち",
+                Icon(
 
+                    imageVector =
+                        Icons
+                            .Outlined
+                            .Map,
+
+                    contentDescription =
+                        null
+                )
+
+
+                Spacer(
                     modifier =
-                        Modifier.padding(
-                            horizontal = 9.dp,
-                            vertical = 5.dp
-                        ),
+                        Modifier.width(
+                            8.dp
+                        )
+                )
 
-                    color =
-                        FinderAmber,
 
-                    fontSize =
-                        12.sp,
-
-                    fontWeight =
-                        FontWeight.Bold
+                Text(
+                    text =
+                        "地図で見る"
                 )
             }
         }

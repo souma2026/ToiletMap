@@ -450,9 +450,19 @@ class MapLibreMapController(
      * =====================================
      * 指定したトイレへカメラ移動
      * =====================================
+     *
+     * zoomを指定できる。
+     *
+     * 指定しなかった場合は
+     * 今まで通り16.0。
+     * =====================================
      */
     fun focusOnToilet(
-        toilet: Toilet
+
+        toilet: Toilet,
+
+        zoom: Double = 16.0
+
     ) {
 
         val map =
@@ -474,17 +484,14 @@ class MapLibreMapController(
                 .Builder()
 
                 .target(
-
                     LatLng(
-
                         toilet.latitude,
-
                         toilet.longitude
                     )
                 )
 
                 .zoom(
-                    16.0
+                    zoom
                 )
 
                 .build()
