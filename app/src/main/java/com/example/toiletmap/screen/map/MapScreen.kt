@@ -32,7 +32,7 @@ fun MapScreen(
     // 新しいトイレの場所を選択中か
     isSelectingLocation: Boolean = false,
 
-    // 現在タップされているトイレ
+    // 現在選択されているトイレ
     selectedToilet: Toilet? = null,
 
     onDismissSelectedToilet: () -> Unit = {},
@@ -50,17 +50,22 @@ fun MapScreen(
         () -> Unit = {}
 ) {
 
+
     /*
      * =====================================
-     * 新しいトイレの場所を選択
+     * 新しいトイレの場所選択
      * =====================================
      */
+
     DisposableEffect(
+
         mapView,
         isSelectingLocation
+
     ) {
 
-        var disposed = false
+        var disposed =
+            false
 
         var targetMap:
                 MapLibreMap? =
@@ -70,29 +75,42 @@ fun MapScreen(
                 MapLibreMap.OnMapClickListener? =
             null
 
-        if (isSelectingLocation) {
 
-            mapView.getMapAsync { map ->
+        if (
+            isSelectingLocation
+        ) {
 
-                if (!disposed) {
+            mapView.getMapAsync {
+                    map ->
 
-                    targetMap = map
+                if (
+                    !disposed
+                ) {
+
+                    targetMap =
+                        map
+
 
                     val listener =
 
                         MapLibreMap
-                            .OnMapClickListener { point ->
+                            .OnMapClickListener {
+                                    point ->
 
                                 onLocationSelected(
+
                                     point.latitude,
+
                                     point.longitude
                                 )
 
                                 true
                             }
 
+
                     clickListener =
                         listener
+
 
                     map.addOnMapClickListener(
                         listener
@@ -101,15 +119,19 @@ fun MapScreen(
             }
         }
 
+
         onDispose {
 
-            disposed = true
+            disposed =
+                true
+
 
             val map =
                 targetMap
 
             val listener =
                 clickListener
+
 
             if (
                 map != null &&
@@ -123,23 +145,28 @@ fun MapScreen(
         }
     }
 
+
     Box(
+
         modifier =
             Modifier.fillMaxSize()
+
     ) {
+
 
         /*
          * =====================================
          * MapLibre
          * =====================================
          */
+
         AndroidView(
 
             factory = {
 
                 /*
                  * 同じMapViewを
-                 * Composeで再利用するための処理
+                 * Composeで再利用する
                  */
                 (
                         mapView.parent
@@ -157,29 +184,40 @@ fun MapScreen(
                 Modifier.fillMaxSize()
         )
 
+
         /*
          * =====================================
-         * 新しいトイレの場所選択中
+         * トイレ追加用の場所選択中
          * =====================================
          */
-        if (isSelectingLocation) {
+
+        if (
+            isSelectingLocation
+        ) {
 
             Card(
+
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .padding(16.dp)
+                        .padding(
+                            16.dp
+                        )
                         .align(
                             Alignment.TopCenter
                         )
             ) {
 
                 Column(
+
                     modifier =
-                        Modifier.padding(16.dp)
+                        Modifier.padding(
+                            16.dp
+                        )
                 ) {
 
                     Text(
+
                         text =
                             "トイレの場所を選択",
 
@@ -189,7 +227,9 @@ fun MapScreen(
                                 .titleMedium
                     )
 
+
                     Text(
+
                         text =
                             "ピンを置きたい場所を地図上で1回タップしてください。",
 
@@ -199,9 +239,12 @@ fun MapScreen(
                             )
                     )
 
+
                     TextButton(
+
                         onClick =
                             onCancelLocationSelection
+
                     ) {
 
                         Text(
@@ -212,11 +255,13 @@ fun MapScreen(
             }
         }
 
+
         /*
          * =====================================
-         * 既存のトイレのピンをタップした場合
+         * トイレピンを押した場合
          * =====================================
          */
+
         if (
             !isSelectingLocation &&
             selectedToilet != null
@@ -250,7 +295,9 @@ fun MapScreen(
                             Alignment.BottomCenter
                         )
                         .fillMaxWidth()
-                        .padding(16.dp)
+                        .padding(
+                            16.dp
+                        )
             )
         }
     }
@@ -278,6 +325,10 @@ private fun ToiletCleaningCard(
         Modifier
 ) {
 
+
+    /*
+     * 清潔度
+     */
     val stars =
 
         "★".repeat(
@@ -289,10 +340,24 @@ private fun ToiletCleaningCard(
                             toilet.cleanliness
                 )
 
+
+    /*
+     * 前回清掃からの経過時間
+     */
+    val elapsedSinceLastCleaning =
+
+        formatElapsedSinceCleaning(
+            toilet.lastCleanedAtMillis
+        )
+
+
     Card(
+
         modifier =
             modifier
+
     ) {
+
 
         Column(
 
@@ -307,9 +372,13 @@ private fun ToiletCleaningCard(
                 )
         ) {
 
+
             /*
-             * トイレ名
+             * =====================================
+             * 名前
+             * =====================================
              */
+
             Row(
 
                 modifier =
@@ -320,9 +389,12 @@ private fun ToiletCleaningCard(
 
                 verticalAlignment =
                     Alignment.CenterVertically
+
             ) {
 
+
                 Text(
+
                     text =
                         toilet.name,
 
@@ -332,9 +404,12 @@ private fun ToiletCleaningCard(
                             .titleLarge
                 )
 
+
                 TextButton(
+
                     onClick =
                         onDismiss
+
                 ) {
 
                     Text(
@@ -343,16 +418,20 @@ private fun ToiletCleaningCard(
                 }
             }
 
+
             /*
              * 清潔度
              */
+
             Text(
                 "清潔度：$stars"
             )
 
+
             /*
              * コメント
              */
+
             if (
                 toilet.comment
                     .isNotBlank()
@@ -363,23 +442,50 @@ private fun ToiletCleaningCard(
                 )
             }
 
+
             /*
              * =====================================
-             * 清掃状態
+             * 前回の清掃時間
              * =====================================
              */
+
+            Text(
+
+                text =
+                    "前回の清掃完了：$elapsedSinceLastCleaning",
+
+                style =
+                    MaterialTheme
+                        .typography
+                        .bodyMedium
+            )
+
+
+            /*
+             * =====================================
+             * 状態
+             * =====================================
+             */
+
             when (
                 toilet.cleaningStatus
             ) {
 
+
                 /*
+                 * =============================
                  * 通常
+                 * ピンは赤
+                 * =============================
                  */
+
                 CleaningStatus.NORMAL -> {
+
 
                     Text(
                         "状態：通常"
                     )
+
 
                     Button(
 
@@ -388,6 +494,7 @@ private fun ToiletCleaningCard(
 
                         modifier =
                             Modifier.fillMaxWidth()
+
                     ) {
 
                         Text(
@@ -396,14 +503,21 @@ private fun ToiletCleaningCard(
                     }
                 }
 
+
                 /*
-                 * 清掃依頼中
+                 * =============================
+                 * 清掃待ち
+                 * ピンは黄色
+                 * =============================
                  */
+
                 CleaningStatus.REQUESTED -> {
 
+
                     Text(
-                        "状態：清掃依頼中"
+                        "状態：清掃待ち"
                     )
+
 
                     Button(
 
@@ -412,6 +526,7 @@ private fun ToiletCleaningCard(
 
                         modifier =
                             Modifier.fillMaxWidth()
+
                     ) {
 
                         Text(
@@ -419,17 +534,149 @@ private fun ToiletCleaningCard(
                         )
                     }
                 }
-
-                /*
-                 * 清掃済み
-                 */
-                CleaningStatus.CLEANED -> {
-
-                    Text(
-                        "状態：清掃済み"
-                    )
-                }
             }
         }
+    }
+}
+
+
+/*
+ * =====================================
+ * 前回の清掃完了から
+ * どれくらい経ったか計算
+ * =====================================
+ */
+
+private fun formatElapsedSinceCleaning(
+
+    lastCleanedAtMillis:
+    Long?
+
+): String {
+
+
+    /*
+     * まだ一度も清掃完了していない
+     */
+
+    if (
+        lastCleanedAtMillis == null
+    ) {
+
+        return "記録なし"
+    }
+
+
+    /*
+     * 今の時間との差
+     */
+
+    val elapsedMillis =
+
+        (
+                System.currentTimeMillis() -
+                        lastCleanedAtMillis
+                )
+            .coerceAtLeast(
+                0L
+            )
+
+
+    /*
+     * 分
+     */
+
+    val totalMinutes =
+
+        elapsedMillis /
+                60_000L
+
+
+    /*
+     * 1分未満
+     */
+
+    if (
+        totalMinutes < 1L
+    ) {
+
+        return "1分未満"
+    }
+
+
+    /*
+     * 60分未満
+     */
+
+    if (
+        totalMinutes < 60L
+    ) {
+
+        return "${totalMinutes}分前"
+    }
+
+
+    /*
+     * 時間
+     */
+
+    val totalHours =
+
+        totalMinutes /
+                60L
+
+
+    val remainingMinutes =
+
+        totalMinutes %
+                60L
+
+
+    /*
+     * 24時間未満
+     */
+
+    if (
+        totalHours < 24L
+    ) {
+
+        return if (
+            remainingMinutes == 0L
+        ) {
+
+            "${totalHours}時間前"
+
+        } else {
+
+            "${totalHours}時間${remainingMinutes}分前"
+        }
+    }
+
+
+    /*
+     * 日数
+     */
+
+    val totalDays =
+
+        totalHours /
+                24L
+
+
+    val remainingHours =
+
+        totalHours %
+                24L
+
+
+    return if (
+        remainingHours == 0L
+    ) {
+
+        "${totalDays}日前"
+
+    } else {
+
+        "${totalDays}日${remainingHours}時間前"
     }
 }

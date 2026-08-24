@@ -34,58 +34,80 @@ class MapLibreMapController(
 
 ) : DefaultLifecycleObserver {
 
+
     /*
-     * MapLibre本体
+     * =====================================
+     * MapLibre
+     * =====================================
      */
+
     val mapView:
             MapView
+
 
     private var mapLibreMap:
             MapLibreMap? =
         null
 
+
     private var isStyleLoaded =
         false
 
-    /*
-     * MarkerのID
-     * ↓
-     * ToiletのID
-     */
-    private val markerIdToToiletId =
-        mutableMapOf<Long, String>()
 
     /*
-     * ToiletのID
+     * Marker ID
+     * ↓
+     * Toilet ID
+     */
+
+    private val markerIdToToiletId =
+
+        mutableMapOf<
+                Long,
+                String
+                >()
+
+
+    /*
+     * Toilet ID
      * ↓
      * Marker
-     *
-     * ピンの色変更用
      */
+
     private val toiletIdToMarker =
-        mutableMapOf<String, Marker>()
+
+        mutableMapOf<
+                String,
+                Marker
+                >()
+
 
     /*
-     * ピンを押したときの処理
+     * ピンを押したとき
      */
+
     private var onToiletMarkerClick:
             ((Toilet) -> Unit)? =
         null
+
 
     /*
      * =====================================
      * トイレ一覧
      * =====================================
      *
-     * 今はメモリ上だけ。
-     * アプリを終了すると追加データは消える。
+     * 現在はメモリ上のみ
      */
+
     private val toilets =
+
         mutableListOf(
 
+
             /*
-             * 最初から表示するサンプル
+             * 動作確認用トイレ
              */
+
             Toilet(
 
                 name =
@@ -101,33 +123,65 @@ class MapLibreMapController(
                     4,
 
                 comment =
-                    "東京駅の近くにあるトイレです"
+                    "東京駅の近くにあるトイレです",
+
+                /*
+                 * 初期状態は赤
+                 */
+                cleaningStatus =
+                    CleaningStatus.NORMAL,
+
+                /*
+                 * 動作確認しやすいよう
+                 * 前回の清掃を2時間前にしている
+                 */
+                lastCleanedAtMillis =
+
+                    System.currentTimeMillis() -
+
+                            (
+                                    2L *
+                                            60L *
+                                            60L *
+                                            1000L
+                                    )
             )
         )
 
 
+    /*
+     * =====================================
+     * 初期化
+     * =====================================
+     */
+
     init {
 
+
         /*
-         * =====================================
-         * MapLibre初期化
-         * =====================================
+         * MapLibre
          */
+
         MapLibre.getInstance(
             activity
         )
 
+
         /*
          * =====================================
-         * OSM 403対策
+         * OpenStreetMap
+         * 403対策
          * =====================================
          */
+
         val okHttpClient =
 
             OkHttpClient
                 .Builder()
 
-                .addNetworkInterceptor { chain ->
+                .addNetworkInterceptor {
+                        chain ->
+
 
                     val request =
 
@@ -135,10 +189,13 @@ class MapLibreMapController(
                             .request()
                             .newBuilder()
                             .header(
+
                                 "User-Agent",
+
                                 "ToiletMap/1.0 (Android; com.example.toiletmap)"
                             )
                             .build()
+
 
                     chain.proceed(
                         request
@@ -147,28 +204,40 @@ class MapLibreMapController(
 
                 .build()
 
+
         HttpRequestUtil
             .setOkHttpClient(
                 okHttpClient
             )
 
+
         /*
-         * MapView作成
+         * MapView
          */
+
         mapView =
+
             MapView(
                 activity
             )
+
 
         mapView.onCreate(
             savedInstanceState
         )
 
-        setupMap()
 
         /*
-         * Activityのライフサイクルを監視
+         * 地図準備
          */
+
+        setupMap()
+
+
+        /*
+         * ライフサイクル
+         */
+
         activity
             .lifecycle
             .addObserver(
@@ -179,14 +248,15 @@ class MapLibreMapController(
 
     /*
      * =====================================
-     * ピンが押されたことを
-     * MainActivityへ通知
+     * トイレピンタップ
      * =====================================
      */
+
     fun setOnToiletMarkerClickListener(
 
         listener:
         ((Toilet) -> Unit)?
+
     ) {
 
         onToiletMarkerClick =
@@ -196,38 +266,41 @@ class MapLibreMapController(
 
     /*
      * =====================================
-     * 地図の初期設定
+     * 地図設定
      * =====================================
      */
-    @Suppress("DEPRECATION")
+
+    @Suppress(
+        "DEPRECATION"
+    )
     private fun setupMap() {
 
-        mapView.getMapAsync { map ->
+
+        mapView.getMapAsync {
+                map ->
+
 
             mapLibreMap =
                 map
 
+
             /*
              * =====================================
-             * ピンタップ
+             * ピンを押した
              * =====================================
              */
-            map.setOnMarkerClickListener { marker ->
 
-                /*
-                 * Marker ID
-                 * ↓
-                 * Toilet ID
-                 */
+            map.setOnMarkerClickListener {
+                    marker ->
+
+
                 val toiletId =
 
                     markerIdToToiletId[
                         marker.id
                     ]
 
-                /*
-                 * IDに一致するトイレを探す
-                 */
+
                 val toilet =
 
                     toilets
@@ -237,22 +310,23 @@ class MapLibreMapController(
                                     toiletId
                         }
 
+
                 if (
                     toilet != null
                 ) {
 
-                    /*
-                     * MainActivityへ通知
-                     */
+
                     onToiletMarkerClick
                         ?.invoke(
                             toilet
                         )
 
+
                     /*
-                     * MapLibre標準吹き出しは
-                     * 表示しない
+                     * MapLibre標準の
+                     * 吹き出しは表示しない
                      */
+
                     true
 
                 } else {
@@ -264,9 +338,10 @@ class MapLibreMapController(
 
             /*
              * =====================================
-             * OpenStreetMap
+             * OSMラスタータイル
              * =====================================
              */
+
             val styleJson =
 
                 """
@@ -303,12 +378,15 @@ class MapLibreMapController(
 
             ) {
 
+
                 isStyleLoaded =
                     true
+
 
                 /*
                  * 東京駅を初期表示
                  */
+
                 map.cameraPosition =
 
                     CameraPosition
@@ -327,12 +405,15 @@ class MapLibreMapController(
 
 
                 /*
-                 * 保存されているトイレを
-                 * 全部ピン表示
+                 * トイレを全部表示
                  */
-                toilets.forEach { toilet ->
+
+                toilets.forEach {
+                        toilet ->
+
 
                     addMarkerToMap(
+
                         map =
                             map,
 
@@ -347,34 +428,43 @@ class MapLibreMapController(
 
     /*
      * =====================================
-     * 新しいトイレを追加
+     * 新しいトイレを登録
      * =====================================
      */
+
     fun addToilet(
 
         toilet:
         Toilet
+
     ) {
+
 
         /*
          * 一覧に追加
          */
+
         toilets.add(
             toilet
         )
 
+
         val map =
             mapLibreMap
+
 
         if (
             map != null &&
             isStyleLoaded
         ) {
 
+
             /*
-             * 地図にピン追加
+             * ピン追加
              */
+
             addMarkerToMap(
+
                 map =
                     map,
 
@@ -382,9 +472,11 @@ class MapLibreMapController(
                     toilet
             )
 
+
             /*
-             * 登録した場所へ移動
+             * 登録地点へ移動
              */
+
             map.cameraPosition =
 
                 CameraPosition
@@ -408,17 +500,23 @@ class MapLibreMapController(
      * =====================================
      * 清掃依頼
      *
+     * 赤
      * NORMAL
+     *
      * ↓
+     *
+     * 黄色
      * REQUESTED
      * =====================================
      */
+
     fun requestCleaning(
 
         toiletId:
         String
 
     ): Toilet? {
+
 
         val toilet =
 
@@ -433,8 +531,10 @@ class MapLibreMapController(
 
 
         /*
-         * NORMAL以外なら変更しない
+         * NORMALの時だけ
+         * 清掃依頼できる
          */
+
         if (
             toilet.cleaningStatus !=
             CleaningStatus.NORMAL
@@ -443,32 +543,51 @@ class MapLibreMapController(
             return toilet
         }
 
-        return updateCleaningStatus(
+
+        return updateToilet(
 
             toiletId =
                 toiletId,
 
-            newStatus =
-                CleaningStatus.REQUESTED
+            cleaningStatus =
+                CleaningStatus.REQUESTED,
+
+            /*
+             * 清掃依頼しても
+             * 前回清掃時間は変えない
+             */
+            lastCleanedAtMillis =
+                toilet.lastCleanedAtMillis
         )
     }
 
 
     /*
      * =====================================
-     * 清掃済み
+     * 清掃しました
      *
+     * 黄色
      * REQUESTED
+     *
      * ↓
-     * CLEANED
+     *
+     * 赤
+     * NORMAL
+     *
+     * ＋
+     *
+     * 現在時刻を
+     * 前回清掃完了時間として保存
      * =====================================
      */
+
     fun markCleaned(
 
         toiletId:
         String
 
     ): Toilet? {
+
 
         val toilet =
 
@@ -482,6 +601,11 @@ class MapLibreMapController(
                 ?: return null
 
 
+        /*
+         * 清掃待ち以外なら
+         * 処理しない
+         */
+
         if (
             toilet.cleaningStatus !=
             CleaningStatus.REQUESTED
@@ -490,32 +614,54 @@ class MapLibreMapController(
             return toilet
         }
 
-        return updateCleaningStatus(
+
+        return updateToilet(
 
             toiletId =
                 toiletId,
 
-            newStatus =
-                CleaningStatus.CLEANED
+            /*
+             * 清掃完了したら
+             * 通常状態へ戻す
+             */
+            cleaningStatus =
+                CleaningStatus.NORMAL,
+
+            /*
+             * 今の時間を保存
+             */
+            lastCleanedAtMillis =
+                System.currentTimeMillis()
         )
     }
 
 
     /*
      * =====================================
-     * 清掃状態変更
+     * トイレ状態更新
      * =====================================
      */
-    @Suppress("DEPRECATION")
-    private fun updateCleaningStatus(
+
+    @Suppress(
+        "DEPRECATION"
+    )
+    private fun updateToilet(
 
         toiletId:
         String,
 
-        newStatus:
-        CleaningStatus
+        cleaningStatus:
+        CleaningStatus,
+
+        lastCleanedAtMillis:
+        Long?
 
     ): Toilet? {
+
+
+        /*
+         * 対象を探す
+         */
 
         val index =
 
@@ -526,6 +672,7 @@ class MapLibreMapController(
                             toiletId
                 }
 
+
         if (
             index == -1
         ) {
@@ -535,9 +682,9 @@ class MapLibreMapController(
 
 
         /*
-         * Toiletはdata classなので
-         * copyで新しい状態を作る
+         * 新しい状態を作る
          */
+
         val updatedToilet =
 
             toilets[
@@ -546,12 +693,17 @@ class MapLibreMapController(
                 .copy(
 
                     cleaningStatus =
-                        newStatus
+                        cleaningStatus,
+
+                    lastCleanedAtMillis =
+                        lastCleanedAtMillis
                 )
 
+
         /*
-         * 一覧を更新
+         * 一覧更新
          */
+
         toilets[
             index
         ] =
@@ -559,13 +711,15 @@ class MapLibreMapController(
 
 
         /*
-         * 該当ピン
+         * 地図のピンも更新
          */
+
         val marker =
 
             toiletIdToMarker[
                 toiletId
             ]
+
 
         val map =
             mapLibreMap
@@ -576,28 +730,38 @@ class MapLibreMapController(
             map != null
         ) {
 
+
             /*
-             * ピン色変更
+             * 色変更
              */
+
             marker.icon =
 
                 createMarkerIcon(
-                    newStatus
+                    cleaningStatus
                 )
 
+
             /*
-             * 情報も更新
+             * 情報更新
              */
+
             marker.snippet =
 
                 buildDetailText(
                     updatedToilet
                 )
 
+
+            /*
+             * MapLibreへ反映
+             */
+
             map.updateMarker(
                 marker
             )
         }
+
 
         return updatedToilet
     }
@@ -605,10 +769,13 @@ class MapLibreMapController(
 
     /*
      * =====================================
-     * 地図にピンを追加
+     * ピン追加
      * =====================================
      */
-    @Suppress("DEPRECATION")
+
+    @Suppress(
+        "DEPRECATION"
+    )
     private fun addMarkerToMap(
 
         map:
@@ -616,7 +783,9 @@ class MapLibreMapController(
 
         toilet:
         Toilet
+
     ) {
+
 
         val marker =
 
@@ -627,7 +796,9 @@ class MapLibreMapController(
                     .position(
 
                         LatLng(
+
                             toilet.latitude,
+
                             toilet.longitude
                         )
                     )
@@ -653,8 +824,9 @@ class MapLibreMapController(
 
 
         /*
-         * MarkerとToiletを紐付け
+         * MarkerとToiletを関連付ける
          */
+
         markerIdToToiletId[
             marker.id
         ] =
@@ -670,15 +842,17 @@ class MapLibreMapController(
 
     /*
      * =====================================
-     * トイレ情報文字列
+     * トイレ情報
      * =====================================
      */
+
     private fun buildDetailText(
 
         toilet:
         Toilet
 
     ): String {
+
 
         val stars =
 
@@ -698,19 +872,21 @@ class MapLibreMapController(
                 toilet.cleaningStatus
             ) {
 
+
                 CleaningStatus.NORMAL ->
+
                     "通常"
 
-                CleaningStatus.REQUESTED ->
-                    "清掃依頼中"
 
-                CleaningStatus.CLEANED ->
-                    "清掃済み"
+                CleaningStatus.REQUESTED ->
+
+                    "清掃待ち"
             }
 
 
         return if (
-            toilet.comment.isBlank()
+            toilet.comment
+                .isBlank()
         ) {
 
             "清潔度：$stars / 状態：$statusText"
@@ -724,25 +900,27 @@ class MapLibreMapController(
 
     /*
      * =====================================
-     * 色付きピン作成
+     * ピン画像作成
      * =====================================
      *
      * NORMAL
-     * → 青
+     * → 赤
      *
      * REQUESTED
      * → 黄色
-     *
-     * CLEANED
-     * → 赤
+     * =====================================
      */
-    @Suppress("DEPRECATION")
+
+    @Suppress(
+        "DEPRECATION"
+    )
     private fun createMarkerIcon(
 
         status:
         CleaningStatus
 
     ): Icon {
+
 
         val density =
 
@@ -776,35 +954,52 @@ class MapLibreMapController(
                 .createBitmap(
 
                     width,
+
                     height,
 
-                    Bitmap.Config.ARGB_8888
+                    Bitmap.Config
+                        .ARGB_8888
                 )
 
 
         val canvas =
+
             Canvas(
                 bitmap
             )
 
 
         /*
-         * 状態別の色
+         * =====================================
+         * 状態別ピン色
+         * =====================================
          */
+
         val pinColor =
 
             when (
                 status
             ) {
 
+
+                /*
+                 * 通常
+                 * 赤
+                 */
+
                 CleaningStatus.NORMAL ->
 
                     Color.rgb(
-                        33,
-                        150,
-                        243
+                        244,
+                        67,
+                        54
                     )
 
+
+                /*
+                 * 清掃待ち
+                 * 黄色
+                 */
 
                 CleaningStatus.REQUESTED ->
 
@@ -813,17 +1008,12 @@ class MapLibreMapController(
                         193,
                         7
                     )
-
-
-                CleaningStatus.CLEANED ->
-
-                    Color.rgb(
-                        244,
-                        67,
-                        54
-                    )
             }
 
+
+        /*
+         * 塗り
+         */
 
         val fillPaint =
 
@@ -838,6 +1028,10 @@ class MapLibreMapController(
                     Paint.Style.FILL
             }
 
+
+        /*
+         * 外枠
+         */
 
         val strokePaint =
 
@@ -861,6 +1055,10 @@ class MapLibreMapController(
             }
 
 
+        /*
+         * 中央白丸
+         */
+
         val whitePaint =
 
             Paint(
@@ -875,26 +1073,37 @@ class MapLibreMapController(
             }
 
 
+        /*
+         * =====================================
+         * ピン描画
+         * =====================================
+         */
+
         val centerX =
-            width / 2f
+            width /
+                    2f
 
 
         val circleCenterY =
+
             18f *
                     density
 
 
         val outerRadius =
+
             14f *
                     density
 
 
         /*
-         * ピンの尖った部分
+         * ピン下側
          */
+
         val pointPath =
 
             Path().apply {
+
 
                 moveTo(
 
@@ -932,33 +1141,49 @@ class MapLibreMapController(
 
 
         /*
-         * 下側
+         * 下部分
          */
+
         canvas.drawPath(
+
             pointPath,
+
             fillPaint
         )
 
+
         canvas.drawPath(
+
             pointPath,
+
             strokePaint
         )
 
 
         /*
-         * 上側
+         * 丸部分
          */
+
         canvas.drawCircle(
+
             centerX,
+
             circleCenterY,
+
             outerRadius,
+
             fillPaint
         )
 
+
         canvas.drawCircle(
+
             centerX,
+
             circleCenterY,
+
             outerRadius,
+
             strokePaint
         )
 
@@ -966,13 +1191,23 @@ class MapLibreMapController(
         /*
          * 中央の白丸
          */
+
         canvas.drawCircle(
+
             centerX,
+
             circleCenterY,
-            5f * density,
+
+            5f *
+                    density,
+
             whitePaint
         )
 
+
+        /*
+         * MapLibre用Iconに変換
+         */
 
         return IconFactory
             .getInstance(
@@ -991,8 +1226,10 @@ class MapLibreMapController(
      */
 
     override fun onStart(
+
         owner:
         LifecycleOwner
+
     ) {
 
         mapView.onStart()
@@ -1000,8 +1237,10 @@ class MapLibreMapController(
 
 
     override fun onResume(
+
         owner:
         LifecycleOwner
+
     ) {
 
         mapView.onResume()
@@ -1009,8 +1248,10 @@ class MapLibreMapController(
 
 
     override fun onPause(
+
         owner:
         LifecycleOwner
+
     ) {
 
         mapView.onPause()
@@ -1018,8 +1259,10 @@ class MapLibreMapController(
 
 
     override fun onStop(
+
         owner:
         LifecycleOwner
+
     ) {
 
         mapView.onStop()
@@ -1027,11 +1270,14 @@ class MapLibreMapController(
 
 
     override fun onDestroy(
+
         owner:
         LifecycleOwner
+
     ) {
 
         mapView.onDestroy()
+
 
         owner
             .lifecycle
@@ -1042,8 +1288,10 @@ class MapLibreMapController(
 
 
     fun onSaveInstanceState(
+
         outState:
         Bundle
+
     ) {
 
         mapView

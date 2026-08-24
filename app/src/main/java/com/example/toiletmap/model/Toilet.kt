@@ -4,21 +4,17 @@ import java.util.UUID
 
 enum class CleaningStatus {
 
-    // 通常
+    // 通常状態：赤いピン
     NORMAL,
 
-    // 清掃依頼中
-    REQUESTED,
-
-    // 清掃済み
-    CLEANED
+    // 清掃依頼中：黄色いピン
+    REQUESTED
 }
 
 data class Toilet(
 
     // 各トイレを区別するID
-    val id: String =
-        UUID.randomUUID().toString(),
+    val id: String = UUID.randomUUID().toString(),
 
     // トイレ名
     val name: String,
@@ -36,6 +32,9 @@ data class Toilet(
     val comment: String,
 
     // 清掃状態
-    val cleaningStatus: CleaningStatus =
-        CleaningStatus.NORMAL
+    val cleaningStatus: CleaningStatus = CleaningStatus.NORMAL,
+
+    // 前回「清掃しました」を押した時刻
+    // まだ清掃した記録がない場合は null
+    val lastCleanedAtMillis: Long? = null
 )
