@@ -2,55 +2,45 @@ package com.example.toiletmap.viewmodel
 
 import androidx.lifecycle.ViewModel
 import com.example.toiletmap.model.Toilet
-import kotlinx.coroutines.flow.MutableStateFlow
+import com.example.toiletmap.repository.ToiletRepository
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 
 class ToiletViewModel : ViewModel() {
+
+    /*
+     * =====================================
+     * Repository
+     * =====================================
+     *
+     * データ管理はRepositoryへ任せる
+     */
+    private val repository =
+        ToiletRepository()
+
 
     /*
      * =====================================
      * トイレ一覧
      * =====================================
      *
-     * トイレデータを管理するのは
-     * このViewModelだけにする
-     */
-
-    private val _toilets =
-        MutableStateFlow<List<Toilet>>(
-
-            /*
-             * 今までMapLibreMapControllerに
-             * 入っていたサンプルトイレ
-             */
-            listOf(
-                Toilet(
-                    name = "東京駅トイレ",
-                    latitude = 35.681236,
-                    longitude = 139.767125,
-                    cleanliness = 4,
-                    comment = "東京駅の近くにあるトイレです"
-                )
-            )
-        )
-
-    /*
-     * 外部から読み取るための一覧
+     * Repositoryが持っている一覧を
+     * ViewModelから画面側へ公開する
      */
     val toilets: StateFlow<List<Toilet>> =
-        _toilets.asStateFlow()
+        repository.toilets
 
 
     /*
      * =====================================
-     * トイレを追加
+     * トイレ追加
      * =====================================
      */
     fun addToilet(
         toilet: Toilet
     ) {
 
-        _toilets.value += toilet
+        repository.addToilet(
+            toilet
+        )
     }
 }
