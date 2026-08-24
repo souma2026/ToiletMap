@@ -89,6 +89,26 @@ object AccountRepository {
         return getCurrentUser() != null
     }
 
+// =========================================
+// 保存済みログイン状態を復元
+// =========================================
+
+    suspend fun restoreLoginState(): Boolean {
+
+        /*
+         * Android端末に保存されている
+         * Supabase Authセッションの読み込み完了を待つ
+         */
+        supabase.auth.awaitInitialization()
+
+
+        /*
+         * 読み込み完了後にユーザーを確認
+         */
+        return supabase
+            .auth
+            .currentUserOrNull() != null
+    }
 
     // =========================================
     // プロフィール取得
