@@ -10,7 +10,6 @@ import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.storage.storage
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import kotlin.time.Duration.Companion.hours
 
 
 object AccountRepository {
@@ -78,7 +77,7 @@ object AccountRepository {
 
 
     // =========================================
-    // 現在ユーザー
+    // 現在のユーザー
     // =========================================
 
     fun getCurrentUser() =
@@ -148,22 +147,12 @@ object AccountRepository {
 
 
     // =========================================
-    // プロフィール画像情報変更
-    //
-    // avatar_url というカラム名はそのまま使う。
-    //
-    // ただし、ここには今後
-    //
-    // UUID/profile.jpg
-    //
-    // というStorage上のパスを保存する。
-    //
-    // Signed URLそのものは保存しない。
+    // プロフィール画像URL更新
     // =========================================
 
     private suspend fun updateAvatarUrl(
         userId: String,
-        avatarPath: String
+        avatarUrl: String
     ) {
 
         supabase
@@ -173,7 +162,7 @@ object AccountRepository {
 
                     set(
                         "avatar_url",
-                        avatarPath
+                        avatarUrl
                     )
                 }
             ) {
@@ -190,171 +179,7 @@ object AccountRepository {
 
 
     // =========================================
-    // avatar_urlからStorageパスを取得
-    //
-    // 新方式:
-    //
-    // UUID/profile.jpg
-    //
-    //
-    // 旧方式:
-    //
-    // https://xxxxx.supabase.co/
-    // storage/v1/object/public/avatars/
-    // UUID/profile.jpg?v=xxxx
-    //
-    //
-    // どちらでも動くようにする
-    // =========================================
-
-    private fun extractAvatarPath(
-        storedValue: String
-    ): String {
-
-        val withoutQuery =
-            storedValue.substringBefore("?")
-
-        val publicMarker =
-            "/storage/v1/object/public/avatars/"
-
-        val signedMarker =
-            "/storage/v1/object/sign/avatars/"
-
-
-        return when {
-
-            publicMarker in withoutQuery -> {
-
-                withoutQuery
-                    .substringAfter(publicMarker)
-            }
-
-
-            signedMarker in withoutQuery -> {
-
-                withoutQuery
-                    .substringAfter(signedMarker)
-            }
-
-
-            else -> {
-
-                withoutQuery
-                    .trimStart('/')
-            }
-        }
-    }
-
-
-    // =========================================
-    // キャッシュ対策
-    // =========================================
-
-    private fun addCacheBuster(
-        url: String
-    ): String {
-
-        val separator =
-            if (url.contains("?")) {
-                "&"
-            } else {
-                "?"
-            }
-
-
-        return url +
-                separator +
-                "v=" +
-                System.currentTimeMillis()
-    }
-
-
-    // =========================================
-    // 表示用プロフィール画像URL取得
-    //
-    // Private Bucket
-    // Public Bucket
-    //
-    // 両方になるべく対応する
-    // =========================================
-
-    suspend fun getAvatarDisplayUrl(
-        storedAvatarValue: String?
-    ): String? {
-
-        if (storedAvatarValue.isNullOrBlank()) {
-
-            return null
-        }
-
-
-        val path =
-            extractAvatarPath(
-                storedAvatarValue
-            )
-
-
-        if (path.isBlank()) {
-
-            return null
-        }
-
-
-        val bucket =
-            supabase
-                .storage
-                .from("avatars")
-
-
-        /*
-         * まずSigned URLを作成する。
-         *
-         * Private Bucketでも表示可能。
-         *
-         * URLは12時間だけ有効。
-         *
-         * URLそのものをDBには保存しないので、
-         * 次回プロフィール取得時に
-         * 新しいSigned URLを作ればよい。
-         */
-
-        return try {
-
-            val signedUrl =
-                bucket.createSignedUrl(
-                    path = path,
-                    expiresIn = 12.hours
-                )
-
-
-            addCacheBuster(
-                signedUrl
-            )
-
-
-        } catch (e: Exception) {
-
-            /*
-             * Signed URL作成に失敗した場合、
-             * Public Bucketの可能性を考えて
-             * publicUrlへフォールバックする。
-             */
-
-            val publicUrl =
-                bucket.publicUrl(
-                    path
-                )
-
-
-            addCacheBuster(
-                publicUrl
-            )
-        }
-    }
-
-
-    // =========================================
-    // プロフィール写真アップロード
+    // プロフィール画像アップロード
     // =========================================
 
     suspend fun uploadAvatar(
@@ -368,24 +193,9 @@ object AccountRepository {
                 .from("avatars")
 
 
-        /*
-         * ユーザーごとのフォルダ
-         *
-         * avatars/
-         *
-         *   ユーザーUUID/
-         *
-         *       profile.jpg
-         */
-
         val path =
             "$userId/profile.jpg"
 
-
-        /*
-         * 同じユーザーが写真を変更した場合は
-         * profile.jpgを上書きする
-         */
 
         bucket.upload(
             path = path,
@@ -396,21 +206,90 @@ object AccountRepository {
         }
 
 
-        /*
-         * DBにはSigned URLではなく
-         *
-         * UUID/profile.jpg
-         *
-         * というパスだけ保存する。
-         */
+        val publicUrl =
+            bucket.publicUrl(
+                path
+            )
 
+
+        /*
+         * 同じファイル名を上書きするため、
+         * Coilのキャッシュ対策として
+         * URLへ現在時刻を付ける。
+         */
+        val url =
+            "$publicUrl?v=${System.currentTimeMillis()}"
+
+
+        /*
+         * profiles.avatar_url に
+         * 実際に表示可能なURLを保存する。
+         */
         updateAvatarUrl(
             userId = userId,
-            avatarPath = path
+            avatarUrl = url
         )
 
 
-        return path
+        return url
+    }
+
+
+    // =========================================
+    // 保存済みavatar_urlから
+    // 表示可能URLを取得
+    //
+    // 過去に Storage path だけ保存した場合にも対応
+    // =========================================
+
+    fun getAvatarDisplayUrl(
+        storedAvatarValue: String?
+    ): String? {
+
+        if (storedAvatarValue.isNullOrBlank()) {
+
+            return null
+        }
+
+
+        /*
+         * すでにURLならそのまま使用
+         */
+        if (
+            storedAvatarValue.startsWith("https://") ||
+            storedAvatarValue.startsWith("http://")
+        ) {
+
+            return storedAvatarValue
+        }
+
+
+        /*
+         * 過去に
+         *
+         * UUID/profile.jpg
+         *
+         * のようなStorage pathを保存していた場合
+         */
+        val path =
+            storedAvatarValue
+                .substringBefore("?")
+                .trimStart('/')
+
+
+        val bucket =
+            supabase
+                .storage
+                .from("avatars")
+
+
+        val publicUrl =
+            bucket.publicUrl(
+                path
+            )
+
+
+        return "$publicUrl?v=${System.currentTimeMillis()}"
     }
 
 
@@ -444,8 +323,6 @@ object AccountRepository {
 
     // =========================================
     // 履歴追加
-    //
-    // 他の画面から将来使用する
     // =========================================
 
     suspend fun addHistory(
