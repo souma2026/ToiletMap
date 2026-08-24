@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.example.toiletmap.map
 
 import android.graphics.Bitmap
@@ -26,7 +28,7 @@ import org.maplibre.android.module.http.HttpRequestUtil
 
 class MapLibreMapController(
 
-    private val activity:
+    activity:
     ComponentActivity,
 
     savedInstanceState:
@@ -54,6 +56,7 @@ class MapLibreMapController(
         false
 
 
+
     /*
      * Marker ID
      * ↓
@@ -66,6 +69,7 @@ class MapLibreMapController(
                 Long,
                 String
                 >()
+
 
 
     /*
@@ -91,9 +95,10 @@ class MapLibreMapController(
         null
 
 
+
     /*
      * =====================================
-     * トイレ一覧
+     * 描画用の最新データ
      * =====================================
      *
      * 現在はメモリ上のみ
@@ -451,6 +456,8 @@ class MapLibreMapController(
 
         val map =
             mapLibreMap
+                ?: return
+
 
 
         if (
@@ -493,6 +500,28 @@ class MapLibreMapController(
                     )
                     .build()
         }
+
+
+        map.cameraPosition =
+
+            CameraPosition
+                .Builder()
+
+                .target(
+
+                    LatLng(
+
+                        toilet.latitude,
+
+                        toilet.longitude
+                    )
+                )
+
+                .zoom(
+                    16.0
+                )
+
+                .build()
     }
 
 
@@ -528,6 +557,7 @@ class MapLibreMapController(
                 }
 
                 ?: return null
+
 
 
         /*

@@ -11,12 +11,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import com.example.toiletmap.model.Toilet
 import com.example.toiletmap.screen.account.AccountScreen
 import com.example.toiletmap.screen.map.MapScreen
 import com.example.toiletmap.ui.components.BottomNavigationBar
 import com.example.toiletmap.ui.screen.AddToiletScreen
 import org.maplibre.android.maps.MapView
+import com.example.toiletmap.model.Toilet
 
 @Composable
 fun ToiletMapApp(

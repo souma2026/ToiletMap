@@ -10,10 +10,17 @@ import com.example.toiletmap.map.MapLibreMapController
 import com.example.toiletmap.model.Toilet
 import com.example.toiletmap.ui.ToiletMapApp
 import com.example.toiletmap.ui.theme.ToiletMapTheme
+import com.example.toiletmap.viewmodel.ToiletViewModel
 
 class MainActivity : ComponentActivity() {
 
-    private lateinit var mapController: MapLibreMapController
+    /*
+     * =====================================
+     * 地図Controller
+     * =====================================
+     */
+    private lateinit var mapController:
+            MapLibreMapController
 
     // 現在タップされているトイレ
     private var selectedToilet by mutableStateOf<Toilet?>(null)
@@ -21,10 +28,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // MapLibreの準備
-        mapController = MapLibreMapController(
-            activity = this,
-            savedInstanceState = savedInstanceState
+
+    override fun onCreate(
+        savedInstanceState: Bundle?
+    ) {
+
+        super.onCreate(
+            savedInstanceState
         )
 
         // 地図上のピンが押されたとき
@@ -91,6 +101,12 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+
+    /*
+     * =====================================
+     * メモリ不足
+     * =====================================
+     */
     override fun onLowMemory() {
 
         super.onLowMemory()
