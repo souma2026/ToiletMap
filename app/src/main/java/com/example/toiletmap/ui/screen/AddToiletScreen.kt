@@ -31,10 +31,19 @@ fun AddToiletScreen() {
         mutableStateOf("")
     }
 
+    var toiletNameError by remember {
+        mutableStateOf(false)
+    }
+
     // 場所
     var location by remember {
         mutableStateOf("")
     }
+
+    var locationError by remember {
+        mutableStateOf(false)
+    }
+
 
     // 利用可能時間
     var openingHours by remember {
@@ -78,9 +87,13 @@ fun AddToiletScreen() {
         // トイレ名
         OutlinedTextField(
             value = toiletName,
-
             onValueChange = {
                 toiletName = it
+
+                // 入力されたらエラーを解除
+                if (it.isNotBlank()) {
+                    toiletNameError = false
+                }
             },
 
             label = {
@@ -89,6 +102,14 @@ fun AddToiletScreen() {
 
             placeholder = {
                 Text("例：○○駅 公衆トイレ")
+            },
+
+            isError = toiletNameError,
+
+            supportingText = {
+                if (toiletNameError) {
+                    Text("トイレ名を入力してください")
+                }
             },
 
             modifier = Modifier.fillMaxWidth()
@@ -101,9 +122,13 @@ fun AddToiletScreen() {
         // 場所
         OutlinedTextField(
             value = location,
-
             onValueChange = {
                 location = it
+
+                // 入力されたらエラーを解除
+                if (it.isNotBlank()) {
+                    locationError = false
+                }
             },
 
             label = {
@@ -112,6 +137,14 @@ fun AddToiletScreen() {
 
             placeholder = {
                 Text("例：○○駅 東口")
+            },
+
+            isError = locationError,
+
+            supportingText = {
+                if (locationError) {
+                    Text("場所を入力してください")
+                }
             },
 
             modifier = Modifier.fillMaxWidth()
@@ -194,10 +227,15 @@ fun AddToiletScreen() {
         Button(
             onClick = {
 
-                message = if (toiletName.isBlank()) {
-                    "トイレ名を入力してください"
+                // 未入力かチェック
+                toiletNameError = toiletName.isBlank()
+                locationError = location.isBlank()
+
+                // 両方入力されている場合だけ登録成功
+                message = if (!toiletNameError && !locationError) {
+                    "トイレ情報を登録しました！"
                 } else {
-                    "トイレ情報を登録しました"
+                    ""
                 }
             },
 
@@ -213,6 +251,10 @@ fun AddToiletScreen() {
 
         // メッセージ表示
         if (message.isNotEmpty()) {
+
+            Spacer(
+                modifier = Modifier.height(16.dp)
+            )
 
             Text(
                 text = message
