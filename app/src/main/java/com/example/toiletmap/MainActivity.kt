@@ -3,104 +3,225 @@ package com.example.toiletmap
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.ViewModelProvider
 import com.example.toiletmap.map.MapLibreMapController
-import com.example.toiletmap.model.Toilet
 import com.example.toiletmap.ui.ToiletMapApp
 import com.example.toiletmap.ui.theme.ToiletMapTheme
 import com.example.toiletmap.viewmodel.ToiletViewModel
 
 class MainActivity : ComponentActivity() {
 
+    private lateinit var mapController: MapLibreMapController
+
+    private lateinit var toiletViewModel: ToiletViewModel
+
     /*
-     * =====================================
-     * 地図Controller
-     * =====================================
+     * 選択中のトイレそのものではなく
+     * トイレのIDだけを保持する。
+     *
+     * Repositoryのトイレ情報が更新された場合でも
+     * 最新のToiletを一覧から取得できる。
      */
-    private lateinit var mapController:
-            MapLibreMapController
-
-    // 現在タップされているトイレ
-    private var selectedToilet by mutableStateOf<Toilet?>(null)
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
+    private var selectedToiletId by
+    mutableStateOf<String?>(null)
 
     override fun onCreate(
         savedInstanceState: Bundle?
     ) {
 
-        super.onCreate(
-            savedInstanceState
-        )
+        super.onCreate(savedInstanceState)
 
-        // 地図上のピンが押されたとき
-        mapController.setOnToiletMarkerClickListener { toilet ->
-            selectedToilet = toilet
-        }
+        /*
+         * =====================================
+         * ViewModel
+         * =====================================
+         */
+        toiletViewModel =
+            ViewModelProvider(this)[
+                ToiletViewModel::class.java
+            ]
 
+        /*
+         * =====================================
+         * MapLibre
+         * =====================================
+         */
+        mapController =
+            MapLibreMapController(
+                activity = this,
+                savedInstanceState =
+                    savedInstanceState
+            )
+
+        /*
+         * =====================================
+         * 地図のトイレピンが押されたとき
+         * =====================================
+         */
+        mapController
+            .setOnToiletMarkerClickListener {
+                    toilet ->
+
+                selectedToiletId =
+                    toilet.id
+            }
+
+        /*
+         * =====================================
+         * Compose
+         * =====================================
+         */
         setContent {
 
             ToiletMapTheme {
 
+                /*
+                 * ViewModelのトイレ一覧を監視
+                 */
+                val toilets by
+                toiletViewModel
+                    .toilets
+                    .collectAsState()
+
+                /*
+                 * 選択されているトイレの
+                 * 最新データを取得
+                 */
+                val selectedToilet =
+                    toilets.firstOrNull {
+                            toilet ->
+
+                        toilet.id ==
+                                selectedToiletId
+                    }
+
+                /*
+                 * =====================================
+                 * トイレ一覧が更新されたら
+                 * 地図も更新
+                 * =====================================
+                 *
+                 * MapLibreMapController自身では
+                 * トイレデータを管理しない。
+                 */
+                LaunchedEffect(
+                    toilets
+                ) {
+
+                    mapController
+                        .showToilets(
+                            toilets
+                        )
+                }
+
+                /*
+                 * =====================================
+                 * アプリ本体
+                 * =====================================
+                 */
                 ToiletMapApp(
 
-                    mapView = mapController.mapView,
+                    mapView =
+                        mapController.mapView,
 
-                    selectedToilet = selectedToilet,
+                    selectedToilet =
+                        selectedToilet,
 
-                    // 詳細画面を閉じる
+                    /*
+                     * 詳細を閉じる
+                     */
                     onDismissSelectedToilet = {
-                        selectedToilet = null
+
+                        selectedToiletId =
+                            null
                     },
 
-                    // 清掃を依頼する
-                    onRequestCleaning = { toilet ->
+                    /*
+                     * =====================================
+                     * 清掃依頼
+                     * =====================================
+                     */
+                    onRequestCleaning = {
+                            toilet ->
 
-                        selectedToilet =
-                            mapController.requestCleaning(
+                        toiletViewModel
+                            .requestCleaning(
                                 toilet.id
                             )
                     },
 
-                    // 清掃済みにする
-                    onMarkCleaned = { toilet ->
+                    /*
+                     * =====================================
+                     * 清掃完了
+                     * =====================================
+                     */
+                    onMarkCleaned = {
+                            toilet ->
 
-                        selectedToilet =
-                            mapController.markCleaned(
+                        toiletViewModel
+                            .markCleaned(
                                 toilet.id
                             )
                     },
 
-                    // 新しいトイレを登録
-                    onAddToilet = { toilet ->
+                    /*
+                     * =====================================
+                     * 新しいトイレ登録
+                     * =====================================
+                     */
+                    onAddToilet = {
+                            toilet ->
 
-                        mapController.addToilet(
-                            toilet
-                        )
+                        /*
+                         * Repositoryへ追加
+                         */
+                        toiletViewModel
+                            .addToilet(
+                                toilet
+                            )
 
-                        // 登録直後にそのトイレを選択状態にする
-                        selectedToilet = toilet
+                        /*
+                         * 登録したトイレを選択状態にする
+                         */
+                        selectedToiletId =
+                            toilet.id
+
+                        /*
+                         * 登録した位置へ地図移動
+                         */
+                        mapController
+                            .focusOnToilet(
+                                toilet
+                            )
                     }
                 )
             }
         }
     }
 
-    override fun onSaveInstanceState(outState: Bundle) {
+    /*
+     * =====================================
+     * MapView状態保存
+     * =====================================
+     */
+    override fun onSaveInstanceState(
+        outState: Bundle
+    ) {
 
-        mapController.onSaveInstanceState(
-            outState
-        )
+        mapController
+            .onSaveInstanceState(
+                outState
+            )
 
         super.onSaveInstanceState(
             outState
         )
     }
-
 
     /*
      * =====================================
@@ -111,6 +232,7 @@ class MainActivity : ComponentActivity() {
 
         super.onLowMemory()
 
-        mapController.onLowMemory()
+        mapController
+            .onLowMemory()
     }
 }

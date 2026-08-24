@@ -11,8 +11,6 @@ class ToiletViewModel : ViewModel() {
      * =====================================
      * Repository
      * =====================================
-     *
-     * データ管理はRepositoryへ任せる
      */
     private val repository =
         ToiletRepository()
@@ -23,10 +21,11 @@ class ToiletViewModel : ViewModel() {
      * トイレ一覧
      * =====================================
      *
-     * Repositoryが持っている一覧を
-     * ViewModelから画面側へ公開する
+     * Repositoryのデータを
+     * UI側へ公開する。
      */
-    val toilets: StateFlow<List<Toilet>> =
+    val toilets:
+            StateFlow<List<Toilet>> =
         repository.toilets
 
 
@@ -39,8 +38,41 @@ class ToiletViewModel : ViewModel() {
         toilet: Toilet
     ) {
 
-        repository.addToilet(
-            toilet
-        )
+        repository
+            .addToilet(
+                toilet
+            )
+    }
+
+
+    /*
+     * =====================================
+     * 清掃依頼
+     * =====================================
+     */
+    fun requestCleaning(
+        toiletId: String
+    ) {
+
+        repository
+            .requestCleaning(
+                toiletId
+            )
+    }
+
+
+    /*
+     * =====================================
+     * 清掃完了
+     * =====================================
+     */
+    fun markCleaned(
+        toiletId: String
+    ) {
+
+        repository
+            .markCleaned(
+                toiletId
+            )
     }
 }
