@@ -15,7 +15,7 @@ import com.example.toiletmap.model.Toilet
 import com.example.toiletmap.screen.account.AccountScreen
 import com.example.toiletmap.screen.map.MapScreen
 import com.example.toiletmap.ui.components.BottomNavigationBar
-import com.example.toiletmap.ui.screen.AddToiletScreen
+import com.example.toiletmap.screen.add.AddToiletScreen
 import org.maplibre.android.maps.MapView
 
 @Composable

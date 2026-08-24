@@ -2,7 +2,7 @@ package com.example.toiletmap.viewmodel
 
 import androidx.lifecycle.ViewModel
 import com.example.toiletmap.model.Toilet
-import com.example.toiletmap.repository.ToiletRepository
+import com.example.toiletmap.data.repository.ToiletRepository
 import kotlinx.coroutines.flow.StateFlow
 
 class ToiletViewModel : ViewModel() {
