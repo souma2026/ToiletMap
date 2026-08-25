@@ -127,6 +127,46 @@ class MapLibreMapController(
 
     /*
      * =====================================
+     * 地図準備完了
+     * =====================================
+     */
+    private var onMapReady:
+            (() -> Unit)? =
+        null
+
+
+    private var isMapReady =
+        false
+
+
+    /*
+     * =====================================
+     * 表示範囲変更
+     * =====================================
+     *
+     * south / north / west / east
+     * をMainActivityへ通知する。
+     */
+    private var onVisibleBoundsChanged:
+            ((Double, Double, Double, Double) -> Unit)? =
+        null
+
+
+    companion object {
+
+        const val TOKYO_METROPOLITAN_GOVERNMENT_LATITUDE =
+            35.6896
+
+        const val TOKYO_METROPOLITAN_GOVERNMENT_LONGITUDE =
+            139.6917
+
+        const val DEFAULT_ZOOM =
+            15.0
+    }
+
+
+    /*
+     * =====================================
      * 初期化
      * =====================================
      */
@@ -233,6 +273,54 @@ class MapLibreMapController(
 
     /*
      * =====================================
+     * 地図準備完了イベント登録
+     * =====================================
+     */
+    fun setOnMapReadyListener(
+        listener: (() -> Unit)?
+    ) {
+
+        onMapReady =
+            listener
+
+        if (
+            listener != null &&
+            isMapReady
+        ) {
+
+            mapView.post {
+                listener()
+            }
+        }
+    }
+
+
+    /*
+     * =====================================
+     * 表示範囲変更イベント登録
+     * =====================================
+     */
+    fun setOnVisibleBoundsChangedListener(
+        listener: ((Double, Double, Double, Double) -> Unit)?
+    ) {
+
+        onVisibleBoundsChanged =
+            listener
+
+        if (
+            listener != null &&
+            isMapReady
+        ) {
+
+            mapView.post {
+                notifyVisibleBoundsChanged()
+            }
+        }
+    }
+
+
+    /*
+     * =====================================
      * 地図設定
      * =====================================
      */
@@ -247,6 +335,19 @@ class MapLibreMapController(
              */
             mapLibreMap =
                 map
+
+
+            /*
+             * =====================================
+             * カメラ移動完了
+             * =====================================
+             *
+             * 指で地図を動かしている最中ではなく、
+             * 完全に停止した時だけ表示範囲を通知する。
+             */
+            map.addOnCameraIdleListener {
+                notifyVisibleBoundsChanged()
+            }
 
 
             /*
@@ -358,28 +459,10 @@ class MapLibreMapController(
                  * 初期位置
                  * =====================================
                  *
-                 * 東京駅
+                 * 位置情報が使えない場合の基準地点として
+                 * 東京都庁を表示する。
                  */
-                map.cameraPosition =
-
-                    CameraPosition
-                        .Builder()
-
-                        .target(
-
-                            LatLng(
-
-                                35.681236,
-
-                                139.767125
-                            )
-                        )
-
-                        .zoom(
-                            14.0
-                        )
-
-                        .build()
+                focusOnTokyoMetropolitanGovernment()
 
 
                 /*
@@ -388,8 +471,112 @@ class MapLibreMapController(
                  * 地図へ表示
                  */
                 renderLatestToilets()
+
+
+                /*
+                 * 地図が利用可能になったことを通知。
+                 * MainActivity側では、位置情報権限がすでに
+                 * 許可されている場合だけ現在地取得を試す。
+                 */
+                isMapReady =
+                    true
+
+                onMapReady
+                    ?.invoke()
             }
         }
+    }
+
+
+    /*
+     * =====================================
+     * 現在の表示範囲をMainActivityへ通知
+     * =====================================
+     */
+    private fun notifyVisibleBoundsChanged() {
+
+        if (
+            !isMapReady ||
+            !isStyleLoaded
+        ) {
+            return
+        }
+
+        val listener =
+            onVisibleBoundsChanged
+                ?: return
+
+        val map =
+            mapLibreMap
+                ?: return
+
+        val bounds =
+            map.projection
+                .visibleRegion
+                .latLngBounds
+
+        val south =
+            bounds.latitudeSouth
+
+        val north =
+            bounds.latitudeNorth
+
+        val west =
+            bounds.longitudeWest
+
+        val east =
+            bounds.longitudeEast
+
+        if (
+            !south.isFinite() ||
+            !north.isFinite() ||
+            !west.isFinite() ||
+            !east.isFinite() ||
+            south >= north ||
+            west >= east
+        ) {
+            return
+        }
+
+        listener(
+            south,
+            north,
+            west,
+            east
+        )
+    }
+
+
+    /*
+     * =====================================
+     * 東京都庁へカメラ移動
+     * =====================================
+     */
+    fun focusOnTokyoMetropolitanGovernment() {
+
+        val map =
+            mapLibreMap
+                ?: return
+
+        if (
+            !isStyleLoaded
+        ) {
+            return
+        }
+
+        map.cameraPosition =
+            CameraPosition
+                .Builder()
+                .target(
+                    LatLng(
+                        TOKYO_METROPOLITAN_GOVERNMENT_LATITUDE,
+                        TOKYO_METROPOLITAN_GOVERNMENT_LONGITUDE
+                    )
+                )
+                .zoom(
+                    DEFAULT_ZOOM
+                )
+                .build()
     }
 
 

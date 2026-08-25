@@ -82,10 +82,14 @@ class MainActivity : ComponentActivity() {
 
             } else {
 
+                mapController
+                    .focusOnTokyoMetropolitanGovernment()
+
+
                 Toast
                     .makeText(
                         this,
-                        "現在地を表示するには位置情報の許可が必要です",
+                        "位置情報を使用できないため東京都庁を表示します",
                         Toast.LENGTH_LONG
                     )
                     .show()
@@ -107,6 +111,18 @@ class MainActivity : ComponentActivity() {
     mutableStateOf<String?>(
         null
     )
+
+
+    /*
+     * =====================================
+     * 地図範囲取得開始済みか
+     * =====================================
+     *
+     * 初期位置が確定する前に東京都庁周辺を取得し、
+     * 直後に現在地周辺をもう一度取得する無駄を防ぐ。
+     */
+    private var viewportLoadingStarted =
+        false
 
 
     override fun onCreate(
@@ -163,6 +179,27 @@ class MainActivity : ComponentActivity() {
 
         /*
          * =====================================
+         * 地図の初期位置決定
+         * =====================================
+         *
+         * 位置情報権限がすでにある:
+         * → 現在地取得を試す
+         *
+         * 権限なし / 位置取得失敗:
+         * → 東京都庁
+         *
+         * 初期位置が確定してから、
+         * 表示範囲のトイレ取得を開始する。
+         */
+        mapController
+            .setOnMapReadyListener {
+
+                focusInitialMapLocation()
+            }
+
+
+        /*
+         * =====================================
          * 地図上のトイレピンを押した
          * =====================================
          */
@@ -196,6 +233,17 @@ class MainActivity : ComponentActivity() {
 
                 toiletViewModel
                     .toilets
+                    .collectAsState()
+
+
+                /*
+                 * 地図の表示範囲外でも、清掃依頼一覧などで
+                 * 必要なトイレだけ別途保持する。
+                 */
+                val supplementalToilets by
+
+                toiletViewModel
+                    .supplementalToilets
                     .collectAsState()
 
 
@@ -343,12 +391,31 @@ class MainActivity : ComponentActivity() {
 
                 /*
                  * =====================================
+                 * UIで参照できるトイレ一覧
+                 * =====================================
+                 *
+                 * ・現在の地図範囲
+                 * ・清掃依頼などでID指定取得した分
+                 *
+                 * を重複なしでまとめる。
+                 * 地図描画そのものには toilets だけを使う。
+                 */
+                val knownToilets =
+
+                    (toilets + supplementalToilets)
+                        .distinctBy {
+                            it.id
+                        }
+
+
+                /*
+                 * =====================================
                  * 現在選択中のトイレ
                  * =====================================
                  */
                 val selectedToilet =
 
-                    toilets
+                    knownToilets
                         .firstOrNull {
                                 toilet ->
 
@@ -378,7 +445,7 @@ class MainActivity : ComponentActivity() {
                  */
                 val uncleanedToilets =
 
-                    toilets
+                    knownToilets
                         .filter {
                                 toilet ->
 
@@ -463,6 +530,23 @@ class MainActivity : ComponentActivity() {
                     cleaningRequests
                 ) {
 
+                    /*
+                     * 地図範囲外の清掃対象でも一覧から確認できるよう、
+                     * 必要なIDだけ追加取得する。
+                     */
+                    toiletViewModel
+                        .loadSupplementalToilets(
+                            cleaningRequests
+                                .map {
+                                    it.toiletId
+                                }
+                        )
+
+
+                    /*
+                     * 現在表示している地図範囲も再取得し、
+                     * cleaning_status の変化を反映する。
+                     */
                     toiletViewModel
                         .loadToilets()
                 }
@@ -488,7 +572,7 @@ class MainActivity : ComponentActivity() {
                      * =====================================
                      */
                     toilets =
-                        toilets,
+                        knownToilets,
 
 
                     /*
@@ -550,7 +634,7 @@ class MainActivity : ComponentActivity() {
 
 
                         val toilet =
-                            toilets
+                            knownToilets
                                 .firstOrNull {
                                     it.id ==
                                             uncleanedToilet.id
@@ -676,7 +760,7 @@ class MainActivity : ComponentActivity() {
 
 
                         val toilet =
-                            toilets
+                            knownToilets
                                 .firstOrNull {
                                     it.id == toiletId
                                 }
@@ -793,6 +877,100 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+
+    /*
+     * =====================================
+     * 初期表示位置を決定
+     * =====================================
+     *
+     * 起動時には位置情報の権限ダイアログを勝手に出さない。
+     * すでに権限がある場合だけ現在地取得を試す。
+     *
+     * 権限がない、位置情報OFF、取得できない場合は
+     * 東京都庁を使用する。
+     */
+    private fun focusInitialMapLocation() {
+
+        val fineGranted =
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+        val coarseGranted =
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+
+        if (
+            fineGranted ||
+            coarseGranted
+        ) {
+
+            mapController
+                .showCurrentLocation(
+
+                    onSuccess = {
+
+                        startViewportLoading()
+                    },
+
+                    onError = {
+
+                        mapController
+                            .focusOnTokyoMetropolitanGovernment()
+
+                        startViewportLoading()
+                    }
+                )
+
+        } else {
+
+            mapController
+                .focusOnTokyoMetropolitanGovernment()
+
+            startViewportLoading()
+        }
+    }
+
+
+    /*
+     * =====================================
+     * 表示範囲に応じたトイレ取得を開始
+     * =====================================
+     */
+    private fun startViewportLoading() {
+
+        if (
+            viewportLoadingStarted
+        ) {
+            return
+        }
+
+
+        viewportLoadingStarted =
+            true
+
+
+        mapController
+            .setOnVisibleBoundsChangedListener {
+                    south,
+                    north,
+                    west,
+                    east ->
+
+                toiletViewModel
+                    .onVisibleBoundsChanged(
+                        south = south,
+                        north = north,
+                        west = west,
+                        east = east
+                    )
+            }
     }
 
 
