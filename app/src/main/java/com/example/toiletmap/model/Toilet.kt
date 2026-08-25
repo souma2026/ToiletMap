@@ -106,6 +106,28 @@ data class Toilet(
 
     /*
      * =====================================
+     * 清掃依頼で支払われた報酬ポイント
+     * =====================================
+     */
+    @SerialName("cleaning_reward_points")
+    val cleaningRewardPoints:
+    Int =
+        0,
+
+
+    /*
+     * =====================================
+     * 清掃依頼を出したユーザーID
+     * =====================================
+     */
+    @SerialName("cleaning_requested_by")
+    val cleaningRequestedBy:
+    String? =
+        null,
+
+
+    /*
+     * =====================================
      * 登録したユーザーID
      *
      * Supabase AuthのUUID

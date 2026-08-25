@@ -1,6 +1,7 @@
 package com.example.toiletmap
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
@@ -129,6 +130,36 @@ class MainActivity : ComponentActivity() {
                     .collectAsState()
 
 
+                val errorMessage by
+
+                toiletViewModel
+                    .errorMessage
+                    .collectAsState()
+
+
+                LaunchedEffect(
+                    errorMessage
+                ) {
+
+                    val message =
+                        errorMessage
+                            ?: return@LaunchedEffect
+
+
+                    Toast
+                        .makeText(
+                            this@MainActivity,
+                            message,
+                            Toast.LENGTH_LONG
+                        )
+                        .show()
+
+
+                    toiletViewModel
+                        .clearErrorMessage()
+                }
+
+
                 /*
                  * =====================================
                  * 現在選択中のトイレ
@@ -180,7 +211,10 @@ class MainActivity : ComponentActivity() {
                                     toilet.longitude,
 
                                 lastCleanedAtMillis =
-                                    toilet.lastCleanedAtMillis
+                                    toilet.lastCleanedAtMillis,
+
+                                rewardPoints =
+                                    toilet.cleaningRewardPoints
                             )
                         }
 
@@ -284,12 +318,14 @@ class MainActivity : ComponentActivity() {
                      * =====================================
                      */
                     onRequestCleaning = {
-                            toilet ->
+                            toilet,
+                            rewardPoints ->
 
 
                         toiletViewModel
                             .requestCleaning(
-                                toilet.id
+                                toiletId = toilet.id,
+                                rewardPoints = rewardPoints
                             )
                     },
 

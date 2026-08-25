@@ -1,14 +1,16 @@
 package com.example.toiletmap.data.repository
 
 import com.example.toiletmap.data.supabase.SupabaseClientProvider
-import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.model.Toilet
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 
 /*
@@ -190,13 +192,36 @@ class ToiletRepository {
      * =====================================
      * 清掃を依頼する
      * =====================================
+     *
+     * SupabaseのRPC内で、
+     * 1. 依頼者のポイントを減らす
+     * 2. トイレを清掃待ちへ変更する
+     * 3. 報酬ポイントを保存する
+     *
+     * を1つのトランザクションとして実行する。
      */
     suspend fun requestCleaning(
-        toiletId: String
+        toiletId: String,
+        rewardPoints: Int
     ) {
 
         /*
+         * =====================================
+         * ポイントの入力チェック
+         * =====================================
+         */
+        if (rewardPoints !in 1..10_000) {
+
+            throw IllegalArgumentException(
+                "支払うポイントは1～10000ptで指定してください"
+            )
+        }
+
+
+        /*
+         * =====================================
          * ログイン確認
+         * =====================================
          */
         supabase
             .auth
@@ -208,37 +233,53 @@ class ToiletRepository {
 
         /*
          * =====================================
-         * NORMAL
-         * ↓
-         * REQUESTED
+         * RPCへ渡すJSONを作成
          * =====================================
+         *
+         * Supabase側の関数
+         *
+         * request_cleaning_with_points(
+         *     p_toilet_id,
+         *     p_reward_points
+         * )
+         *
+         * に合わせている。
          */
-        supabase
-            .from("toilets")
-            .update(
-                {
+        val parameters =
+            buildJsonObject {
 
-                    set(
-                        "cleaning_status",
-                        CleaningStatus
-                            .REQUESTED
-                            .name
-                    )
-                }
-            ) {
+                put(
+                    "p_toilet_id",
+                    toiletId
+                )
 
-                filter {
-
-                    eq(
-                        "id",
-                        toiletId
-                    )
-                }
+                put(
+                    "p_reward_points",
+                    rewardPoints
+                )
             }
 
 
         /*
-         * 更新後の最新データ取得
+         * =====================================
+         * Supabase RPC実行
+         * =====================================
+         */
+        supabase
+            .postgrest
+            .rpc(
+                function =
+                    "request_cleaning_with_points",
+
+                parameters =
+                    parameters
+            )
+
+
+        /*
+         * =====================================
+         * 最新状態を再取得
+         * =====================================
          */
         loadToilets()
     }
@@ -248,13 +289,24 @@ class ToiletRepository {
      * =====================================
      * 「清掃しました」
      * =====================================
+     *
+     * SupabaseのRPC内で、
+     *
+     * 1. 清掃者へ報酬ポイントを加算する
+     * 2. トイレを通常状態へ戻す
+     * 3. 清掃時刻を更新する
+     * 4. 使用済み報酬を0へ戻す
+     *
+     * を1つのトランザクションとして実行する。
      */
     suspend fun markCleaned(
         toiletId: String
     ) {
 
         /*
+         * =====================================
          * ログイン確認
+         * =====================================
          */
         supabase
             .auth
@@ -265,53 +317,48 @@ class ToiletRepository {
 
 
         /*
-         * 現在時刻
-         */
-        val now =
-            System.currentTimeMillis()
-
-
-        /*
          * =====================================
-         * REQUESTED
-         * ↓
-         * NORMAL
+         * RPCへ渡すJSONを作成
+         * =====================================
          *
-         * 前回清掃時間も更新
-         * =====================================
+         * Supabase側の関数
+         *
+         * mark_toilet_cleaned_with_points(
+         *     p_toilet_id
+         * )
+         *
+         * に合わせている。
          */
-        supabase
-            .from("toilets")
-            .update(
-                {
+        val parameters =
+            buildJsonObject {
 
-                    set(
-                        "cleaning_status",
-                        CleaningStatus
-                            .NORMAL
-                            .name
-                    )
-
-
-                    set(
-                        "last_cleaned_at_millis",
-                        now
-                    )
-                }
-            ) {
-
-                filter {
-
-                    eq(
-                        "id",
-                        toiletId
-                    )
-                }
+                put(
+                    "p_toilet_id",
+                    toiletId
+                )
             }
 
 
         /*
-         * 更新後の最新データ取得
+         * =====================================
+         * Supabase RPC実行
+         * =====================================
+         */
+        supabase
+            .postgrest
+            .rpc(
+                function =
+                    "mark_toilet_cleaned_with_points",
+
+                parameters =
+                    parameters
+            )
+
+
+        /*
+         * =====================================
+         * 最新状態を再取得
+         * =====================================
          */
         loadToilets()
     }

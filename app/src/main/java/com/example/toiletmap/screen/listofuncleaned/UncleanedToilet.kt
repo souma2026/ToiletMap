@@ -16,5 +16,7 @@ data class UncleanedToilet(
 
     val longitude: Double,
 
-    val lastCleanedAtMillis: Long? = null
+    val lastCleanedAtMillis: Long? = null,
+
+    val rewardPoints: Int = 0
 )
