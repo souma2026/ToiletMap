@@ -29,15 +29,10 @@ class ToiletViewModel : ViewModel() {
      * 自動更新の間隔
      * =====================================
      *
-     * 10秒
+     * 1時間
      *
-     * 変更したい場合は
-     *
-     * 5秒  -> 5_000L
-     * 10秒 -> 10_000L
-     * 30秒 -> 30_000L
-     *
-     * のように変更可能
+     * Supabaseへの定期アクセスを抑えるため、
+     * 最新リポジトリの方針に合わせている。
      */
     companion object {
 
@@ -116,7 +111,7 @@ class ToiletViewModel : ViewModel() {
      * 自動更新開始
      * =====================================
      *
-     * 10秒ごとに
+     * 1時間ごとに
      * Supabaseから最新状態を取得する
      */
     private fun startAutoRefresh() {
@@ -147,7 +142,7 @@ class ToiletViewModel : ViewModel() {
                 ) {
 
                     /*
-                     * 10秒待つ
+                     * 1時間待つ
                      */
                     delay(
                         AUTO_REFRESH_INTERVAL_MS
@@ -172,7 +167,7 @@ class ToiletViewModel : ViewModel() {
      * 通信が一時的に失敗しても
      * アプリを止めない。
      *
-     * 次の10秒後に
+     * 次の定期更新時に
      * また取得を試す。
      */
     private suspend fun refreshToiletsSilently() {
@@ -274,122 +269,6 @@ class ToiletViewModel : ViewModel() {
 
                     e.message
                         ?: "トイレの登録に失敗しました"
-            }
-        }
-    }
-
-
-    /*
-     * =====================================
-     * 清掃依頼
-     * =====================================
-     */
-    fun requestCleaning(
-        toiletId: String,
-        rewardPoints: Int
-    ) {
-
-        viewModelScope.launch {
-
-            try {
-
-                repository
-                    .requestCleaning(
-                        toiletId = toiletId,
-                        rewardPoints = rewardPoints
-                    )
-
-
-                _errorMessage.value =
-                    null
-
-            } catch (
-                e: Exception
-            ) {
-
-                e.printStackTrace()
-
-
-                _errorMessage.value =
-
-                    e.message
-                        ?: "清掃依頼に失敗しました"
-            }
-        }
-    }
-
-
-    /*
-     * =====================================
-     * 清掃完了
-     * =====================================
-     */
-    fun markCleaned(
-        toiletId: String
-    ) {
-
-        viewModelScope.launch {
-
-            try {
-
-                repository
-                    .markCleaned(
-                        toiletId
-                    )
-
-
-                _errorMessage.value =
-                    null
-
-            } catch (
-                e: Exception
-            ) {
-
-                e.printStackTrace()
-
-
-                _errorMessage.value =
-
-                    e.message
-                        ?: "清掃状態の更新に失敗しました"
-            }
-        }
-    }
-
-
-    /*
-     * =====================================
-     * トイレ削除
-     * =====================================
-     */
-    fun deleteToilet(
-        toiletId: String,
-        onDeleted: () -> Unit = {}
-    ) {
-
-        viewModelScope.launch {
-
-            try {
-
-                repository
-                    .deleteToilet(
-                        toiletId
-                    )
-
-                _errorMessage.value =
-                    null
-
-                onDeleted()
-
-            } catch (
-                e: Exception
-            ) {
-
-                e.printStackTrace()
-
-                _errorMessage.value =
-                    e.message
-                        ?: "トイレの削除に失敗しました"
             }
         }
     }
