@@ -583,6 +583,41 @@ fun ProfileScreen(
                     profile?.points
                         ?: 0,
 
+                title =
+                    "所持ポイント",
+
+                modifier =
+                    Modifier.padding(
+                        horizontal = 24.dp
+                    )
+            )
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(12.dp)
+            )
+
+
+            /*
+             * =====================================
+             * 清掃報酬ポイント
+             * =====================================
+             *
+             * 第5段階で追加。
+             * 清掃完了時にSupabase RPCから安全に加算される。
+             */
+            PointCard(
+                points =
+                    profile?.rewardPoints
+                        ?: 0,
+
+                title =
+                    "清掃報酬ポイント",
+
+                supportingText =
+                    "清掃を完了すると獲得できます",
+
                 modifier =
                     Modifier.padding(
                         horizontal = 24.dp
