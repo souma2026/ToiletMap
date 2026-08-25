@@ -82,6 +82,20 @@ import org.maplibre.android.maps.MapView
 
 /*
  * =====================================
+ * 端末の現在地取得状態
+ * =====================================
+ */
+enum class DeviceLocationStatus {
+    CHECKING,
+    AVAILABLE,
+    PERMISSION_DENIED,
+    DEVICE_LOCATION_OFF,
+    WAITING_FOR_SIGNAL
+}
+
+
+/*
+ * =====================================
  * 色
  * =====================================
  */
@@ -113,6 +127,13 @@ fun MapScreen(
      * 検索結果を選択
      */
     onSearchToiletSelected: (Toilet) -> Unit = {},
+
+    /*
+     * 端末の現在地取得状態
+     */
+    locationStatus:
+    DeviceLocationStatus =
+        DeviceLocationStatus.CHECKING,
 
     /*
      * 現在地
@@ -149,6 +170,10 @@ fun MapScreen(
      * 通知
      */
     var showNotificationDialog by remember {
+        mutableStateOf(false)
+    }
+
+    var showLocationStatusDialog by remember {
         mutableStateOf(false)
     }
 
@@ -390,8 +415,20 @@ fun MapScreen(
                     }
                 },
 
-                onCurrentLocation =
-                    onCurrentLocationClick,
+                locationStatus =
+                    locationStatus,
+
+                onCurrentLocation = {
+                    if (
+                        locationStatus !=
+                        DeviceLocationStatus.AVAILABLE
+                    ) {
+                        showLocationStatusDialog =
+                            true
+                    }
+
+                    onCurrentLocationClick()
+                },
 
                 modifier =
                     Modifier
@@ -488,6 +525,67 @@ fun MapScreen(
                 )
             }
         }
+    }
+
+
+    /*
+     * =====================================
+     * 現在地状態ダイアログ
+     * =====================================
+     */
+    if (
+        showLocationStatusDialog
+    ) {
+        val locationMessage =
+            when (
+                locationStatus
+            ) {
+                DeviceLocationStatus.CHECKING ->
+                    "現在地を確認しています。数秒待ってからもう一度お試しください。"
+
+                DeviceLocationStatus.AVAILABLE ->
+                    "現在地を正常に取得できています。"
+
+                DeviceLocationStatus.PERMISSION_DENIED ->
+                    "ToiletMapへの位置情報の許可がありません。現在地ボタンを押して、位置情報を許可してください。"
+
+                DeviceLocationStatus.DEVICE_LOCATION_OFF ->
+                    "スマホ本体の位置情報機能がOFFです。端末の設定から位置情報をONにしてください。Googleマップでも現在地が表示されない場合は、この状態の可能性が高いです。"
+
+                DeviceLocationStatus.WAITING_FOR_SIGNAL ->
+                    "スマホ本体の位置情報はONですが、現在地データを取得できていません。屋外などGPS信号を受信しやすい場所で試すか、端末の位置情報機能を一度OFF/ONしてください。エミュレータの場合は位置情報を設定してください。"
+            }
+
+        AlertDialog(
+            onDismissRequest = {
+                showLocationStatusDialog =
+                    false
+            },
+            title = {
+                Text(
+                    text = "現在地の状態",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = locationMessage
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLocationStatusDialog =
+                            false
+                    }
+                ) {
+                    Text(
+                        text = "閉じる",
+                        color = FinderGreen
+                    )
+                }
+            }
+        )
     }
 
 
@@ -1173,6 +1271,7 @@ private fun SearchResultItem(
 private fun MapControls(
     onZoomIn: () -> Unit,
     onZoomOut: () -> Unit,
+    locationStatus: DeviceLocationStatus,
     onCurrentLocation: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1192,51 +1291,116 @@ private fun MapControls(
 
         /*
          * 現在地
+         *
+         * 正常       : 緑
+         * 確認中     : グレー
+         * 権限なし   : 赤 + !
+         * 本体OFF    : 赤 + !
+         * 測位不能   : オレンジ + !
          */
-        Box(
-            modifier =
-                Modifier
-                    .size(52.dp)
-                    .shadow(
-                        7.dp,
-                        RoundedCornerShape(
-                            18.dp
-                        )
-                    )
-                    .clip(
-                        RoundedCornerShape(
-                            18.dp
-                        )
-                    )
-                    .background(
-                        Color.White
-                    )
-                    .clickable(
-                        onClick =
-                            onCurrentLocation
-                    ),
+        val locationIconColor =
+            when (
+                locationStatus
+            ) {
+                DeviceLocationStatus.AVAILABLE ->
+                    FinderGreen
 
-            contentAlignment =
-                Alignment.Center
-        ) {
+                DeviceLocationStatus.CHECKING ->
+                    Color(0xFF8A8A8A)
 
-            Icon(
-                imageVector =
-                    Icons
-                        .Outlined
-                        .LocationOn,
+                DeviceLocationStatus.PERMISSION_DENIED,
+                DeviceLocationStatus.DEVICE_LOCATION_OFF ->
+                    Color(0xFFD32F2F)
 
-                contentDescription =
-                    "現在地",
+                DeviceLocationStatus.WAITING_FOR_SIGNAL ->
+                    Color(0xFFF57C00)
+            }
 
-                tint =
-                    FinderGreen,
+        val showWarningBadge =
+            locationStatus == DeviceLocationStatus.PERMISSION_DENIED ||
+                    locationStatus == DeviceLocationStatus.DEVICE_LOCATION_OFF ||
+                    locationStatus == DeviceLocationStatus.WAITING_FOR_SIGNAL
 
+        val warningBadgeColor =
+            if (
+                locationStatus ==
+                DeviceLocationStatus.WAITING_FOR_SIGNAL
+            ) {
+                Color(0xFFF57C00)
+            } else {
+                Color(0xFFD32F2F)
+            }
+
+        Box {
+            Box(
                 modifier =
-                    Modifier.size(
-                        25.dp
-                    )
-            )
+                    Modifier
+                        .size(52.dp)
+                        .shadow(
+                            7.dp,
+                            RoundedCornerShape(18.dp)
+                        )
+                        .clip(
+                            RoundedCornerShape(18.dp)
+                        )
+                        .background(
+                            Color.White
+                        )
+                        .clickable(
+                            onClick = onCurrentLocation
+                        ),
+                contentAlignment =
+                    Alignment.Center
+            ) {
+                Icon(
+                    imageVector =
+                        Icons.Outlined.LocationOn,
+                    contentDescription =
+                        when (
+                            locationStatus
+                        ) {
+                            DeviceLocationStatus.AVAILABLE ->
+                                "現在地：正常"
+                            DeviceLocationStatus.CHECKING ->
+                                "現在地：確認中"
+                            DeviceLocationStatus.PERMISSION_DENIED ->
+                                "現在地：位置情報権限なし"
+                            DeviceLocationStatus.DEVICE_LOCATION_OFF ->
+                                "現在地：スマホ本体の位置情報OFF"
+                            DeviceLocationStatus.WAITING_FOR_SIGNAL ->
+                                "現在地：位置情報を取得できません"
+                        },
+                    tint =
+                        locationIconColor,
+                    modifier =
+                        Modifier.size(25.dp)
+                )
+            }
+
+            if (
+                showWarningBadge
+            ) {
+                Surface(
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .size(19.dp),
+                    shape = CircleShape,
+                    color = warningBadgeColor,
+                    shadowElevation = 2.dp
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "!",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
         }
 
 
