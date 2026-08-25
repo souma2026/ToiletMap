@@ -24,536 +24,177 @@ import com.example.toiletmap.screen.map.MapScreen
 import com.example.toiletmap.ui.components.BottomNavigationBar
 import org.maplibre.android.maps.MapView
 
-
 @Composable
 fun ToiletMapApp(
-
-    /*
-     * MapLibre
-     */
-    mapView:
-    MapView,
-
-
-    /*
-     * 全トイレ
-     *
-     * Supabaseから取得した一覧。
-     * 検索にも使用する。
-     */
-    toilets:
-    List<Toilet>,
-
-
-    /*
-     * 現在選択中のトイレ
-     */
-    selectedToilet:
-    Toilet?,
-
-
-    /*
-     * 清掃依頼中一覧
-     */
-    uncleanedToilets:
-    List<UncleanedToilet>,
-
-
-    /*
-     * 検索結果を選択
-     */
-    onSearchToiletSelected:
-        (Toilet) -> Unit,
-
-
-    /*
-     * 詳細を閉じる
-     */
-    onDismissSelectedToilet:
-        () -> Unit,
-
-
-    /*
-     * 清掃依頼
-     */
-    onRequestCleaning:
-        (Toilet) -> Unit,
-
-
-    /*
-     * 清掃完了
-     */
-    onMarkCleaned:
-        (Toilet) -> Unit,
-
-
-    /*
-     * トイレ追加
-     */
-    onAddToilet:
-        (Toilet) -> Unit,
-
-
-    /*
-     * 現在地
-     */
-    onCurrentLocationRequested:
-        () -> Unit
-
+    mapView: MapView,
+    toilets: List<Toilet>,
+    selectedToilet: Toilet?,
+    uncleanedToilets: List<UncleanedToilet>,
+    onShowUncleanedToiletOnMap: (UncleanedToilet) -> Unit,
+    onSearchToiletSelected: (Toilet) -> Unit,
+    onDismissSelectedToilet: () -> Unit,
+    onRequestCleaning: (Toilet) -> Unit,
+    onMarkCleaned: (Toilet) -> Unit,
+    onAddToilet: (Toilet) -> Unit,
+    onCurrentLocationRequested: () -> Unit
 ) {
-
-
     /*
-     * =====================================
-     * 画面番号
-     * =====================================
-     *
      * 0 = 未清掃一覧
-     * 1 = 状態更新
+     * 1 = レビュー・状態更新
      * 2 = Map
      * 3 = トイレ追加
      * 4 = アカウント
      */
-    var selectedScreen by
-    rememberSaveable {
-
-        mutableIntStateOf(
-            2
-        )
+    var selectedScreen by rememberSaveable {
+        mutableIntStateOf(2)
     }
 
-
-    /*
-     * =====================================
-     * トイレ追加画面
-     * =====================================
-     */
-    var toiletName by
-    rememberSaveable {
-
-        mutableStateOf(
-            ""
-        )
+    var toiletName by rememberSaveable {
+        mutableStateOf("")
     }
 
-
-    var cleanliness by
-    rememberSaveable {
-
-        mutableIntStateOf(
-            3
-        )
+    var cleanliness by rememberSaveable {
+        mutableIntStateOf(3)
     }
 
-
-    var comment by
-    rememberSaveable {
-
-        mutableStateOf(
-            ""
-        )
+    var comment by rememberSaveable {
+        mutableStateOf("")
     }
 
-
-    var selectedLatitude by
-    rememberSaveable {
-
-        mutableStateOf<Double?>(
-            null
-        )
+    var selectedLatitude by rememberSaveable {
+        mutableStateOf<Double?>(null)
     }
 
-
-    var selectedLongitude by
-    rememberSaveable {
-
-        mutableStateOf<Double?>(
-            null
-        )
+    var selectedLongitude by rememberSaveable {
+        mutableStateOf<Double?>(null)
     }
 
-
-    /*
-     * 地図からトイレ位置を
-     * 選んでいる途中か
-     */
-    var isSelectingLocation by
-    rememberSaveable {
-
-        mutableStateOf(
-            false
-        )
+    var isSelectingLocation by rememberSaveable {
+        mutableStateOf(false)
     }
-
 
     Scaffold(
-
         bottomBar = {
-
             BottomNavigationBar(
-
-                selectedScreen =
-                    selectedScreen,
-
-                onScreenSelected = {
-                        screen ->
-
-
-                    /*
-                     * Map以外へ移動したら
-                     * 場所選択を終了
-                     */
-                    if (
-                        screen != 2
-                    ) {
-
-                        isSelectingLocation =
-                            false
-
+                selectedScreen = selectedScreen,
+                onScreenSelected = { screen ->
+                    if (screen != 2) {
+                        isSelectingLocation = false
                         onDismissSelectedToilet()
                     }
 
-
-                    selectedScreen =
-                        screen
+                    selectedScreen = screen
                 }
             )
         }
-
-    ) {
-            innerPadding ->
-
-
+    ) { innerPadding ->
         Box(
-
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(
-                        innerPadding
-                    )
-
+                    .padding(innerPadding)
         ) {
-
-
-            when (
-                selectedScreen
-            ) {
-
-
-                /*
-                 * =====================================
-                 * 未清掃一覧
-                 * =====================================
-                 */
+            when (selectedScreen) {
+                /* 未清掃一覧 */
                 0 -> {
-
                     ListOfUncleanedScreen(
+                        toilets = uncleanedToilets,
+                        onShowOnMap = { uncleanedToilet ->
+                            isSelectingLocation = false
 
-                        toilets =
-                            uncleanedToilets
-                    )
-                }
+                            /* 古い選択状態を消してから対象を選択する。 */
+                            onDismissSelectedToilet()
 
+                            /* Map画面へ戻す。 */
+                            selectedScreen = 2
 
-                /*
-                 * =====================================
-                 * 状態更新
-                 * =====================================
-                 */
-                1 -> {
-
-                    StatusPlaceholderScreen()
-                }
-
-
-                /*
-                 * =====================================
-                 * Map
-                 * =====================================
-                 */
-                2 -> {
-
-                    MapScreen(
-
-                        mapView =
-                            mapView,
-
-
-                        /*
-                         * 検索対象
-                         */
-                        toilets =
-                            toilets,
-
-
-                        /*
-                         * 検索結果選択
-                         */
-                        onSearchToiletSelected =
-                            onSearchToiletSelected,
-
-
-                        /*
-                         * 現在地
-                         */
-                        onCurrentLocationClick =
-                            onCurrentLocationRequested,
-
-
-                        /*
-                         * 場所選択中
-                         */
-                        isSelectingLocation =
-                            isSelectingLocation,
-
-
-                        /*
-                         * 現在選択中のトイレ
-                         */
-                        selectedToilet =
-                            selectedToilet,
-
-
-                        /*
-                         * 詳細を閉じる
-                         */
-                        onDismissSelectedToilet =
-                            onDismissSelectedToilet,
-
-
-                        /*
-                         * 清掃依頼
-                         */
-                        onRequestCleaning =
-                            onRequestCleaning,
-
-
-                        /*
-                         * 清掃完了
-                         */
-                        onMarkCleaned =
-                            onMarkCleaned,
-
-
-                        /*
-                         * =====================================
-                         * 地図をタップして位置選択
-                         * =====================================
-                         */
-                        onLocationSelected = {
-                                latitude,
-                                longitude ->
-
-
-                            selectedLatitude =
-                                latitude
-
-                            selectedLongitude =
-                                longitude
-
-
-                            isSelectingLocation =
-                                false
-
-
-                            /*
-                             * トイレ追加画面へ戻る
-                             */
-                            selectedScreen =
-                                3
-                        },
-
-
-                        /*
-                         * 場所選択キャンセル
-                         */
-                        onCancelLocationSelection = {
-
-                            isSelectingLocation =
-                                false
-
-                            selectedScreen =
-                                3
+                            /* MainActivity側で対象を選択して地図を移動する。 */
+                            onShowUncleanedToiletOnMap(uncleanedToilet)
                         }
                     )
                 }
 
+                /* レビュー・状態更新。現在は仮画面。 */
+                1 -> {
+                    StatusPlaceholderScreen()
+                }
 
-                /*
-                 * =====================================
-                 * トイレ追加
-                 * =====================================
-                 */
+                /* Map */
+                2 -> {
+                    MapScreen(
+                        mapView = mapView,
+                        toilets = toilets,
+                        onSearchToiletSelected = onSearchToiletSelected,
+                        onCurrentLocationClick = onCurrentLocationRequested,
+                        isSelectingLocation = isSelectingLocation,
+                        selectedToilet = selectedToilet,
+                        onDismissSelectedToilet = onDismissSelectedToilet,
+                        onRequestCleaning = onRequestCleaning,
+                        onMarkCleaned = onMarkCleaned,
+                        onLocationSelected = { latitude, longitude ->
+                            selectedLatitude = latitude
+                            selectedLongitude = longitude
+                            isSelectingLocation = false
+                            selectedScreen = 3
+                        },
+                        onCancelLocationSelection = {
+                            isSelectingLocation = false
+                            selectedScreen = 3
+                        }
+                    )
+                }
+
+                /* トイレ追加 */
                 3 -> {
-
                     AddToiletScreen(
-
-                        toiletName =
-                            toiletName,
-
-                        cleanliness =
-                            cleanliness,
-
-                        comment =
-                            comment,
-
-                        latitude =
-                            selectedLatitude,
-
-                        longitude =
-                            selectedLongitude,
-
-
-                        /*
-                         * 名前
-                         */
-                        onToiletNameChange = {
-
-                            toiletName =
-                                it
+                        toiletName = toiletName,
+                        cleanliness = cleanliness,
+                        comment = comment,
+                        latitude = selectedLatitude,
+                        longitude = selectedLongitude,
+                        onToiletNameChange = { value ->
+                            toiletName = value
                         },
-
-
-                        /*
-                         * 清潔度
-                         */
-                        onCleanlinessChange = {
-
-                            cleanliness =
-                                it
+                        onCleanlinessChange = { value ->
+                            cleanliness = value
                         },
-
-
-                        /*
-                         * コメント
-                         */
-                        onCommentChange = {
-
-                            comment =
-                                it
+                        onCommentChange = { value ->
+                            comment = value
                         },
-
-
-                        /*
-                         * =====================================
-                         * 地図から場所を選択
-                         * =====================================
-                         */
                         onSelectLocation = {
-
-                            /*
-                             * 既存詳細を閉じる
-                             */
                             onDismissSelectedToilet()
-
-
-                            isSelectingLocation =
-                                true
-
-
-                            /*
-                             * Mapへ移動
-                             */
-                            selectedScreen =
-                                2
+                            isSelectingLocation = true
+                            selectedScreen = 2
                         },
-
-
-                        /*
-                         * =====================================
-                         * 登録
-                         * =====================================
-                         */
                         onAddToilet = {
+                            val latitude = selectedLatitude
+                            val longitude = selectedLongitude
 
-
-                            val latitude =
-                                selectedLatitude
-
-
-                            val longitude =
-                                selectedLongitude
-
-
-                            /*
-                             * 場所が選択されている場合のみ
-                             * 登録
-                             */
-                            if (
-                                latitude != null &&
-                                longitude != null
-                            ) {
-
-
+                            if (latitude != null && longitude != null) {
                                 val toilet =
-
                                     Toilet(
-
-                                        name =
-                                            toiletName
-                                                .trim(),
-
-                                        latitude =
-                                            latitude,
-
-                                        longitude =
-                                            longitude,
-
-                                        cleanliness =
-                                            cleanliness,
-
-                                        comment =
-                                            comment
-                                                .trim()
+                                        name = toiletName.trim(),
+                                        latitude = latitude,
+                                        longitude = longitude,
+                                        cleanliness = cleanliness,
+                                        comment = comment.trim()
                                     )
 
+                                onAddToilet(toilet)
 
-                                /*
-                                 * MainActivityへ渡す
-                                 */
-                                onAddToilet(
-                                    toilet
-                                )
-
-
-                                /*
-                                 * 入力内容をリセット
-                                 */
-                                toiletName =
-                                    ""
-
-                                cleanliness =
-                                    3
-
-                                comment =
-                                    ""
-
-                                selectedLatitude =
-                                    null
-
-                                selectedLongitude =
-                                    null
-
-
-                                /*
-                                 * Mapへ戻る
-                                 */
-                                selectedScreen =
-                                    2
+                                toiletName = ""
+                                cleanliness = 3
+                                comment = ""
+                                selectedLatitude = null
+                                selectedLongitude = null
+                                selectedScreen = 2
                             }
                         }
                     )
                 }
 
-
-                /*
-                 * =====================================
-                 * アカウント
-                 * =====================================
-                 */
+                /* アカウント */
                 4 -> {
-
                     AccountScreen()
                 }
             }
@@ -561,38 +202,16 @@ fun ToiletMapApp(
     }
 }
 
-
-/*
- * =====================================
- * 仮の状態更新画面
- * =====================================
- */
 @Composable
 private fun StatusPlaceholderScreen() {
-
     Box(
-
-        modifier =
-            Modifier
-                .fillMaxSize(),
-
-        contentAlignment =
-            Alignment.Center
-
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-
         Text(
-
-            text =
-                "トイレのレビュー・状態更新\n\nこの画面は後で実装します",
-
-            textAlign =
-                TextAlign.Center,
-
-            style =
-                MaterialTheme
-                    .typography
-                    .titleMedium
+            text = "トイレのレビュー・状態更新\n\nこの画面は後で実装します",
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.titleMedium
         )
     }
 }
