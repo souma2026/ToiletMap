@@ -479,8 +479,11 @@ fun MapScreen(
                         currentUserId,
 
                     isActionInProgress =
-                        cleaningActionRequestId == selectedToilet.id ||
-                                cleaningActionRequestId == cleaningRequest?.id,
+                        cleaningActionRequestId != null &&
+                                (
+                                        cleaningActionRequestId == selectedToilet.id ||
+                                                cleaningActionRequestId == cleaningRequest?.id
+                                        ),
 
                     onDismiss =
                         onDismissSelectedToilet,
