@@ -81,6 +81,15 @@ class ReviewRepository {
     ) {
 
         /*
+         * 端末に保存されているログイン状態の
+         * 復元完了を待つ。
+         */
+        supabase
+            .auth
+            .awaitInitialization()
+
+
+        /*
          * ログインしているか確認
          */
         supabase

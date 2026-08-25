@@ -17,11 +17,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import com.example.toiletmap.model.Toilet
+import com.example.toiletmap.model.ToiletReview
 import com.example.toiletmap.screen.account.AccountScreen
 import com.example.toiletmap.screen.add.AddToiletScreen
 import com.example.toiletmap.screen.listofuncleaned.ListOfUncleanedScreen
 import com.example.toiletmap.screen.listofuncleaned.UncleanedToilet
 import com.example.toiletmap.screen.map.MapScreen
+import com.example.toiletmap.screen.review.ReviewDialog
 import com.example.toiletmap.ui.components.BottomNavigationBar
 import org.maplibre.android.maps.MapView
 
@@ -61,6 +63,32 @@ fun ToiletMapApp(
 
 
     /*
+     * 選択中トイレの口コミ状態
+     */
+    reviews:
+    List<ToiletReview>,
+
+    isLoadingReviews:
+    Boolean,
+
+    isPostingReview:
+    Boolean,
+
+    reviewErrorMessage:
+    String?,
+
+    reviewSuccessMessage:
+    String?,
+
+
+    /*
+     * 未清掃一覧から地図を開く
+     */
+    onShowUncleanedToiletOnMap:
+        (UncleanedToilet) -> Unit,
+
+
+    /*
      * 検索結果を選択
      */
     onSearchToiletSelected:
@@ -86,6 +114,31 @@ fun ToiletMapApp(
      */
     onMarkCleaned:
         (Toilet) -> Unit,
+
+
+    /*
+     * 口コミ一覧取得
+     */
+    onLoadReviews:
+        (String) -> Unit,
+
+
+    /*
+     * 口コミ投稿
+     */
+    onSubmitReview:
+        (
+            String,
+            Int,
+            String
+        ) -> Unit,
+
+
+    /*
+     * 口コミメッセージを消す
+     */
+    onClearReviewMessages:
+        () -> Unit,
 
 
     /*
@@ -207,6 +260,33 @@ fun ToiletMapApp(
     }
 
 
+    /*
+     * 口コミ投稿画面を表示しているか
+     */
+    var showReviewDialog by
+    rememberSaveable {
+
+        mutableStateOf(
+            false
+        )
+    }
+
+
+    /*
+     * 別のトイレを選んだ場合は、
+     * 前のトイレの口コミ画面を閉じる。
+     */
+    LaunchedEffect(
+        selectedToilet?.id
+    ) {
+
+        showReviewDialog =
+            false
+
+        onClearReviewMessages()
+    }
+
+
     Scaffold(
 
         bottomBar = {
@@ -230,6 +310,11 @@ fun ToiletMapApp(
 
                         isSelectingLocation =
                             false
+
+                        showReviewDialog =
+                            false
+
+                        onClearReviewMessages()
 
                         onDismissSelectedToilet()
                     }
@@ -272,7 +357,19 @@ fun ToiletMapApp(
                     ListOfUncleanedScreen(
 
                         toilets =
-                            uncleanedToilets
+                            uncleanedToilets,
+
+                        onShowOnMap = {
+                                toilet ->
+
+
+                            selectedScreen =
+                                2
+
+                            onShowUncleanedToiletOnMap(
+                                toilet
+                            )
+                        }
                     )
                 }
 
@@ -355,6 +452,24 @@ fun ToiletMapApp(
                          */
                         onMarkCleaned =
                             onMarkCleaned,
+
+
+                        /*
+                         * 口コミを投稿
+                         */
+                        onOpenReviews = {
+                                toilet ->
+
+
+                            onClearReviewMessages()
+
+                            onLoadReviews(
+                                toilet.id
+                            )
+
+                            showReviewDialog =
+                                true
+                        },
 
 
                         /*
@@ -579,6 +694,65 @@ fun ToiletMapApp(
                 }
             }
         }
+    }
+
+
+    val reviewTarget =
+        selectedToilet
+
+
+    if (
+        showReviewDialog &&
+        reviewTarget != null
+    ) {
+
+        ReviewDialog(
+
+            toiletName =
+                reviewTarget.name,
+
+            reviews =
+                reviews,
+
+            isLoading =
+                isLoadingReviews,
+
+            isPosting =
+                isPostingReview,
+
+            errorMessage =
+                reviewErrorMessage,
+
+            successMessage =
+                reviewSuccessMessage,
+
+            onReload = {
+
+                onLoadReviews(
+                    reviewTarget.id
+                )
+            },
+
+            onSubmit = {
+                    rating,
+                    reviewComment ->
+
+
+                onSubmitReview(
+                    reviewTarget.id,
+                    rating,
+                    reviewComment
+                )
+            },
+
+            onDismiss = {
+
+                showReviewDialog =
+                    false
+
+                onClearReviewMessages()
+            }
+        )
     }
 }
 

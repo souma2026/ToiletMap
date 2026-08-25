@@ -19,6 +19,7 @@ import com.example.toiletmap.screen.listofuncleaned.UncleanedToilet
 import com.example.toiletmap.screen.map.MapLibreMapController
 import com.example.toiletmap.ui.ToiletMapApp
 import com.example.toiletmap.ui.theme.ToiletMapTheme
+import com.example.toiletmap.viewmodel.ReviewViewModel
 import com.example.toiletmap.viewmodel.ToiletViewModel
 
 
@@ -40,6 +41,15 @@ class MainActivity : ComponentActivity() {
      */
     private lateinit var toiletViewModel:
             ToiletViewModel
+
+
+    /*
+     * =====================================
+     * ReviewViewModel
+     * =====================================
+     */
+    private lateinit var reviewViewModel:
+            ReviewViewModel
 
 
     /*
@@ -107,6 +117,13 @@ class MainActivity : ComponentActivity() {
 
             ViewModelProvider(this)[
                 ToiletViewModel::class.java
+            ]
+
+
+        reviewViewModel =
+
+            ViewModelProvider(this)[
+                ReviewViewModel::class.java
             ]
 
 
@@ -197,6 +214,46 @@ class MainActivity : ComponentActivity() {
 
                 /*
                  * =====================================
+                 * 選択中トイレの口コミ状態
+                 * =====================================
+                 */
+                val reviews by
+
+                reviewViewModel
+                    .reviews
+                    .collectAsState()
+
+
+                val isLoadingReviews by
+
+                reviewViewModel
+                    .isLoading
+                    .collectAsState()
+
+
+                val isPostingReview by
+
+                reviewViewModel
+                    .isPosting
+                    .collectAsState()
+
+
+                val reviewErrorMessage by
+
+                reviewViewModel
+                    .errorMessage
+                    .collectAsState()
+
+
+                val reviewSuccessMessage by
+
+                reviewViewModel
+                    .successMessage
+                    .collectAsState()
+
+
+                /*
+                 * =====================================
                  * 現在選択中のトイレ
                  * =====================================
                  */
@@ -256,6 +313,23 @@ class MainActivity : ComponentActivity() {
 
                 /*
                  * =====================================
+                 * 選択中トイレが変わったら
+                 * 以前の口コミ状態をリセット
+                 * =====================================
+                 */
+                LaunchedEffect(
+                    selectedToiletId
+                ) {
+
+                    reviewViewModel
+                        .prepareForToilet(
+                            selectedToiletId
+                        )
+                }
+
+
+                /*
+                 * =====================================
                  * トイレ一覧が更新されたら
                  * 地図上のピンを更新
                  * =====================================
@@ -306,6 +380,57 @@ class MainActivity : ComponentActivity() {
                      */
                     uncleanedToilets =
                         uncleanedToilets,
+
+
+                    /*
+                     * 口コミ状態
+                     */
+                    reviews =
+                        reviews,
+
+                    isLoadingReviews =
+                        isLoadingReviews,
+
+                    isPostingReview =
+                        isPostingReview,
+
+                    reviewErrorMessage =
+                        reviewErrorMessage,
+
+                    reviewSuccessMessage =
+                        reviewSuccessMessage,
+
+
+                    /*
+                     * =====================================
+                     * 未清掃一覧から地図で見る
+                     * =====================================
+                     */
+                    onShowUncleanedToiletOnMap = {
+                            uncleanedToilet ->
+
+
+                        val toilet =
+                            toilets
+                                .firstOrNull {
+                                    it.id ==
+                                            uncleanedToilet.id
+                                }
+
+
+                        if (
+                            toilet != null
+                        ) {
+
+                            selectedToiletId =
+                                toilet.id
+
+                            mapController
+                                .focusOnToilet(
+                                    toilet
+                                )
+                        }
+                    },
 
 
                     /*
@@ -378,6 +503,54 @@ class MainActivity : ComponentActivity() {
                             .markCleaned(
                                 toilet.id
                             )
+                    },
+
+
+                    /*
+                     * =====================================
+                     * 口コミを開く・再読込
+                     * =====================================
+                     */
+                    onLoadReviews = {
+                            toiletId ->
+
+
+                        reviewViewModel
+                            .loadReviews(
+                                toiletId
+                            )
+                    },
+
+
+                    /*
+                     * =====================================
+                     * 口コミ投稿
+                     * =====================================
+                     */
+                    onSubmitReview = {
+                            toiletId,
+                            rating,
+                            comment ->
+
+
+                        reviewViewModel
+                            .addReview(
+                                toiletId =
+                                    toiletId,
+
+                                rating =
+                                    rating,
+
+                                comment =
+                                    comment
+                            )
+                    },
+
+
+                    onClearReviewMessages = {
+
+                        reviewViewModel
+                            .clearMessages()
                     },
 
 
