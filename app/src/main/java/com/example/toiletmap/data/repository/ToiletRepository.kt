@@ -362,4 +362,56 @@ class ToiletRepository {
          */
         loadToilets()
     }
+
+    /*
+     * =====================================
+     * トイレ削除
+     * =====================================
+     *
+     * SupabaseのRPC内で、
+     * ・ログイン確認
+     * ・清掃依頼中なら報酬ポイントを依頼者へ返金
+     * ・関連する口コミを削除
+     * ・トイレ本体を削除
+     *
+     * を1つのトランザクションとして実行する。
+     */
+    suspend fun deleteToilet(
+        toiletId: String
+    ) {
+
+        supabase
+            .auth
+            .currentUserOrNull()
+            ?: throw IllegalStateException(
+                "トイレを削除するにはログインが必要です"
+            )
+
+        if (toiletId.isBlank()) {
+            throw IllegalArgumentException(
+                "削除するトイレが選択されていません"
+            )
+        }
+
+        val parameters =
+            buildJsonObject {
+                put(
+                    "p_toilet_id",
+                    toiletId
+                )
+            }
+
+        supabase
+            .postgrest
+            .rpc(
+                function =
+                    "delete_own_toilet",
+
+                parameters =
+                    parameters
+            )
+
+        loadToilets()
+    }
+
 }

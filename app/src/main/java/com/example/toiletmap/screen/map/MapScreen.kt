@@ -150,11 +150,18 @@ fun MapScreen(
      */
     selectedToilet: Toilet? = null,
 
+    /*
+     * 自分が登録したトイレのみ削除可能
+     */
+    canDeleteSelectedToilet: Boolean = false,
+
     onDismissSelectedToilet: () -> Unit = {},
 
     onRequestCleaning: (Toilet, Int) -> Unit = { _, _ -> },
 
     onMarkCleaned: (Toilet) -> Unit = {},
+
+    onDeleteToilet: (Toilet) -> Unit = {},
 
     /*
      * 口コミ投稿画面を開く
@@ -481,6 +488,9 @@ fun MapScreen(
                     toilet =
                         selectedToilet,
 
+                    canDelete =
+                        canDeleteSelectedToilet,
+
                     onDismiss =
                         onDismissSelectedToilet,
 
@@ -495,6 +505,12 @@ fun MapScreen(
 
                     onMarkCleaned = {
                         onMarkCleaned(
+                            selectedToilet
+                        )
+                    },
+
+                    onDelete = {
+                        onDeleteToilet(
                             selectedToilet
                         )
                     },
@@ -1634,9 +1650,11 @@ private fun LocationSelectionBanner(
 @Composable
 private fun ToiletDetailCard(
     toilet: Toilet,
+    canDelete: Boolean,
     onDismiss: () -> Unit,
     onRequestCleaning: (Int) -> Unit,
     onMarkCleaned: () -> Unit,
+    onDelete: () -> Unit,
     onOpenReviews: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1871,6 +1889,63 @@ private fun ToiletDetailCard(
                 TextButton(
                     onClick = {
                         showRewardDialog = false
+                    }
+                ) {
+                    Text(
+                        "キャンセル"
+                    )
+                }
+            }
+        )
+    }
+
+
+    var showDeleteDialog by remember(
+        toilet.id
+    ) {
+        mutableStateOf(false)
+    }
+
+
+    if (showDeleteDialog && canDelete) {
+
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteDialog = false
+            },
+
+            title = {
+                Text(
+                    text = "このトイレを削除しますか？"
+                )
+            },
+
+            text = {
+                Text(
+                    text =
+                        "「${toilet.name}」を地図から削除します。この操作は元に戻せません。清掃依頼中の報酬ポイントがある場合は依頼者へ返金されます。"
+                )
+            },
+
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog = false
+                        onDelete()
+                    }
+                ) {
+                    Text(
+                        text = "削除する",
+                        color = FinderRed,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog = false
                     }
                 ) {
                     Text(
@@ -2471,6 +2546,53 @@ private fun ToiletDetailCard(
                     fontWeight =
                         FontWeight.Bold
                 )
+            }
+
+
+            /*
+             * =====================================
+             * トイレ削除ボタン
+             * =====================================
+             *
+             * ログイン中であれば、作成者に関係なく表示する。
+             */
+            if (canDelete) {
+
+                Button(
+                    onClick = {
+                        showDeleteDialog = true
+                    },
+
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(
+                                50.dp
+                            ),
+
+                    shape =
+                        RoundedCornerShape(
+                            14.dp
+                        ),
+
+                    colors =
+                        ButtonDefaults.buttonColors(
+                            containerColor =
+                                Color(0xFFFFECEC),
+
+                            contentColor =
+                                FinderRed
+                        )
+                ) {
+
+                    Text(
+                        text =
+                            "このトイレを削除",
+
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+                }
             }
         }
     }

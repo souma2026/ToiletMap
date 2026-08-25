@@ -57,6 +57,14 @@ fun ToiletMapApp(
 
 
     /*
+     * 選択中のトイレを削除できるか
+     * （自分が登録したトイレのみtrue）
+     */
+    canDeleteSelectedToilet:
+    Boolean,
+
+
+    /*
      * 清掃依頼中一覧
      */
     uncleanedToilets:
@@ -114,6 +122,13 @@ fun ToiletMapApp(
      * 清掃完了
      */
     onMarkCleaned:
+        (Toilet) -> Unit,
+
+
+    /*
+     * トイレ削除
+     */
+    onDeleteToilet:
         (Toilet) -> Unit,
 
 
@@ -449,6 +464,10 @@ fun ToiletMapApp(
                             selectedToilet,
 
 
+                        canDeleteSelectedToilet =
+                            canDeleteSelectedToilet,
+
+
                         /*
                          * 詳細を閉じる
                          */
@@ -468,6 +487,14 @@ fun ToiletMapApp(
                          */
                         onMarkCleaned =
                             onMarkCleaned,
+
+
+
+                        /*
+                         * トイレ削除
+                         */
+                        onDeleteToilet =
+                            onDeleteToilet,
 
 
                         /*

@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
+import com.example.toiletmap.data.supabase.SupabaseClientProvider
 import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.screen.listofuncleaned.UncleanedToilet
 import com.example.toiletmap.screen.map.DeviceLocationStatus
@@ -25,6 +26,7 @@ import com.example.toiletmap.ui.ToiletMapApp
 import com.example.toiletmap.ui.theme.ToiletMapTheme
 import com.example.toiletmap.viewmodel.ReviewViewModel
 import com.example.toiletmap.viewmodel.ToiletViewModel
+import io.github.jan.supabase.auth.auth
 import kotlinx.coroutines.delay
 
 
@@ -321,6 +323,27 @@ class MainActivity : ComponentActivity() {
 
                 /*
                  * =====================================
+                 * 現在ログイン中ユーザー
+                 * =====================================
+                 *
+                 * ログイン済みでトイレが選択されていれば、
+                 * 作成者に関係なく削除ボタンを表示する。
+                 */
+                val currentUserId =
+                    SupabaseClientProvider
+                        .client
+                        .auth
+                        .currentUserOrNull()
+                        ?.id
+
+
+                val canDeleteSelectedToilet =
+                    selectedToilet != null &&
+                            currentUserId != null
+
+
+                /*
+                 * =====================================
                  * 清掃待ちトイレ
                  * =====================================
                  */
@@ -423,6 +446,10 @@ class MainActivity : ComponentActivity() {
                      */
                     selectedToilet =
                         selectedToilet,
+
+
+                    canDeleteSelectedToilet =
+                        canDeleteSelectedToilet,
 
 
                     /*
@@ -553,6 +580,40 @@ class MainActivity : ComponentActivity() {
                             .markCleaned(
                                 toilet.id
                             )
+                    },
+
+
+                    /*
+                     * =====================================
+                     * トイレ削除
+                     * =====================================
+                     */
+                    onDeleteToilet = {
+                            toilet ->
+
+
+                        toiletViewModel
+                            .deleteToilet(
+                                toiletId =
+                                    toilet.id
+                            ) {
+
+                                if (
+                                    selectedToiletId ==
+                                    toilet.id
+                                ) {
+                                    selectedToiletId =
+                                        null
+                                }
+
+                                Toast
+                                    .makeText(
+                                        this@MainActivity,
+                                        "トイレを削除しました",
+                                        Toast.LENGTH_SHORT
+                                    )
+                                    .show()
+                            }
                     },
 
 
