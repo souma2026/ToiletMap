@@ -34,23 +34,26 @@ class ToiletViewModel : ViewModel() {
     companion object {
 
         /*
-         * 1時間ごとの自動更新。
-         * ただし全件ではなく、最後に表示していた範囲だけ更新する。
+         * 1時間ごとに更新。
          */
-        private const val AUTO_REFRESH_INTERVAL_MS =
+        private const val
+                AUTO_REFRESH_INTERVAL_MS =
             60 * 60 * 1000L
 
-        /*
-         * 地図停止後、通信開始まで少し待つ。
-         * 短時間にカメラ移動が続いた場合の無駄な通信を防ぐ。
-         */
-        private const val MAP_LOAD_DEBOUNCE_MS =
-            700L
 
         /*
-         * 実際の画面より上下左右25%広い範囲を先読みする。
+         * 地図停止後700ms待つ。
          */
-        private const val PREFETCH_MARGIN_RATIO =
+        private const val
+                MAP_LOAD_DEBOUNCE_MS =
+            700L
+
+
+        /*
+         * 表示画面より上下左右25%広く取得。
+         */
+        private const val
+                PREFETCH_MARGIN_RATIO =
             0.25
     }
 
@@ -61,10 +64,15 @@ class ToiletViewModel : ViewModel() {
      * =====================================
      */
     private data class Bounds(
+
         val south: Double,
+
         val north: Double,
+
         val west: Double,
+
         val east: Double
+
     ) {
 
         fun contains(
@@ -72,8 +80,11 @@ class ToiletViewModel : ViewModel() {
         ): Boolean {
 
             return other.south >= south &&
+
                     other.north <= north &&
+
                     other.west >= west &&
+
                     other.east <= east
         }
 
@@ -85,35 +96,49 @@ class ToiletViewModel : ViewModel() {
             val latitudeSpan =
                 north - south
 
+
             val longitudeSpan =
                 east - west
 
+
             val latitudeMargin =
-                latitudeSpan * ratio
+                latitudeSpan *
+                        ratio
+
 
             val longitudeMargin =
-                longitudeSpan * ratio
+                longitudeSpan *
+                        ratio
+
 
             return Bounds(
+
                 south =
                     max(
                         -90.0,
-                        south - latitudeMargin
+                        south -
+                                latitudeMargin
                     ),
+
                 north =
                     min(
                         90.0,
-                        north + latitudeMargin
+                        north +
+                                latitudeMargin
                     ),
+
                 west =
                     max(
                         -180.0,
-                        west - longitudeMargin
+                        west -
+                                longitudeMargin
                     ),
+
                 east =
                     min(
                         180.0,
-                        east + longitudeMargin
+                        east +
+                                longitudeMargin
                     )
             )
         }
@@ -122,8 +147,13 @@ class ToiletViewModel : ViewModel() {
 
     /*
      * =====================================
-     * トイレ一覧
+     * 地図表示用トイレ一覧
      * =====================================
+     *
+     * Repositoryから直接公開。
+     *
+     * 今回からここには
+     * 軽量データだけが入る。
      */
     val toilets:
             StateFlow<List<Toilet>> =
@@ -132,23 +162,43 @@ class ToiletViewModel : ViewModel() {
 
     /*
      * =====================================
+     * 選択中トイレの詳細
+     * =====================================
+     *
+     * ピン・検索結果を押したときだけ
+     * Supabaseから1件取得する。
+     */
+    private val _selectedToilet =
+        MutableStateFlow<Toilet?>(
+            null
+        )
+
+
+    val selectedToilet:
+            StateFlow<Toilet?> =
+        _selectedToilet
+            .asStateFlow()
+
+
+    /*
+     * =====================================
      * 表示範囲外でも必要なトイレ
      * =====================================
      *
-     * 清掃依頼一覧などで必要なトイレだけを
-     * ID指定で追加取得する。
-     *
-     * 地図描画には使わないので、
-     * 画面外の大量マーカーが増えることはない。
+     * 清掃依頼一覧などで使用する。
      */
     private val _supplementalToilets =
+
         MutableStateFlow<List<Toilet>>(
             emptyList()
         )
 
+
     val supplementalToilets:
             StateFlow<List<Toilet>> =
-        _supplementalToilets.asStateFlow()
+
+        _supplementalToilets
+            .asStateFlow()
 
 
     private var lastSupplementalIds:
@@ -158,25 +208,27 @@ class ToiletViewModel : ViewModel() {
 
     /*
      * =====================================
-     * エラーメッセージ
+     * エラー
      * =====================================
      */
     private val _errorMessage =
+
         MutableStateFlow<String?>(
             null
         )
 
+
     val errorMessage:
             StateFlow<String?> =
-        _errorMessage.asStateFlow()
+
+        _errorMessage
+            .asStateFlow()
 
 
     /*
      * =====================================
-     * 現在表示している範囲
+     * 現在の表示範囲
      * =====================================
-     *
-     * ここは「実際のスマホ画面」の範囲。
      */
     private var lastVisibleBounds:
             Bounds? =
@@ -185,12 +237,10 @@ class ToiletViewModel : ViewModel() {
 
     /*
      * =====================================
-     * 最後にSupabaseから取得した範囲
+     * 最後に取得した範囲
      * =====================================
      *
-     * 実画面 + 25%余白。
-     * 現在の画面がこの中に収まっている限り、
-     * カメラ移動だけでは再通信しない。
+     * 実際の画面 + 25%
      */
     private var lastLoadedBounds:
             Bounds? =
@@ -199,7 +249,7 @@ class ToiletViewModel : ViewModel() {
 
     /*
      * =====================================
-     * 地図範囲取得Job
+     * Job
      * =====================================
      */
     private var boundsLoadJob:
@@ -207,11 +257,11 @@ class ToiletViewModel : ViewModel() {
         null
 
 
-    /*
-     * =====================================
-     * 自動更新Job
-     * =====================================
-     */
+    private var detailLoadJob:
+            Job? =
+        null
+
+
     private var autoRefreshJob:
             Job? =
         null
@@ -219,15 +269,14 @@ class ToiletViewModel : ViewModel() {
 
     /*
      * =====================================
-     * ViewModel作成時
+     * 初期化
      * =====================================
-     *
-     * ここではSupabaseへアクセスしない。
-     * MapLibreから最初の表示範囲が届いてから取得する。
-     *
-     * これによりアプリ起動直後の全件取得を廃止する。
      */
     init {
+
+        /*
+         * 起動時には全件取得しない。
+         */
         startAutoRefresh()
     }
 
@@ -238,19 +287,35 @@ class ToiletViewModel : ViewModel() {
      * =====================================
      */
     fun onVisibleBoundsChanged(
+
         south: Double,
+
         north: Double,
+
         west: Double,
+
         east: Double
+
     ) {
 
         val visibleBounds =
+
             createValidBounds(
-                south = south,
-                north = north,
-                west = west,
-                east = east
-            ) ?: return
+
+                south =
+                    south,
+
+                north =
+                    north,
+
+                west =
+                    west,
+
+                east =
+                    east
+            )
+
+                ?: return
 
 
         lastVisibleBounds =
@@ -258,39 +323,52 @@ class ToiletViewModel : ViewModel() {
 
 
         /*
-         * すでに先読み済み範囲の中なら通信しない。
+         * すでに25%先読み済み範囲内なら
+         * 再通信しない。
          */
         val loadedBounds =
             lastLoadedBounds
 
+
         if (
             loadedBounds != null &&
+
             loadedBounds.contains(
                 visibleBounds
             )
         ) {
+
             return
         }
 
 
         /*
-         * 以前予約していた通信をキャンセルし、
-         * 最後のカメラ位置だけを対象にする。
+         * 前の予約をキャンセル。
          */
         boundsLoadJob
             ?.cancel()
 
 
         boundsLoadJob =
+
             viewModelScope.launch {
 
+                /*
+                 * 地図が完全に止まってから
+                 * 少し待つ。
+                 */
                 delay(
                     MAP_LOAD_DEBOUNCE_MS
                 )
 
+
                 loadBounds(
-                    visibleBounds = visibleBounds,
-                    showError = true
+
+                    visibleBounds =
+                        visibleBounds,
+
+                    showError =
+                        true
                 )
             }
     }
@@ -298,19 +376,14 @@ class ToiletViewModel : ViewModel() {
 
     /*
      * =====================================
-     * 現在の範囲を強制再読込
+     * 現在範囲を強制更新
      * =====================================
-     *
-     * MainActivityの既存コードから呼ばれる loadToilets() は、
-     * 今後「全件取得」ではなく
-     * 「現在表示中の範囲を再取得」という意味にする。
-     *
-     * 清掃状態が別端末で変わった場合にも使える。
      */
     fun loadToilets() {
 
         val visibleBounds =
             lastVisibleBounds
+
                 ?: return
 
 
@@ -319,11 +392,16 @@ class ToiletViewModel : ViewModel() {
 
 
         boundsLoadJob =
+
             viewModelScope.launch {
 
                 loadBounds(
-                    visibleBounds = visibleBounds,
-                    showError = true
+
+                    visibleBounds =
+                        visibleBounds,
+
+                    showError =
+                        true
                 )
             }
     }
@@ -331,15 +409,19 @@ class ToiletViewModel : ViewModel() {
 
     /*
      * =====================================
-     * 実際の範囲取得
+     * 範囲取得
      * =====================================
      */
     private suspend fun loadBounds(
+
         visibleBounds: Bounds,
+
         showError: Boolean
+
     ) {
 
         val fetchBounds =
+
             visibleBounds.expanded(
                 PREFETCH_MARGIN_RATIO
             )
@@ -349,12 +431,16 @@ class ToiletViewModel : ViewModel() {
 
             repository
                 .loadToiletsInBounds(
+
                     south =
                         fetchBounds.south,
+
                     north =
                         fetchBounds.north,
+
                     west =
                         fetchBounds.west,
+
                     east =
                         fetchBounds.east
                 )
@@ -374,7 +460,9 @@ class ToiletViewModel : ViewModel() {
             e.printStackTrace()
 
 
-            if (showError) {
+            if (
+                showError
+            ) {
 
                 _errorMessage.value =
                     "トイレ情報の取得に失敗しました"
@@ -385,20 +473,301 @@ class ToiletViewModel : ViewModel() {
 
     /*
      * =====================================
-     * 自動更新開始
+     * トイレ詳細を1件取得
+     * =====================================
+     */
+    fun loadToiletDetail(
+
+        toiletId: String,
+
+        force: Boolean = false
+
+    ) {
+
+        val id =
+            toiletId.trim()
+
+
+        if (
+            id.isBlank()
+        ) {
+
+            clearSelectedToilet()
+
+            return
+        }
+
+
+        /*
+         * すでに同じトイレの詳細を持っているなら
+         * 通常は再通信しない。
+         */
+        if (
+            !force &&
+
+            _selectedToilet
+                .value
+                ?.id == id
+        ) {
+
+            return
+        }
+
+
+        detailLoadJob
+            ?.cancel()
+
+
+        /*
+         * 違うトイレを選んだ場合は
+         * 古い詳細を消しておく。
+         */
+        if (
+            _selectedToilet
+                .value
+                ?.id != id
+        ) {
+
+            _selectedToilet.value =
+                null
+        }
+
+
+        detailLoadJob =
+
+            viewModelScope.launch {
+
+                try {
+
+                    val toilet =
+
+                        repository
+                            .loadToiletById(
+                                id
+                            )
+
+
+                    if (
+                        toilet != null
+                    ) {
+
+                        _selectedToilet.value =
+                            toilet
+
+
+                        _errorMessage.value =
+                            null
+
+                    } else {
+
+                        _selectedToilet.value =
+                            null
+
+
+                        _errorMessage.value =
+                            "トイレ情報が見つかりませんでした"
+                    }
+
+                } catch (
+                    e: Exception
+                ) {
+
+                    e.printStackTrace()
+
+
+                    _errorMessage.value =
+                        "トイレ詳細の取得に失敗しました"
+                }
+            }
+    }
+
+
+    /*
+     * =====================================
+     * 選択中詳細を消す
+     * =====================================
+     */
+    fun clearSelectedToilet() {
+
+        detailLoadJob
+            ?.cancel()
+
+
+        detailLoadJob =
+            null
+
+
+        _selectedToilet.value =
+            null
+    }
+
+
+    /*
+     * =====================================
+     * 清掃依頼等で必要なIDだけ取得
+     * =====================================
+     */
+    fun loadSupplementalToilets(
+
+        toiletIds:
+        List<String>
+
+    ) {
+
+        val normalizedIds =
+
+            toiletIds
+                .filter {
+                    it.isNotBlank()
+                }
+                .toSet()
+
+
+        if (
+            normalizedIds ==
+            lastSupplementalIds
+        ) {
+
+            return
+        }
+
+
+        lastSupplementalIds =
+            normalizedIds
+
+
+        if (
+            normalizedIds.isEmpty()
+        ) {
+
+            _supplementalToilets.value =
+                emptyList()
+
+
+            return
+        }
+
+
+        viewModelScope.launch {
+
+            try {
+
+                _supplementalToilets.value =
+
+                    repository
+                        .loadToiletsByIds(
+                            normalizedIds.toList()
+                        )
+
+            } catch (
+                e: Exception
+            ) {
+
+                /*
+                 * 補助取得失敗だけでは
+                 * 地図を止めない。
+                 */
+                e.printStackTrace()
+            }
+        }
+    }
+
+
+    /*
+     * =====================================
+     * トイレ追加
+     * =====================================
+     */
+    fun addToilet(
+
+        toilet: Toilet
+
+    ) {
+
+        viewModelScope.launch {
+
+            try {
+
+                repository
+                    .addToilet(
+                        toilet
+                    )
+
+
+                /*
+                 * 登録した1件の詳細を取得。
+                 */
+                _selectedToilet.value =
+
+                    repository
+                        .loadToiletById(
+                            toilet.id
+                        )
+
+                        ?: toilet
+
+
+                _errorMessage.value =
+                    null
+
+
+                /*
+                 * 現在の範囲だけ更新。
+                 */
+                val visibleBounds =
+                    lastVisibleBounds
+
+
+                if (
+                    visibleBounds != null
+                ) {
+
+                    loadBounds(
+
+                        visibleBounds =
+                            visibleBounds,
+
+                        showError =
+                            true
+                    )
+                }
+
+            } catch (
+                e: Exception
+            ) {
+
+                e.printStackTrace()
+
+
+                _errorMessage.value =
+
+                    e.message
+
+                        ?: "トイレの登録に失敗しました"
+            }
+        }
+    }
+
+
+    /*
+     * =====================================
+     * 1時間ごとの自動更新
      * =====================================
      */
     private fun startAutoRefresh() {
 
         if (
-            autoRefreshJob?.isActive ==
+            autoRefreshJob
+                ?.isActive ==
             true
         ) {
+
             return
         }
 
 
         autoRefreshJob =
+
             viewModelScope.launch {
 
                 while (
@@ -418,141 +787,27 @@ class ToiletViewModel : ViewModel() {
 
     /*
      * =====================================
-     * 1時間ごとの自動更新
+     * 自動更新
      * =====================================
      *
-     * 全件ではなく、現在表示中の地図範囲だけ再取得する。
+     * 全件ではなく現在の範囲だけ。
      */
     private suspend fun refreshToiletsSilently() {
 
         val visibleBounds =
             lastVisibleBounds
+
                 ?: return
 
 
         loadBounds(
-            visibleBounds = visibleBounds,
-            showError = false
+
+            visibleBounds =
+                visibleBounds,
+
+            showError =
+                false
         )
-    }
-
-
-    /*
-     * =====================================
-     * 清掃依頼などで必要なトイレだけ追加取得
-     * =====================================
-     */
-    fun loadSupplementalToilets(
-        toiletIds: List<String>
-    ) {
-
-        val normalizedIds =
-            toiletIds
-                .filter {
-                    it.isNotBlank()
-                }
-                .toSet()
-
-
-        if (
-            normalizedIds ==
-            lastSupplementalIds
-        ) {
-            return
-        }
-
-
-        lastSupplementalIds =
-            normalizedIds
-
-
-        if (
-            normalizedIds.isEmpty()
-        ) {
-
-            _supplementalToilets.value =
-                emptyList()
-
-            return
-        }
-
-
-        viewModelScope.launch {
-
-            try {
-
-                _supplementalToilets.value =
-                    repository
-                        .loadToiletsByIds(
-                            normalizedIds.toList()
-                        )
-
-            } catch (
-                e: Exception
-            ) {
-
-                /*
-                 * 地図表示そのものは続けられるので、
-                 * 補助取得の失敗では既存データを残す。
-                 */
-                e.printStackTrace()
-            }
-        }
-    }
-
-
-    /*
-     * =====================================
-     * トイレ追加
-     * =====================================
-     */
-    fun addToilet(
-        toilet: Toilet
-    ) {
-
-        viewModelScope.launch {
-
-            try {
-
-                repository
-                    .addToilet(
-                        toilet
-                    )
-
-
-                _errorMessage.value =
-                    null
-
-
-                /*
-                 * 登録完了後は、現在表示している範囲だけ再取得。
-                 * 全件取得はしない。
-                 */
-                val visibleBounds =
-                    lastVisibleBounds
-
-                if (
-                    visibleBounds != null
-                ) {
-
-                    loadBounds(
-                        visibleBounds = visibleBounds,
-                        showError = true
-                    )
-                }
-
-            } catch (
-                e: Exception
-            ) {
-
-                e.printStackTrace()
-
-
-                _errorMessage.value =
-                    e.message
-                        ?: "トイレの登録に失敗しました"
-            }
-        }
     }
 
 
@@ -562,46 +817,61 @@ class ToiletViewModel : ViewModel() {
      * =====================================
      */
     private fun createValidBounds(
+
         south: Double,
+
         north: Double,
+
         west: Double,
+
         east: Double
+
     ): Bounds? {
 
         if (
             !south.isFinite() ||
+
             !north.isFinite() ||
+
             !west.isFinite() ||
+
             !east.isFinite()
         ) {
+
             return null
         }
 
 
         if (
             south >= north ||
+
             west >= east
         ) {
+
             return null
         }
 
 
         return Bounds(
+
             south =
                 max(
                     -90.0,
                     south
                 ),
+
             north =
                 min(
                     90.0,
                     north
                 ),
+
             west =
                 max(
                     -180.0,
                     west
                 ),
+
             east =
                 min(
                     180.0,
@@ -613,7 +883,7 @@ class ToiletViewModel : ViewModel() {
 
     /*
      * =====================================
-     * 表示済みエラーを消す
+     * エラーを消す
      * =====================================
      */
     fun clearErrorMessage() {
@@ -625,7 +895,7 @@ class ToiletViewModel : ViewModel() {
 
     /*
      * =====================================
-     * ViewModel破棄時
+     * ViewModel破棄
      * =====================================
      */
     override fun onCleared() {
@@ -633,12 +903,22 @@ class ToiletViewModel : ViewModel() {
         boundsLoadJob
             ?.cancel()
 
-        boundsLoadJob =
-            null
+
+        detailLoadJob
+            ?.cancel()
 
 
         autoRefreshJob
             ?.cancel()
+
+
+        boundsLoadJob =
+            null
+
+
+        detailLoadJob =
+            null
+
 
         autoRefreshJob =
             null
