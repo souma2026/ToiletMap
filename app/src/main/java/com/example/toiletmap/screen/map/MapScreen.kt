@@ -2,7 +2,7 @@ package com.example.toiletmap.screen.map
 
 import android.view.ViewGroup
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,11 +11,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -33,6 +38,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -41,12 +48,18 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -55,10 +68,6 @@ import com.example.toiletmap.model.Toilet
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 
-
-// =============================================
-// マップ画面専用カラー
-// =============================================
 
 private val FinderGreen =
     Color(0xFF0B8377)
@@ -87,18 +96,33 @@ fun MapScreen(
 
     mapView: MapView,
 
-    // トイレ追加時に
-    // 地図から位置を選択しているか
-    isSelectingLocation: Boolean = false,
+    /*
+     * 検索対象
+     */
+    toilets: List<Toilet> =
+        emptyList(),
 
-    // 現在選択中のトイレ
-    selectedToilet: Toilet? = null,
+    /*
+     * 検索結果を選択
+     */
+    onSearchToiletSelected:
+        (Toilet) -> Unit =
+        {},
 
-    onDismissSelectedToilet: () -> Unit = {},
+    isSelectingLocation:
+    Boolean = false,
 
-    onRequestCleaning: (Toilet) -> Unit = {},
+    selectedToilet:
+    Toilet? = null,
 
-    onMarkCleaned: (Toilet) -> Unit = {},
+    onDismissSelectedToilet:
+        () -> Unit = {},
+
+    onRequestCleaning:
+        (Toilet) -> Unit = {},
+
+    onMarkCleaned:
+        (Toilet) -> Unit = {},
 
     onLocationSelected:
         (Double, Double) -> Unit =
@@ -106,14 +130,16 @@ fun MapScreen(
 
     onCancelLocationSelection:
         () -> Unit = {}
+
 ) {
 
 
-    // =============================================
-    // トイレ追加用
-    // 地図タップ監視
-    // =============================================
-
+    /*
+     * =====================================
+     * トイレ追加用
+     * 地図タップ監視
+     * =====================================
+     */
     DisposableEffect(
         mapView,
         isSelectingLocation
@@ -135,8 +161,7 @@ fun MapScreen(
             isSelectingLocation
         ) {
 
-            mapView.getMapAsync {
-                    map ->
+            mapView.getMapAsync { map ->
 
                 if (
                     !disposed
@@ -149,17 +174,12 @@ fun MapScreen(
                     val listener =
 
                         MapLibreMap
-                            .OnMapClickListener {
-                                    point ->
-
+                            .OnMapClickListener { point ->
 
                                 onLocationSelected(
-
                                     point.latitude,
-
                                     point.longitude
                                 )
-
 
                                 true
                             }
@@ -203,11 +223,15 @@ fun MapScreen(
     }
 
 
-    // =============================================
-    // 画面全体
-    // =============================================
-
-    Box(
+    /*
+     * =====================================
+     * 画面全体
+     *
+     * 重要：
+     * HeaderとMapViewを重ねない
+     * =====================================
+     */
+    Column(
 
         modifier =
             Modifier
@@ -219,155 +243,312 @@ fun MapScreen(
     ) {
 
 
-        // =============================================
-        // MapLibre
-        // =============================================
+        /*
+         * =====================================
+         * 検索欄
+         *
+         * MapViewとは完全に別領域
+         * =====================================
+         */
+        FinderHeader(
 
-        AndroidView(
+            toilets =
+                toilets,
 
-            factory = {
+            onToiletSelected =
+                onSearchToiletSelected,
 
-                /*
-                 * 同じMapViewを再利用するため、
-                 * 以前の親Viewから外す
-                 */
-                (
-                        mapView.parent
-                                as?
-                                ViewGroup
-                        )
-                    ?.removeView(
-                        mapView
-                    )
+            modifier =
+                Modifier.fillMaxWidth()
+        )
 
 
-                mapView
-            },
+        /*
+         * =====================================
+         * 地図部分
+         * =====================================
+         */
+        Box(
 
             modifier =
                 Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .weight(
+                        1f
+                    )
+
+        ) {
+
+
+            /*
+             * =====================================
+             * MapLibre
+             * =====================================
+             */
+            AndroidView(
+
+                factory = {
 
                     /*
-                     * 上のヘッダー分だけ
-                     * 地図を下げる
+                     * 以前の親Viewから外す
                      */
-                    .padding(
-                        top = 154.dp
-                    )
-        )
+                    (
+                            mapView.parent
+                                    as?
+                                    ViewGroup
+                            )
+                        ?.removeView(
+                            mapView
+                        )
 
 
-        // =============================================
-        // 上部ヘッダー
-        // =============================================
+                    /*
+                     * MapViewが検索欄のキーボードフォーカスを
+                     * 奪わないようにする。
+                     *
+                     * 地図のタップ・スクロール・ズームには
+                     * 影響しない。
+                     */
+                    mapView.isFocusable =
+                        false
 
-        FinderHeader(
+                    mapView.isFocusableInTouchMode =
+                        false
 
-            modifier =
-                Modifier.align(
-                    Alignment.TopCenter
+
+                    mapView
+                },
+
+                modifier =
+                    Modifier.fillMaxSize()
+            )
+
+
+            /*
+             * =====================================
+             * 場所選択中
+             * =====================================
+             */
+            if (
+                isSelectingLocation
+            ) {
+
+                LocationSelectionBanner(
+
+                    onCancel =
+                        onCancelLocationSelection,
+
+                    modifier =
+                        Modifier
+                            .align(
+                                Alignment.TopCenter
+                            )
+                            .padding(
+                                top = 12.dp,
+                                start = 14.dp,
+                                end = 14.dp
+                            )
                 )
-        )
+            }
 
 
-        // =============================================
-        // トイレ追加位置を選択中
-        // =============================================
+            /*
+             * =====================================
+             * トイレ詳細
+             * =====================================
+             */
+            if (
+                !isSelectingLocation &&
+                selectedToilet != null
+            ) {
 
-        if (
-            isSelectingLocation
-        ) {
+                ToiletDetailCard(
 
-            LocationSelectionBanner(
+                    toilet =
+                        selectedToilet,
 
-                onCancel =
-                    onCancelLocationSelection,
+                    onDismiss =
+                        onDismissSelectedToilet,
 
-                modifier =
-                    Modifier
-                        .align(
-                            Alignment.TopCenter
+                    onRequestCleaning = {
+
+                        onRequestCleaning(
+                            selectedToilet
                         )
-                        .padding(
-                            top = 166.dp,
-                            start = 14.dp,
-                            end = 14.dp
+                    },
+
+                    onMarkCleaned = {
+
+                        onMarkCleaned(
+                            selectedToilet
                         )
-            )
-        }
+                    },
 
-
-        // =============================================
-        // トイレピンを押した場合
-        // =============================================
-
-        if (
-            !isSelectingLocation &&
-            selectedToilet != null
-        ) {
-
-            ToiletDetailCard(
-
-                toilet =
-                    selectedToilet,
-
-                onDismiss =
-                    onDismissSelectedToilet,
-
-                onRequestCleaning = {
-
-                    onRequestCleaning(
-                        selectedToilet
-                    )
-                },
-
-                onMarkCleaned = {
-
-                    onMarkCleaned(
-                        selectedToilet
-                    )
-                },
-
-                modifier =
-                    Modifier
-                        .align(
-                            Alignment.BottomCenter
-                        )
-                        .fillMaxWidth()
-                        .padding(
-                            12.dp
-                        )
-            )
+                    modifier =
+                        Modifier
+                            .align(
+                                Alignment.BottomCenter
+                            )
+                            .fillMaxWidth()
+                            .padding(
+                                12.dp
+                            )
+                )
+            }
         }
     }
 }
 
 
-// =============================================
-// 上部
-// TOILET FINDER
-// 近くのトイレ
-// 検索バー
-// 通知
-// =============================================
-
+/*
+ * =====================================
+ * ヘッダー
+ * =====================================
+ */
 @Composable
 private fun FinderHeader(
 
-    modifier: Modifier =
-        Modifier
+    toilets:
+    List<Toilet>,
+
+    onToiletSelected:
+        (Toilet) -> Unit,
+
+    modifier:
+    Modifier = Modifier
 
 ) {
 
-    /*
-     * 通知メニューを表示しているか
-     */
     var showNotifications by
     remember {
 
         mutableStateOf(
             false
+        )
+    }
+
+
+    /*
+     * =====================================
+     * 検索文字
+     * =====================================
+     *
+     * Stringで単純に管理する。
+     * 日本語入力・Backspaceの処理は
+     * OutlinedTextFieldに任せる。
+     */
+    var searchQuery by
+    rememberSaveable {
+
+        mutableStateOf(
+            ""
+        )
+    }
+
+
+    /*
+     * 検索欄にフォーカスがあるか
+     */
+    var isSearchFocused by
+    remember {
+
+        mutableStateOf(
+            false
+        )
+    }
+
+
+    val searchFocusRequester =
+        remember {
+
+            FocusRequester()
+        }
+
+
+    val focusManager =
+        LocalFocusManager.current
+
+
+    /*
+     * =====================================
+     * 検索処理
+     * =====================================
+     *
+     * 現在Toiletには住所がないので
+     *
+     * ・トイレ名
+     * ・コメント
+     *
+     * を検索する。
+     */
+    val searchResults =
+
+        remember(
+            searchQuery,
+            toilets
+        ) {
+
+            val query =
+                searchQuery
+                    .trim()
+
+
+            if (
+                query.isBlank()
+            ) {
+
+                emptyList()
+
+            } else {
+
+                toilets
+                    .filter {
+                            toilet ->
+
+                        toilet.name.contains(
+                            query,
+                            ignoreCase = true
+                        ) ||
+
+                                toilet.comment.contains(
+                                    query,
+                                    ignoreCase = true
+                                )
+                    }
+                    .take(
+                        10
+                    )
+            }
+        }
+
+
+    /*
+     * 検索結果選択
+     */
+    fun selectToilet(
+        toilet: Toilet
+    ) {
+
+        /*
+         * 選択したトイレ名を
+         * 検索欄へ表示
+         */
+        searchQuery =
+            toilet.name
+
+
+        /*
+         * キーボードを閉じる
+         */
+        focusManager
+            .clearFocus()
+
+
+        /*
+         * 地図側へ通知
+         */
+        onToiletSelected(
+            toilet
         )
     }
 
@@ -404,10 +585,11 @@ private fun FinderHeader(
         ) {
 
 
-            // =============================================
-            // タイトル部分
-            // =============================================
-
+            /*
+             * =====================================
+             * タイトル
+             * =====================================
+             */
             Row(
 
                 modifier =
@@ -419,10 +601,6 @@ private fun FinderHeader(
             ) {
 
 
-                // =============================================
-                // WCロゴ
-                // =============================================
-
                 Box(
 
                     modifier =
@@ -431,7 +609,6 @@ private fun FinderHeader(
                                 44.dp
                             )
                             .background(
-
                                 color =
                                     FinderGreen,
 
@@ -464,18 +641,12 @@ private fun FinderHeader(
 
 
                 Spacer(
-
                     modifier =
                         Modifier.width(
                             12.dp
                         )
                 )
 
-
-                // =============================================
-                // TOILET FINDER
-                // 近くのトイレ
-                // =============================================
 
                 Column(
 
@@ -523,10 +694,11 @@ private fun FinderHeader(
                 }
 
 
-                // =============================================
-                // 通知
-                // =============================================
-
+                /*
+                 * =====================================
+                 * 通知
+                 * =====================================
+                 */
                 Box {
 
                     IconButton(
@@ -560,10 +732,6 @@ private fun FinderHeader(
                     }
 
 
-                    /*
-                     * 今は通知機能未実装なので
-                     * 常にこれを表示
-                     */
                     DropdownMenu(
 
                         expanded =
@@ -582,12 +750,7 @@ private fun FinderHeader(
                             text = {
 
                                 Text(
-
-                                    text =
-                                        "新しい通知はありません",
-
-                                    color =
-                                        FinderDark
+                                    "新しい通知はありません"
                                 )
                             },
 
@@ -602,62 +765,56 @@ private fun FinderHeader(
             }
 
 
-            // =============================================
-            // 検索バー
-            //
-            // 今は見た目だけ
-            // 押しても何も起こらない
-            // =============================================
+            /*
+             * =====================================
+             * 検索欄
+             * =====================================
+             */
+            OutlinedTextField(
 
-            Surface(
+                value =
+                    searchQuery,
+
+                onValueChange = { newText ->
+
+                    /*
+                     * 入力・Backspaceの結果を
+                     * そのまま反映する。
+                     */
+                    searchQuery =
+                        newText
+                },
 
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(
-                            48.dp
+                        .focusRequester(
+                            searchFocusRequester
                         )
-                        .border(
+                        .onFocusChanged { focusState ->
 
-                            width =
-                                1.dp,
+                            isSearchFocused =
+                                focusState.isFocused
+                        },
 
-                            color =
-                                FinderBorder,
+                enabled =
+                    true,
 
-                            shape =
-                                RoundedCornerShape(
-                                    16.dp
-                                )
-                        ),
+                readOnly =
+                    false,
 
-                color =
-                    Color.White,
+                singleLine =
+                    true,
 
-                shape =
-                    RoundedCornerShape(
-                        16.dp
-                    ),
+                placeholder = {
 
-                shadowElevation =
-                    1.dp
+                    Text(
+                        text =
+                            "場所や施設名を検索"
+                    )
+                },
 
-            ) {
-
-                Row(
-
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .padding(
-                                horizontal = 14.dp
-                            ),
-
-                    verticalAlignment =
-                        Alignment.CenterVertically
-
-                ) {
-
+                leadingIcon = {
 
                     Icon(
 
@@ -667,65 +824,233 @@ private fun FinderHeader(
                                 .Search,
 
                         contentDescription =
-                            null,
+                            "検索",
 
                         tint =
-                            FinderMuted,
-
-                        modifier =
-                            Modifier.size(
-                                22.dp
-                            )
+                            FinderMuted
                     )
+                },
 
+                trailingIcon = {
 
-                    Spacer(
+                    if (
+                        searchQuery.isNotEmpty()
+                    ) {
 
-                        modifier =
-                            Modifier.width(
-                                10.dp
+                        IconButton(
+
+                            onClick = {
+
+                                /*
+                                 * ×ボタンで全削除。
+                                 */
+                                searchQuery =
+                                    ""
+
+                                /*
+                                 * 削除後もすぐ再入力できるよう
+                                 * 検索欄へフォーカスを戻す。
+                                 */
+                                searchFocusRequester
+                                    .requestFocus()
+                            }
+
+                        ) {
+
+                            Icon(
+
+                                imageVector =
+                                    Icons
+                                        .Outlined
+                                        .Close,
+
+                                contentDescription =
+                                    "検索文字を削除",
+
+                                tint =
+                                    FinderMuted
                             )
-                    )
+                        }
+
+                    } else {
+
+                        Icon(
+
+                            imageVector =
+                                Icons
+                                    .Outlined
+                                    .Menu,
+
+                            contentDescription =
+                                "検索条件",
+
+                            tint =
+                                FinderMuted
+                        )
+                    }
+                },
+
+                shape =
+                    RoundedCornerShape(
+                        16.dp
+                    ),
+
+                keyboardOptions =
+                    KeyboardOptions(
+
+                        imeAction =
+                            ImeAction.Search
+                    ),
+
+                keyboardActions =
+                    KeyboardActions(
+
+                        onSearch = {
+
+                            val first =
+                                searchResults
+                                    .firstOrNull()
 
 
-                    Text(
+                            if (
+                                first != null
+                            ) {
 
-                        text =
-                            "場所や施設名を検索",
+                                selectToilet(
+                                    first
+                                )
 
-                        modifier =
-                            Modifier.weight(
-                                1f
+                            } else {
+
+                                focusManager
+                                    .clearFocus()
+                            }
+                        }
+                    ),
+
+                colors =
+                    OutlinedTextFieldDefaults
+                        .colors(
+
+                            focusedBorderColor =
+                                FinderGreen,
+
+                            unfocusedBorderColor =
+                                FinderBorder,
+
+                            focusedContainerColor =
+                                Color.White,
+
+                            unfocusedContainerColor =
+                                Color.White,
+
+                            cursorColor =
+                                FinderGreen
+                        )
+            )
+
+
+            /*
+             * =====================================
+             * 検索結果
+             * =====================================
+             */
+            if (
+                isSearchFocused &&
+                searchQuery.isNotBlank()
+            ) {
+
+                Card(
+
+                    modifier =
+                        Modifier
+                            .fillMaxWidth(),
+
+                    shape =
+                        RoundedCornerShape(
+                            16.dp
+                        ),
+
+                    colors =
+                        CardDefaults
+                            .cardColors(
+                                containerColor =
+                                    Color.White
                             ),
 
-                        color =
-                            FinderMuted,
-
-                        style =
-                            MaterialTheme
-                                .typography
-                                .bodyMedium
-                    )
-
-
-                    Icon(
-
-                        imageVector =
-                            Icons
-                                .Outlined
-                                .Menu,
-
-                        contentDescription =
-                            "検索条件",
-
-                        tint =
-                            FinderMuted,
-
-                        modifier =
-                            Modifier.size(
-                                22.dp
+                    elevation =
+                        CardDefaults
+                            .cardElevation(
+                                defaultElevation =
+                                    4.dp
                             )
-                    )
+
+                ) {
+
+
+                    if (
+                        searchResults.isEmpty()
+                    ) {
+
+                        Text(
+
+                            text =
+                                "該当するトイレがありません",
+
+                            modifier =
+                                Modifier.padding(
+                                    16.dp
+                                ),
+
+                            color =
+                                FinderMuted,
+
+                            style =
+                                MaterialTheme
+                                    .typography
+                                    .bodyMedium
+                        )
+
+                    } else {
+
+                        LazyColumn(
+
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(
+                                        max = 280.dp
+                                    )
+                        ) {
+
+                            items(
+                                items =
+                                    searchResults,
+
+                                key = {
+                                        toilet ->
+
+                                    toilet.id
+                                }
+
+                            ) {
+                                    toilet ->
+
+                                SearchResultItem(
+
+                                    toilet =
+                                        toilet,
+
+                                    onClick = {
+
+                                        selectToilet(
+                                            toilet
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -733,17 +1058,172 @@ private fun FinderHeader(
 }
 
 
-// =============================================
-// トイレ追加場所を選択中の案内
-// =============================================
+/*
+ * =====================================
+ * 検索候補1件
+ * =====================================
+ */
+@Composable
+private fun SearchResultItem(
 
+    toilet:
+    Toilet,
+
+    onClick:
+        () -> Unit
+
+) {
+
+    Row(
+
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(
+                    onClick =
+                        onClick
+                )
+                .padding(
+                    horizontal = 16.dp,
+                    vertical = 13.dp
+                ),
+
+        verticalAlignment =
+            Alignment.CenterVertically
+
+    ) {
+
+
+        Box(
+
+            modifier =
+                Modifier
+                    .size(
+                        38.dp
+                    )
+                    .background(
+
+                        color =
+                            Color(
+                                0xFFE5F4F1
+                            ),
+
+                        shape =
+                            CircleShape
+                    ),
+
+            contentAlignment =
+                Alignment.Center
+
+        ) {
+
+            Icon(
+
+                imageVector =
+                    Icons
+                        .Outlined
+                        .LocationOn,
+
+                contentDescription =
+                    null,
+
+                tint =
+                    FinderGreen
+            )
+        }
+
+
+        Spacer(
+
+            modifier =
+                Modifier.width(
+                    12.dp
+                )
+        )
+
+
+        Column(
+
+            modifier =
+                Modifier.weight(
+                    1f
+                )
+        ) {
+
+            Text(
+
+                text =
+                    toilet.name,
+
+                color =
+                    FinderDark,
+
+                fontWeight =
+                    FontWeight.Bold,
+
+                style =
+                    MaterialTheme
+                        .typography
+                        .bodyLarge
+            )
+
+
+            if (
+                toilet.comment
+                    .isNotBlank()
+            ) {
+
+                Text(
+
+                    text =
+                        toilet.comment,
+
+                    color =
+                        FinderMuted,
+
+                    fontSize =
+                        12.sp,
+
+                    maxLines =
+                        1
+                )
+
+            } else {
+
+                Text(
+
+                    text =
+                        "緯度 %.4f / 経度 %.4f"
+                            .format(
+                                toilet.latitude,
+                                toilet.longitude
+                            ),
+
+                    color =
+                        FinderMuted,
+
+                    fontSize =
+                        12.sp
+                )
+            }
+        }
+    }
+}
+
+
+/*
+ * =====================================
+ * トイレ追加位置選択
+ * =====================================
+ */
 @Composable
 private fun LocationSelectionBanner(
 
-    onCancel: () -> Unit,
+    onCancel:
+        () -> Unit,
 
-    modifier: Modifier =
-        Modifier
+    modifier:
+    Modifier = Modifier
 
 ) {
 
@@ -753,7 +1233,6 @@ private fun LocationSelectionBanner(
             modifier
                 .fillMaxWidth()
                 .shadow(
-
                     elevation =
                         7.dp,
 
@@ -769,12 +1248,10 @@ private fun LocationSelectionBanner(
             ),
 
         colors =
-            CardDefaults
-                .cardColors(
-
-                    containerColor =
-                        Color.White
-                )
+            CardDefaults.cardColors(
+                containerColor =
+                    Color.White
+            )
 
     ) {
 
@@ -804,7 +1281,6 @@ private fun LocationSelectionBanner(
                             38.dp
                         )
                         .background(
-
                             color =
                                 Color(
                                     0xFFE5F4F1
@@ -836,7 +1312,6 @@ private fun LocationSelectionBanner(
 
 
             Spacer(
-
                 modifier =
                     Modifier.width(
                         10.dp
@@ -850,7 +1325,6 @@ private fun LocationSelectionBanner(
                     Modifier.weight(
                         1f
                     )
-
             ) {
 
                 Text(
@@ -901,31 +1375,32 @@ private fun LocationSelectionBanner(
 }
 
 
-// =============================================
-// トイレ詳細カード
-// =============================================
-
+/*
+ * =====================================
+ * トイレ詳細
+ * =====================================
+ */
 @Composable
 private fun ToiletDetailCard(
 
-    toilet: Toilet,
+    toilet:
+    Toilet,
 
-    onDismiss: () -> Unit,
+    onDismiss:
+        () -> Unit,
 
-    onRequestCleaning: () -> Unit,
+    onRequestCleaning:
+        () -> Unit,
 
-    onMarkCleaned: () -> Unit,
+    onMarkCleaned:
+        () -> Unit,
 
-    modifier: Modifier =
-        Modifier
+    modifier:
+    Modifier = Modifier
 
 ) {
 
-    /*
-     * 清潔度
-     */
     val cleanliness =
-
         toilet
             .cleanliness
             .coerceIn(
@@ -934,21 +1409,13 @@ private fun ToiletDetailCard(
             )
 
 
-    /*
-     * 前回の清掃からの経過時間
-     */
     val elapsed =
-
         formatElapsedSinceCleaning(
             toilet.lastCleanedAtMillis
         )
 
 
-    /*
-     * 清掃待ちか
-     */
     val requested =
-
         toilet.cleaningStatus ==
                 CleaningStatus.REQUESTED
 
@@ -1033,20 +1500,16 @@ private fun ToiletDetailCard(
             ),
 
         colors =
-            CardDefaults
-                .cardColors(
-
-                    containerColor =
-                        Color.White
-                ),
+            CardDefaults.cardColors(
+                containerColor =
+                    Color.White
+            ),
 
         elevation =
-            CardDefaults
-                .cardElevation(
-
-                    defaultElevation =
-                        4.dp
-                )
+            CardDefaults.cardElevation(
+                defaultElevation =
+                    4.dp
+            )
 
     ) {
 
@@ -1065,10 +1528,6 @@ private fun ToiletDetailCard(
         ) {
 
 
-            // =============================================
-            // 状態 + 閉じる
-            // =============================================
-
             Row(
 
                 modifier =
@@ -1083,10 +1542,9 @@ private fun ToiletDetailCard(
                 Surface(
 
                     color =
-                        statusColor
-                            .copy(
-                                alpha = 0.13f
-                            ),
+                        statusColor.copy(
+                            alpha = 0.13f
+                        ),
 
                     shape =
                         RoundedCornerShape(
@@ -1174,10 +1632,6 @@ private fun ToiletDetailCard(
             }
 
 
-            // =============================================
-            // トイレ名
-            // =============================================
-
             Text(
 
                 text =
@@ -1195,10 +1649,6 @@ private fun ToiletDetailCard(
                     FontWeight.Bold
             )
 
-
-            // =============================================
-            // 緯度経度
-            // =============================================
 
             Row(
 
@@ -1228,7 +1678,6 @@ private fun ToiletDetailCard(
 
 
                 Spacer(
-
                     modifier =
                         Modifier.width(
                             5.dp
@@ -1252,10 +1701,6 @@ private fun ToiletDetailCard(
                 )
             }
 
-
-            // =============================================
-            // 情報部分
-            // =============================================
 
             Surface(
 
@@ -1288,7 +1733,6 @@ private fun ToiletDetailCard(
 
                 ) {
 
-
                     Text(
 
                         text =
@@ -1302,10 +1746,6 @@ private fun ToiletDetailCard(
                     )
 
 
-                    // =============================================
-                    // 星評価
-                    // =============================================
-
                     Row(
 
                         verticalAlignment =
@@ -1317,7 +1757,6 @@ private fun ToiletDetailCard(
                             5
                         ) {
                                 index ->
-
 
                             Icon(
 
@@ -1376,10 +1815,6 @@ private fun ToiletDetailCard(
                     }
 
 
-                    // =============================================
-                    // 前回清掃
-                    // =============================================
-
                     Text(
 
                         text =
@@ -1392,10 +1827,6 @@ private fun ToiletDetailCard(
                             12.sp
                     )
 
-
-                    // =============================================
-                    // コメント
-                    // =============================================
 
                     if (
                         toilet.comment
@@ -1419,10 +1850,6 @@ private fun ToiletDetailCard(
                 }
             }
 
-
-            // =============================================
-            // 清掃ボタン
-            // =============================================
 
             Button(
 
@@ -1454,7 +1881,6 @@ private fun ToiletDetailCard(
                 colors =
                     ButtonDefaults
                         .buttonColors(
-
                             containerColor =
                                 FinderGreen
                         )
@@ -1477,7 +1903,6 @@ private fun ToiletDetailCard(
 
 
                 Spacer(
-
                     modifier =
                         Modifier.width(
                             8.dp
@@ -1499,10 +1924,11 @@ private fun ToiletDetailCard(
 }
 
 
-// =============================================
-// 前回清掃からの経過時間
-// =============================================
-
+/*
+ * =====================================
+ * 前回清掃からの経過時間
+ * =====================================
+ */
 private fun formatElapsedSinceCleaning(
 
     lastCleanedAtMillis:
@@ -1512,8 +1938,7 @@ private fun formatElapsedSinceCleaning(
 
 
     if (
-        lastCleanedAtMillis ==
-        null
+        lastCleanedAtMillis == null
     ) {
 
         return "記録なし"
@@ -1532,14 +1957,12 @@ private fun formatElapsedSinceCleaning(
 
 
     val totalMinutes =
-
         elapsedMillis /
                 60_000L
 
 
     if (
-        totalMinutes <
-        1L
+        totalMinutes < 1L
     ) {
 
         return "1分未満"
@@ -1547,8 +1970,7 @@ private fun formatElapsedSinceCleaning(
 
 
     if (
-        totalMinutes <
-        60L
+        totalMinutes < 60L
     ) {
 
         return "${totalMinutes}分前"
@@ -1556,25 +1978,21 @@ private fun formatElapsedSinceCleaning(
 
 
     val totalHours =
-
         totalMinutes /
                 60L
 
 
     val remainingMinutes =
-
         totalMinutes %
                 60L
 
 
     if (
-        totalHours <
-        24L
+        totalHours < 24L
     ) {
 
         return if (
-            remainingMinutes ==
-            0L
+            remainingMinutes == 0L
         ) {
 
             "${totalHours}時間前"
@@ -1587,20 +2005,17 @@ private fun formatElapsedSinceCleaning(
 
 
     val totalDays =
-
         totalHours /
                 24L
 
 
     val remainingHours =
-
         totalHours %
                 24L
 
 
     return if (
-        remainingHours ==
-        0L
+        remainingHours == 0L
     ) {
 
         "${totalDays}日前"
