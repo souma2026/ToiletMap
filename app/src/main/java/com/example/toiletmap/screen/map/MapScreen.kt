@@ -134,6 +134,11 @@ fun MapScreen(
 
     onMarkCleaned: (Toilet) -> Unit = {},
 
+    /*
+     * 口コミ投稿画面を開く
+     */
+    onOpenReviews: (Toilet) -> Unit = {},
+
     onLocationSelected: (Double, Double) -> Unit = { _, _ -> },
 
     onCancelLocationSelection: () -> Unit = {}
@@ -449,6 +454,12 @@ fun MapScreen(
 
                     onMarkCleaned = {
                         onMarkCleaned(
+                            selectedToilet
+                        )
+                    },
+
+                    onOpenReviews = {
+                        onOpenReviews(
                             selectedToilet
                         )
                     },
@@ -1458,6 +1469,7 @@ private fun ToiletDetailCard(
     onDismiss: () -> Unit,
     onRequestCleaning: () -> Unit,
     onMarkCleaned: () -> Unit,
+    onOpenReviews: () -> Unit,
     modifier: Modifier = Modifier
 ) {
 
@@ -2058,6 +2070,71 @@ private fun ToiletDetailCard(
                 Text(
                     text =
                         actionText,
+
+                    fontWeight =
+                        FontWeight.Bold
+                )
+            }
+
+
+            /*
+             * =====================================
+             * 口コミ投稿ボタン
+             * =====================================
+             */
+            Button(
+                onClick =
+                    onOpenReviews,
+
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(
+                            50.dp
+                        ),
+
+                shape =
+                    RoundedCornerShape(
+                        14.dp
+                    ),
+
+                colors =
+                    ButtonDefaults.buttonColors(
+                        containerColor =
+                            FinderSoftGreen,
+
+                        contentColor =
+                            FinderGreen
+                    )
+            ) {
+
+                Icon(
+                    imageVector =
+                        Icons
+                            .Filled
+                            .Star,
+
+                    contentDescription =
+                        null,
+
+                    modifier =
+                        Modifier.size(
+                            20.dp
+                        )
+                )
+
+
+                Spacer(
+                    modifier =
+                        Modifier.width(
+                            8.dp
+                        )
+                )
+
+
+                Text(
+                    text =
+                        "口コミを投稿",
 
                     fontWeight =
                         FontWeight.Bold
