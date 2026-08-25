@@ -1,5 +1,6 @@
 package com.example.toiletmap.ui
 
+import android.os.SystemClock
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -19,16 +20,25 @@ import com.example.toiletmap.model.ToiletReview
 import com.example.toiletmap.screen.account.AccountScreen
 import com.example.toiletmap.screen.add.AddToiletScreen
 import com.example.toiletmap.screen.cleaning.CleaningScreen
+import com.example.toiletmap.screen.game.SecretGameScreen
 import com.example.toiletmap.screen.listofuncleaned.ListOfUncleanedScreen
 import com.example.toiletmap.screen.listofuncleaned.UncleanedToilet
 import com.example.toiletmap.screen.map.MapScreen
 import com.example.toiletmap.screen.review.ReviewDialog
 import com.example.toiletmap.ui.components.BottomNavigationBar
+import com.example.toiletmap.viewmodel.GameViewModel
 import org.maplibre.android.maps.MapView
 
 
 @Composable
 fun ToiletMapApp(
+
+    /*
+     * 隠しゲーム
+     */
+    gameViewModel:
+    GameViewModel,
+
 
     /*
      * MapLibre
@@ -132,6 +142,13 @@ fun ToiletMapApp(
 
 
     /*
+     * 清掃完了
+     */
+    onCompleteCleaning:
+        (CleaningRequest) -> Unit,
+
+
+    /*
      * 清掃担当をキャンセル
      */
     onCancelCleaning:
@@ -214,6 +231,132 @@ fun ToiletMapApp(
 
 
     /*
+     * 地図からトイレ位置を選んでいる途中か
+     */
+    var isSelectingLocation by
+    rememberSaveable {
+        mutableStateOf(false)
+    }
+
+
+    /*
+     * 口コミ投稿画面を表示しているか
+     */
+    var showReviewDialog by
+    rememberSaveable {
+        mutableStateOf(false)
+    }
+
+
+    /*
+     * =====================================
+     * 隠しゲーム起動判定
+     * =====================================
+     *
+     * Map画面のWCロゴを2秒以内に5回連続タップすると起動。
+     * ボトムナビにはゲーム項目を表示しない。
+     */
+    var showSecretGame by
+    rememberSaveable {
+        mutableStateOf(false)
+    }
+
+
+    var secretTapCount by
+    rememberSaveable {
+        mutableIntStateOf(0)
+    }
+
+
+    var lastSecretTapAtMillis by
+    rememberSaveable {
+        mutableStateOf(0L)
+    }
+
+
+    fun handleSecretLogoTap() {
+        val now =
+            SystemClock.elapsedRealtime()
+
+        secretTapCount =
+            if (
+                lastSecretTapAtMillis == 0L ||
+                now - lastSecretTapAtMillis > 2_000L
+            ) {
+                1
+            } else {
+                secretTapCount + 1
+            }
+
+        lastSecretTapAtMillis =
+            now
+
+        if (secretTapCount >= 5) {
+            secretTapCount =
+                0
+
+            lastSecretTapAtMillis =
+                0L
+
+            showReviewDialog =
+                false
+
+            isSelectingLocation =
+                false
+
+            onClearReviewMessages()
+            onDismissSelectedToilet()
+
+            showSecretGame =
+                true
+        }
+    }
+
+
+    /*
+     * 別画面へ移動した場合は連続タップ判定をリセット。
+     */
+    LaunchedEffect(
+        selectedScreen
+    ) {
+        if (!showSecretGame) {
+            secretTapCount =
+                0
+
+            lastSecretTapAtMillis =
+                0L
+        }
+    }
+
+
+    /*
+     * ゲーム中はToiletMap本体とボトムナビを表示しない。
+     */
+    if (showSecretGame) {
+        SecretGameScreen(
+            viewModel =
+                gameViewModel,
+
+            onExit = {
+                showSecretGame =
+                    false
+
+                secretTapCount =
+                    0
+
+                lastSecretTapAtMillis =
+                    0L
+
+                selectedScreen =
+                    2
+            }
+        )
+
+        return
+    }
+
+
+    /*
      * =====================================
      * Map画面を開いたら現在地を表示
      * =====================================
@@ -287,31 +430,6 @@ fun ToiletMapApp(
 
         mutableStateOf<Double?>(
             null
-        )
-    }
-
-
-    /*
-     * 地図からトイレ位置を
-     * 選んでいる途中か
-     */
-    var isSelectingLocation by
-    rememberSaveable {
-
-        mutableStateOf(
-            false
-        )
-    }
-
-
-    /*
-     * 口コミ投稿画面を表示しているか
-     */
-    var showReviewDialog by
-    rememberSaveable {
-
-        mutableStateOf(
-            false
         )
     }
 
@@ -457,6 +575,9 @@ fun ToiletMapApp(
                             )
                         },
 
+                        onCompleteCleaning =
+                            onCompleteCleaning,
+
                         onCancelCleaning =
                             onCancelCleaning,
 
@@ -500,6 +621,14 @@ fun ToiletMapApp(
                          */
                         onSearchToiletSelected =
                             onSearchToiletSelected,
+
+
+                        /*
+                         * WCロゴ5回タップで隠しゲーム
+                         */
+                        onSecretLogoTap = {
+                            handleSecretLogoTap()
+                        },
 
 
                         /*
@@ -576,6 +705,21 @@ fun ToiletMapApp(
 
                             selectedScreen =
                                 1
+                        },
+
+
+                        /*
+                         * 未ログイン時はアカウント画面へ誘導
+                         */
+                        onOpenAccount = {
+
+                            showReviewDialog =
+                                false
+
+                            onDismissSelectedToilet()
+
+                            selectedScreen =
+                                4
                         },
 
 

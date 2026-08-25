@@ -119,6 +119,11 @@ fun MapScreen(
     onSearchToiletSelected: (Toilet) -> Unit = {},
 
     /*
+     * 隠しゲーム用ロゴタップ
+     */
+    onSecretLogoTap: () -> Unit = {},
+
+    /*
      * 現在地
      */
     onCurrentLocationClick: () -> Unit = {},
@@ -149,6 +154,11 @@ fun MapScreen(
     onAcceptCleaning: (CleaningRequest) -> Unit = {},
 
     onOpenCleaningScreen: () -> Unit = {},
+
+    /*
+     * 未ログイン時にアカウント画面を開く
+     */
+    onOpenAccount: () -> Unit = {},
 
     /*
      * 口コミ投稿画面を開く
@@ -330,6 +340,9 @@ fun MapScreen(
             onToiletSelected =
                 onSearchToiletSelected,
 
+            onSecretLogoTap =
+                onSecretLogoTap,
+
             onNotificationClick = {
                 showNotificationDialog =
                     true
@@ -466,11 +479,8 @@ fun MapScreen(
                         currentUserId,
 
                     isActionInProgress =
-                        cleaningActionRequestId != null &&
-                                (
-                                        cleaningActionRequestId == selectedToilet.id ||
-                                                cleaningActionRequestId == cleaningRequest?.id
-                                        ),
+                        cleaningActionRequestId == selectedToilet.id ||
+                                cleaningActionRequestId == cleaningRequest?.id,
 
                     onDismiss =
                         onDismissSelectedToilet,
@@ -492,6 +502,9 @@ fun MapScreen(
 
                     onOpenCleaningScreen =
                         onOpenCleaningScreen,
+
+                    onOpenAccount =
+                        onOpenAccount,
 
                     onOpenReviews = {
                         onOpenReviews(
@@ -577,6 +590,7 @@ fun MapScreen(
 private fun FinderHeader(
     toilets: List<Toilet>,
     onToiletSelected: (Toilet) -> Unit,
+    onSecretLogoTap: () -> Unit,
     onNotificationClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -741,11 +755,20 @@ private fun FinderHeader(
                     modifier =
                         Modifier
                             .size(44.dp)
+                            .clip(
+                                RoundedCornerShape(
+                                    13.dp
+                                )
+                            )
                             .background(
                                 color = FinderGreen,
                                 shape = RoundedCornerShape(
                                     13.dp
                                 )
+                            )
+                            .clickable(
+                                onClick =
+                                    onSecretLogoTap
                             ),
 
                     contentAlignment =
@@ -1508,6 +1531,7 @@ private fun ToiletDetailCard(
     onRequestCleaning: () -> Unit,
     onAcceptCleaning: (CleaningRequest) -> Unit,
     onOpenCleaningScreen: () -> Unit,
+    onOpenAccount: () -> Unit,
     onOpenReviews: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1576,6 +1600,14 @@ private fun ToiletDetailCard(
     val isCleaner =
         currentUserId != null &&
                 cleaningRequest?.cleanerId == currentUserId
+
+
+    /*
+     * 清掃依頼・引受はログイン必須。
+     * Repository側にも認証チェックを残し、UIとデータ層の二重で防ぐ。
+     */
+    val isLoggedIn =
+        currentUserId != null
 
 
     val statusText =
@@ -1990,15 +2022,27 @@ private fun ToiletDetailCard(
 
                 CleaningStatus.NORMAL -> {
 
-                    Text(
-                        text =
-                            "清掃が必要な場合は、清掃依頼を出せます。予定報酬は5ptです。",
+                    CleaningStatusNotice(
+                        message =
+                            if (isLoggedIn) {
+                                "清掃が必要な場合は、清掃依頼を出せます。予定報酬は5ptです。"
+                            } else {
+                                "清掃を依頼するにはログインが必要です。"
+                            },
 
-                        color =
-                            FinderMuted,
+                        backgroundColor =
+                            if (isLoggedIn) {
+                                FinderSoftGreen
+                            } else {
+                                Color(0xFFF3F5F4)
+                            },
 
-                        fontSize =
-                            12.sp
+                        textColor =
+                            if (isLoggedIn) {
+                                FinderGreen
+                            } else {
+                                FinderMuted
+                            }
                     )
                 }
 
@@ -2007,10 +2051,15 @@ private fun ToiletDetailCard(
 
                     CleaningStatusNotice(
                         message =
-                            if (isRequester) {
-                                "自分が出した清掃依頼です。別のユーザーが引き受けるまでお待ちください。"
-                            } else {
-                                "このトイレは清掃担当者を募集しています。"
+                            when {
+                                !isLoggedIn ->
+                                    "このトイレは清掃担当者を募集しています。引き受けるにはログインが必要です。"
+
+                                isRequester ->
+                                    "自分が出した清掃依頼です。別のユーザーが引き受けるまでお待ちください。"
+
+                                else ->
+                                    "このトイレは清掃担当者を募集しています。"
                             },
 
                         backgroundColor =
@@ -2025,24 +2074,36 @@ private fun ToiletDetailCard(
                     )
 
 
-                    CleaningRequestInfo(
-                        label =
-                            "依頼日時",
+                    if (cleaningRequest != null) {
 
-                        value =
-                            formatCleaningDateTime(
-                                cleaningRequest?.requestedAt
-                            )
-                    )
+                        CleaningRequestInfo(
+                            label =
+                                "依頼日時",
+
+                            value =
+                                formatCleaningDateTime(
+                                    cleaningRequest.requestedAt
+                                )
+                        )
 
 
-                    CleaningRequestInfo(
-                        label =
-                            "予定報酬",
+                        CleaningRequestInfo(
+                            label =
+                                "予定報酬",
 
-                        value =
-                            "${cleaningRequest?.rewardPoints ?: 5} pt"
-                    )
+                            value =
+                                "${cleaningRequest.rewardPoints} pt"
+                        )
+                    } else {
+
+                        CleaningRequestInfo(
+                            label =
+                                "予定報酬",
+
+                            value =
+                                "5 pt"
+                        )
+                    }
                 }
 
 
@@ -2109,10 +2170,15 @@ private fun ToiletDetailCard(
 
                     CleaningActionButton(
                         text =
-                            if (isActionInProgress) {
-                                "清掃依頼を送信中"
-                            } else {
-                                "清掃を依頼する"
+                            when {
+                                !isLoggedIn ->
+                                    "ログインして清掃を依頼"
+
+                                isActionInProgress ->
+                                    "清掃依頼を送信中"
+
+                                else ->
+                                    "清掃を依頼する"
                             },
 
                         icon =
@@ -2125,13 +2191,19 @@ private fun ToiletDetailCard(
                             Color.White,
 
                         isLoading =
-                            isActionInProgress,
+                            isLoggedIn && isActionInProgress,
 
                         enabled =
-                            !isActionInProgress,
+                            !isLoggedIn || !isActionInProgress,
 
-                        onClick =
-                            onRequestCleaning
+                        onClick = {
+
+                            if (isLoggedIn) {
+                                onRequestCleaning()
+                            } else {
+                                onOpenAccount()
+                            }
+                        }
                     )
                 }
 
@@ -2145,6 +2217,9 @@ private fun ToiletDetailCard(
                     CleaningActionButton(
                         text =
                             when {
+
+                                !isLoggedIn ->
+                                    "ログインして清掃を引き受ける"
 
                                 request == null ->
                                     "清掃依頼を読み込み中"
@@ -2169,16 +2244,24 @@ private fun ToiletDetailCard(
                             FinderDark,
 
                         isLoading =
-                            isActionInProgress,
+                            isLoggedIn && isActionInProgress,
 
                         enabled =
-                            request != null &&
-                                    !isRequester &&
-                                    !isActionInProgress,
+                            if (!isLoggedIn) {
+                                true
+                            } else {
+                                request != null &&
+                                        !isRequester &&
+                                        !isActionInProgress
+                            },
 
                         onClick = {
 
-                            if (request != null) {
+                            if (!isLoggedIn) {
+
+                                onOpenAccount()
+
+                            } else if (request != null) {
 
                                 onAcceptCleaning(
                                     request

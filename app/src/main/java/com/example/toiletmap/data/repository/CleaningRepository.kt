@@ -99,6 +99,29 @@ class CleaningRepository {
     }
 
 
+    suspend fun completeCleaning(
+        cleaningRequestId: String
+    ) {
+
+        requireLoggedIn(
+            "清掃を完了するにはログインが必要です"
+        )
+
+        supabase
+            .postgrest
+            .rpc(
+                function = "complete_cleaning",
+                parameters =
+                    buildJsonObject {
+                        put(
+                            "p_cleaning_request_id",
+                            cleaningRequestId
+                        )
+                    }
+            )
+    }
+
+
     suspend fun cancelCleaning(
         cleaningRequestId: String
     ) {
