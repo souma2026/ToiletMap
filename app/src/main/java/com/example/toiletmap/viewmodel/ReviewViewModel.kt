@@ -9,102 +9,111 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-
 class ReviewViewModel : ViewModel() {
 
-    private val repository =
-        ReviewRepository()
+    private val repository = ReviewRepository()
 
+    // =========================================
+    // 口コミ一覧
+    // =========================================
 
     private val _reviews =
-        MutableStateFlow<List<ToiletReview>>(
-            emptyList()
-        )
+        MutableStateFlow<List<ToiletReview>>(emptyList())
 
-    val reviews:
-            StateFlow<List<ToiletReview>> =
+    val reviews: StateFlow<List<ToiletReview>> =
         _reviews.asStateFlow()
 
 
-    private val _isLoading =
-        MutableStateFlow(
-            false
-        )
+    // =========================================
+    // 読み込み中
+    // =========================================
 
-    val isLoading:
-            StateFlow<Boolean> =
+    private val _isLoading =
+        MutableStateFlow(false)
+
+    val isLoading: StateFlow<Boolean> =
         _isLoading.asStateFlow()
 
 
-    private val _isPosting =
-        MutableStateFlow(
-            false
-        )
+    // =========================================
+    // 投稿中
+    // =========================================
 
-    val isPosting:
-            StateFlow<Boolean> =
+    private val _isPosting =
+        MutableStateFlow(false)
+
+    val isPosting: StateFlow<Boolean> =
         _isPosting.asStateFlow()
 
 
-    private val _errorMessage =
-        MutableStateFlow<String?>(
-            null
-        )
+    // =========================================
+    // エラーメッセージ
+    // =========================================
 
-    val errorMessage:
-            StateFlow<String?> =
+    private val _errorMessage =
+        MutableStateFlow<String?>(null)
+
+    val errorMessage: StateFlow<String?> =
         _errorMessage.asStateFlow()
 
 
-    private val _successMessage =
-        MutableStateFlow<String?>(
-            null
-        )
+    // =========================================
+    // 成功メッセージ
+    // =========================================
 
-    val successMessage:
-            StateFlow<String?> =
+    private val _successMessage =
+        MutableStateFlow<String?>(null)
+
+    val successMessage: StateFlow<String?> =
         _successMessage.asStateFlow()
 
 
-    /*
-     */
+    // =========================================
+    // 現在表示しているトイレ
+    // =========================================
+
+    private var activeToiletId: String? = null
+
+    private var loadRequestId: Long = 0L
+
+
+    // =========================================
+    // トイレ切り替え
+    // =========================================
+
     fun prepareForToilet(
         toiletId: String?
     ) {
 
-        if (
-            toiletId
-        ) {
-
+        if (activeToiletId == toiletId) {
             return
         }
 
+        activeToiletId = toiletId
 
-            toiletId
+        loadRequestId++
 
+        _reviews.value = emptyList()
 
-        _reviews.value =
-            emptyList()
+        _isLoading.value = false
 
-        _isLoading.value =
-            false
-
-        _isPosting.value =
-            false
+        _isPosting.value = false
 
         clearMessages()
     }
 
 
-    /*
-     */
+    // =========================================
+    // 口コミ取得
+    // =========================================
+
     fun loadReviews(
         toiletId: String
     ) {
 
-        if (
-            toiletId.isBlank()
-        ) {
+        if (toiletId.isBlank()) {
+
+            _reviews.value = emptyList()
 
             _errorMessage.value =
                 "口コミを表示するトイレを選択してください"
@@ -112,52 +121,60 @@ class ReviewViewModel : ViewModel() {
             return
         }
 
+        activeToiletId = toiletId
 
-            toiletId
+        val requestId = ++loadRequestId
+
+        _isLoading.value = true
+
+        _errorMessage.value = null
+
+        _successMessage.value = null
 
 
-
-        _isLoading.value =
-            true
-
-        _errorMessage.value =
-            null
-
+        viewModelScope.launch {
 
             try {
 
                 val loadedReviews =
-                    repository
-                        .loadReviews(
-                            toiletId
-                        )
+                    repository.loadReviews(
+                        toiletId
+                    )
 
 
+                // 別のトイレへ移動していない場合だけ反映
                 if (
+                    activeToiletId == toiletId &&
+                    loadRequestId == requestId
                 ) {
 
                     _reviews.value =
                         loadedReviews
                 }
 
-            } catch (
-                e: Exception
-            ) {
+            } catch (e: Exception) {
 
                 e.printStackTrace()
 
 
                 if (
+                    activeToiletId == toiletId &&
+                    loadRequestId == requestId
                 ) {
 
                     _errorMessage.value =
                         e.message
+                            ?.takeIf { message ->
+                                message.isNotBlank()
+                            }
                             ?: "口コミの取得に失敗しました"
                 }
 
             } finally {
 
                 if (
+                    activeToiletId == toiletId &&
+                    loadRequestId == requestId
                 ) {
 
                     _isLoading.value =
@@ -168,60 +185,73 @@ class ReviewViewModel : ViewModel() {
     }
 
 
-    /*
-     */
+    // =========================================
+    // 口コミ投稿
+    // =========================================
+
     fun addReview(
         toiletId: String,
         rating: Int,
         comment: String
     ) {
 
-        if (
-            _isPosting.value
-        ) {
+        if (_isPosting.value) {
+            return
+        }
+
+
+        if (toiletId.isBlank()) {
+
+            _errorMessage.value =
+                "口コミを投稿するトイレを選択してください"
 
             return
         }
 
 
-            toiletId
+        if (rating !in 1..5) {
+
+            _errorMessage.value =
+                "評価は1〜5で選択してください"
+
+            return
+        }
 
 
-        _isPosting.value =
-            true
+        activeToiletId = toiletId
 
-        _errorMessage.value =
-            null
+        // 古い取得処理を無効にする
+        loadRequestId++
 
-        _successMessage.value =
-            null
+        _isPosting.value = true
 
+        _isLoading.value = false
+
+        _errorMessage.value = null
+
+        _successMessage.value = null
+
+
+        viewModelScope.launch {
 
             try {
 
-                repository
-                    .addReview(
-                        toiletId =
-                            toiletId,
+                // 口コミ投稿
+                repository.addReview(
+                    toiletId = toiletId,
+                    rating = rating,
+                    comment = comment
+                )
 
-                        rating =
-                            rating,
 
-                        comment =
-                            comment
+                // 投稿後に口コミ一覧を再取得
+                val loadedReviews =
+                    repository.loadReviews(
+                        toiletId
                     )
 
 
-                val loadedReviews =
-                    repository
-                        .loadReviews(
-                            toiletId
-                        )
-
-
-                if (
-                    toiletId
-                ) {
+                if (activeToiletId == toiletId) {
 
                     _reviews.value =
                         loadedReviews
@@ -230,27 +260,24 @@ class ReviewViewModel : ViewModel() {
                         "口コミを投稿しました"
                 }
 
-            } catch (
-                e: Exception
-            ) {
+            } catch (e: Exception) {
 
                 e.printStackTrace()
 
 
-                if (
-                    toiletId
-                ) {
+                if (activeToiletId == toiletId) {
 
                     _errorMessage.value =
                         e.message
+                            ?.takeIf { message ->
+                                message.isNotBlank()
+                            }
                             ?: "口コミの投稿に失敗しました"
                 }
 
             } finally {
 
-                if (
-                    toiletId
-                ) {
+                if (activeToiletId == toiletId) {
 
                     _isPosting.value =
                         false
@@ -259,6 +286,10 @@ class ReviewViewModel : ViewModel() {
         }
     }
 
+
+    // =========================================
+    // メッセージ削除
+    // =========================================
 
     fun clearMessages() {
 
