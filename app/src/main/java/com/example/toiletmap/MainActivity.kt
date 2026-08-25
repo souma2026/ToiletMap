@@ -19,17 +19,33 @@ import com.example.toiletmap.viewmodel.ToiletViewModel
 
 class MainActivity : ComponentActivity() {
 
+    /*
+     * =====================================
+     * MapLibre
+     * =====================================
+     */
     private lateinit var mapController:
             MapLibreMapController
 
+
+    /*
+     * =====================================
+     * ToiletViewModel
+     * =====================================
+     */
     private lateinit var toiletViewModel:
             ToiletViewModel
 
 
     /*
      * =====================================
-     * 選択中トイレID
+     * 現在選択中のトイレID
      * =====================================
+     *
+     * ・地図のピンを押した
+     * ・検索結果を押した
+     *
+     * どちらの場合もここを書き換える。
      */
     private var selectedToiletId by
     mutableStateOf<String?>(
@@ -77,12 +93,13 @@ class MainActivity : ComponentActivity() {
 
         /*
          * =====================================
-         * 地図のトイレピンが押されたとき
+         * 地図上のトイレピンを押した
          * =====================================
          */
         mapController
             .setOnToiletMarkerClickListener {
                     toilet ->
+
 
                 selectedToiletId =
                     toilet.id
@@ -114,7 +131,7 @@ class MainActivity : ComponentActivity() {
 
                 /*
                  * =====================================
-                 * 選択中トイレ
+                 * 現在選択中のトイレ
                  * =====================================
                  */
                 val selectedToilet =
@@ -122,6 +139,7 @@ class MainActivity : ComponentActivity() {
                     toilets
                         .firstOrNull {
                                 toilet ->
+
 
                             toilet.id ==
                                     selectedToiletId
@@ -132,14 +150,6 @@ class MainActivity : ComponentActivity() {
                  * =====================================
                  * 清掃待ちトイレ
                  * =====================================
-                 *
-                 * CleaningStatus.REQUESTED
-                 * のトイレだけ取得
-                 *
-                 * Toilet
-                 * ↓
-                 * UncleanedToilet
-                 * =====================================
                  */
                 val uncleanedToilets =
 
@@ -147,11 +157,13 @@ class MainActivity : ComponentActivity() {
                         .filter {
                                 toilet ->
 
+
                             toilet.cleaningStatus ==
                                     CleaningStatus.REQUESTED
                         }
                         .map {
                                 toilet ->
+
 
                             UncleanedToilet(
 
@@ -175,9 +187,8 @@ class MainActivity : ComponentActivity() {
 
                 /*
                  * =====================================
-                 * トイレ一覧更新
-                 * ↓
-                 * 地図更新
+                 * トイレ一覧が更新されたら
+                 * 地図上のピンを更新
                  * =====================================
                  */
                 LaunchedEffect(
@@ -198,90 +209,73 @@ class MainActivity : ComponentActivity() {
                  */
                 ToiletMapApp(
 
+                    /*
+                     * MapLibre
+                     */
                     mapView =
                         mapController.mapView,
 
 
+                    /*
+                     * =====================================
+                     * 検索対象
+                     * =====================================
+                     */
+                    toilets =
+                        toilets,
+
+
+                    /*
+                     * 現在選択中
+                     */
                     selectedToilet =
                         selectedToilet,
 
 
+                    /*
+                     * 清掃待ち一覧
+                     */
                     uncleanedToilets =
                         uncleanedToilets,
 
 
                     /*
                      * =====================================
-                     * 未清掃一覧
-                     * ↓
-                     * 地図で見る
+                     * 検索結果を押した
                      * =====================================
                      */
-                    onShowUncleanedToiletOnMap = {
-                            uncleanedToilet ->
+                    onSearchToiletSelected = {
+                            toilet ->
 
 
                         /*
-                         * =====================================
-                         * 最新のToiletをIDから取得
-                         * =====================================
+                         * 選択中にする
                          */
-                        val toilet =
-
-                            toilets
-                                .firstOrNull {
-
-                                    it.id ==
-                                            uncleanedToilet.id
-                                }
+                        selectedToiletId =
+                            toilet.id
 
 
-                        if (
-                            toilet != null
-                        ) {
-
-
-                            /*
-                             * =====================================
-                             * 詳細表示するトイレに設定
-                             * =====================================
-                             */
-                            selectedToiletId =
-                                toilet.id
-
-
-                            /*
-                             * =====================================
-                             * トイレを画面中央へ
-                             *
-                             * 15.0なので
-                             * 少し周辺も見える
-                             * =====================================
-                             */
-                            mapController
-                                .focusOnToilet(
-
-                                    toilet =
-                                        toilet,
-
-                                    zoom =
-                                        15.0
-                                )
-                        }
+                        /*
+                         * そのトイレへ地図移動
+                         */
+                        mapController
+                            .focusOnToilet(
+                                toilet
+                            )
                     },
 
 
                     /*
                      * =====================================
-                     * トイレ詳細を閉じる
+                     * 詳細を閉じる
                      * =====================================
                      */
                     onDismissSelectedToilet = {
 
+
                         selectedToiletId =
                             null
                     },
-
 
 
                     /*
@@ -291,6 +285,7 @@ class MainActivity : ComponentActivity() {
                      */
                     onRequestCleaning = {
                             toilet ->
+
 
                         toiletViewModel
                             .requestCleaning(
@@ -307,6 +302,7 @@ class MainActivity : ComponentActivity() {
                     onMarkCleaned = {
                             toilet ->
 
+
                         toiletViewModel
                             .markCleaned(
                                 toilet.id
@@ -316,7 +312,7 @@ class MainActivity : ComponentActivity() {
 
                     /*
                      * =====================================
-                     * 新しいトイレ登録
+                     * トイレ追加
                      * =====================================
                      */
                     onAddToilet = {
@@ -329,14 +325,37 @@ class MainActivity : ComponentActivity() {
                             )
 
 
+                        /*
+                         * 登録したトイレを選択
+                         */
                         selectedToiletId =
                             toilet.id
 
 
+                        /*
+                         * 登録場所へ移動
+                         */
                         mapController
                             .focusOnToilet(
                                 toilet
                             )
+                    },
+
+
+                    /*
+                     * =====================================
+                     * 現在地ボタン
+                     * =====================================
+                     *
+                     * 現在は一旦無効。
+                     *
+                     * 検索機能を安定させた後に
+                     * MapLibreMapControllerと合わせて
+                     * 再度実装する。
+                     */
+                    onCurrentLocationRequested = {
+
+                        // 現在地機能は一旦無効
                     }
                 )
             }
@@ -358,6 +377,7 @@ class MainActivity : ComponentActivity() {
                 outState
             )
 
+
         super.onSaveInstanceState(
             outState
         )
@@ -372,6 +392,7 @@ class MainActivity : ComponentActivity() {
     override fun onLowMemory() {
 
         super.onLowMemory()
+
 
         mapController
             .onLowMemory()
