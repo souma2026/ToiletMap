@@ -1750,7 +1750,7 @@ private fun ToiletDetailCard(
         modifier =
             modifier
                 .heightIn(
-                    max = 380.dp
+                    max = 300.dp
                 )
                 .shadow(
                     14.dp,

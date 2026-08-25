@@ -449,43 +449,67 @@ fun ToiletMapApp(
     }
 
 
+    /*
+ * =====================================
+ * ボトムナビゲーション表示判定
+ * =====================================
+ *
+ * Map画面でトイレ詳細を表示している間だけ、
+ * 下のナビゲーションバーを隠す。
+ *
+ * これによって詳細カードが画面下端まで使えるので、
+ * カード上端を今より下へ移動できる。
+ */
+    val showBottomNavigation =
+
+        !(
+                selectedScreen == 2 &&
+                        selectedToilet != null
+                )
+
+
     Scaffold(
 
         bottomBar = {
 
-            BottomNavigationBar(
+            if (
+                showBottomNavigation
+            ) {
 
-                selectedScreen =
-                    selectedScreen,
-
-                onScreenSelected = {
-                        screen ->
-
-
-                    /*
-                     * Map以外へ移動したら
-                     * 場所選択を終了
-                     */
-                    if (
-                        screen != 2
-                    ) {
-
-                        isSelectingLocation =
-                            false
-
-                        showReviewDialog =
-                            false
-
-                        onClearReviewMessages()
-
-                        onDismissSelectedToilet()
-                    }
-
+                BottomNavigationBar(
 
                     selectedScreen =
-                        screen
-                }
-            )
+                        selectedScreen,
+
+                    onScreenSelected = {
+                            screen ->
+
+
+                        /*
+                         * Map以外へ移動したら
+                         * 場所選択を終了
+                         */
+                        if (
+                            screen != 2
+                        ) {
+
+                            isSelectingLocation =
+                                false
+
+                            showReviewDialog =
+                                false
+
+                            onClearReviewMessages()
+
+                            onDismissSelectedToilet()
+                        }
+
+
+                        selectedScreen =
+                            screen
+                    }
+                )
+            }
         }
 
     ) {
