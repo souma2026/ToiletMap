@@ -9,111 +9,126 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+
 class ReviewViewModel : ViewModel() {
 
-    private val repository = ReviewRepository()
+    private val repository =
+        ReviewRepository()
 
-    // =========================================
-    // 口コミ一覧
-    // =========================================
 
     private val _reviews =
-        MutableStateFlow<List<ToiletReview>>(emptyList())
+        MutableStateFlow<List<ToiletReview>>(
+            emptyList()
+        )
 
-    val reviews: StateFlow<List<ToiletReview>> =
+    val reviews:
+            StateFlow<List<ToiletReview>> =
         _reviews.asStateFlow()
 
 
-    // =========================================
-    // 読み込み中
-    // =========================================
-
     private val _isLoading =
-        MutableStateFlow(false)
+        MutableStateFlow(
+            false
+        )
 
-    val isLoading: StateFlow<Boolean> =
+    val isLoading:
+            StateFlow<Boolean> =
         _isLoading.asStateFlow()
 
 
-    // =========================================
-    // 投稿中
-    // =========================================
-
     private val _isPosting =
-        MutableStateFlow(false)
+        MutableStateFlow(
+            false
+        )
 
-    val isPosting: StateFlow<Boolean> =
+    val isPosting:
+            StateFlow<Boolean> =
         _isPosting.asStateFlow()
 
 
-    // =========================================
-    // エラーメッセージ
-    // =========================================
-
     private val _errorMessage =
-        MutableStateFlow<String?>(null)
+        MutableStateFlow<String?>(
+            null
+        )
 
-    val errorMessage: StateFlow<String?> =
+    val errorMessage:
+            StateFlow<String?> =
         _errorMessage.asStateFlow()
 
 
-    // =========================================
-    // 成功メッセージ
-    // =========================================
-
     private val _successMessage =
-        MutableStateFlow<String?>(null)
+        MutableStateFlow<String?>(
+            null
+        )
 
-    val successMessage: StateFlow<String?> =
+    val successMessage:
+            StateFlow<String?> =
         _successMessage.asStateFlow()
 
 
-    // =========================================
-    // 現在表示しているトイレ
-    // =========================================
+    /*
+     * 現在、口コミを表示しているトイレID。
+     * 別のトイレへ切り替えたあとに古い通信結果が届いても、
+     * 新しいトイレの画面を上書きしないために使用する。
+     */
+    private var activeToiletId:
+            String? =
+        null
 
-    private var activeToiletId: String? = null
 
-    private var loadRequestId: Long = 0L
+    private var loadRequestId:
+            Long =
+        0L
 
 
-    // =========================================
-    // トイレ切り替え
-    // =========================================
-
+    /*
+     * 選択中のトイレが変わったときに呼ぶ。
+     */
     fun prepareForToilet(
         toiletId: String?
     ) {
 
-        if (activeToiletId == toiletId) {
+        if (
+            activeToiletId ==
+            toiletId
+        ) {
+
             return
         }
 
-        activeToiletId = toiletId
 
-        loadRequestId++
+        activeToiletId =
+            toiletId
 
-        _reviews.value = emptyList()
+        loadRequestId +=
+            1L
 
-        _isLoading.value = false
+        _reviews.value =
+            emptyList()
 
-        _isPosting.value = false
+        _isLoading.value =
+            false
+
+        _isPosting.value =
+            false
 
         clearMessages()
     }
 
 
-    // =========================================
-    // 口コミ取得
-    // =========================================
-
+    /*
+     * 選択中トイレの口コミを取得する。
+     */
     fun loadReviews(
         toiletId: String
     ) {
 
-        if (toiletId.isBlank()) {
+        if (
+            toiletId.isBlank()
+        ) {
 
-            _reviews.value = emptyList()
+            _reviews.value =
+                emptyList()
 
             _errorMessage.value =
                 "口コミを表示するトイレを選択してください"
@@ -121,15 +136,22 @@ class ReviewViewModel : ViewModel() {
             return
         }
 
-        activeToiletId = toiletId
 
-        val requestId = ++loadRequestId
+        activeToiletId =
+            toiletId
 
-        _isLoading.value = true
+        val requestId =
+            ++loadRequestId
 
-        _errorMessage.value = null
 
-        _successMessage.value = null
+        _isLoading.value =
+            true
+
+        _errorMessage.value =
+            null
+
+        _successMessage.value =
+            null
 
 
         viewModelScope.launch {
@@ -137,35 +159,41 @@ class ReviewViewModel : ViewModel() {
             try {
 
                 val loadedReviews =
-                    repository.loadReviews(
-                        toiletId
-                    )
+                    repository
+                        .loadReviews(
+                            toiletId
+                        )
 
 
-                // 別のトイレへ移動していない場合だけ反映
                 if (
-                    activeToiletId == toiletId &&
-                    loadRequestId == requestId
+                    activeToiletId ==
+                    toiletId &&
+                    loadRequestId ==
+                    requestId
                 ) {
 
                     _reviews.value =
                         loadedReviews
                 }
 
-            } catch (e: Exception) {
+            } catch (
+                e: Exception
+            ) {
 
                 e.printStackTrace()
 
 
                 if (
-                    activeToiletId == toiletId &&
-                    loadRequestId == requestId
+                    activeToiletId ==
+                    toiletId &&
+                    loadRequestId ==
+                    requestId
                 ) {
 
                     _errorMessage.value =
                         e.message
-                            ?.takeIf { message ->
-                                message.isNotBlank()
+                            ?.takeIf {
+                                it.isNotBlank()
                             }
                             ?: "口コミの取得に失敗しました"
                 }
@@ -173,8 +201,10 @@ class ReviewViewModel : ViewModel() {
             } finally {
 
                 if (
-                    activeToiletId == toiletId &&
-                    loadRequestId == requestId
+                    activeToiletId ==
+                    toiletId &&
+                    loadRequestId ==
+                    requestId
                 ) {
 
                     _isLoading.value =
@@ -185,73 +215,74 @@ class ReviewViewModel : ViewModel() {
     }
 
 
-    // =========================================
-    // 口コミ投稿
-    // =========================================
-
+    /*
+     * 口コミを投稿し、成功したら同じトイレの一覧を再取得する。
+     */
     fun addReview(
         toiletId: String,
         rating: Int,
         comment: String
     ) {
 
-        if (_isPosting.value) {
-            return
-        }
-
-
-        if (toiletId.isBlank()) {
-
-            _errorMessage.value =
-                "口コミを投稿するトイレを選択してください"
+        if (
+            _isPosting.value
+        ) {
 
             return
         }
 
 
-        if (rating !in 1..5) {
+        activeToiletId =
+            toiletId
 
-            _errorMessage.value =
-                "評価は1〜5で選択してください"
+        loadRequestId +=
+            1L
 
-            return
-        }
+        _isPosting.value =
+            true
 
+        /*
+         * 投稿開始時点で、それ以前の一覧読込表示を終了する。
+         * 古い読込処理はloadRequestIdにより結果を反映しない。
+         */
+        _isLoading.value =
+            false
 
-        activeToiletId = toiletId
+        _errorMessage.value =
+            null
 
-        // 古い取得処理を無効にする
-        loadRequestId++
-
-        _isPosting.value = true
-
-        _isLoading.value = false
-
-        _errorMessage.value = null
-
-        _successMessage.value = null
+        _successMessage.value =
+            null
 
 
         viewModelScope.launch {
 
             try {
 
-                // 口コミ投稿
-                repository.addReview(
-                    toiletId = toiletId,
-                    rating = rating,
-                    comment = comment
-                )
+                repository
+                    .addReview(
+                        toiletId =
+                            toiletId,
 
+                        rating =
+                            rating,
 
-                // 投稿後に口コミ一覧を再取得
-                val loadedReviews =
-                    repository.loadReviews(
-                        toiletId
+                        comment =
+                            comment
                     )
 
 
-                if (activeToiletId == toiletId) {
+                val loadedReviews =
+                    repository
+                        .loadReviews(
+                            toiletId
+                        )
+
+
+                if (
+                    activeToiletId ==
+                    toiletId
+                ) {
 
                     _reviews.value =
                         loadedReviews
@@ -260,24 +291,32 @@ class ReviewViewModel : ViewModel() {
                         "口コミを投稿しました"
                 }
 
-            } catch (e: Exception) {
+            } catch (
+                e: Exception
+            ) {
 
                 e.printStackTrace()
 
 
-                if (activeToiletId == toiletId) {
+                if (
+                    activeToiletId ==
+                    toiletId
+                ) {
 
                     _errorMessage.value =
                         e.message
-                            ?.takeIf { message ->
-                                message.isNotBlank()
+                            ?.takeIf {
+                                it.isNotBlank()
                             }
                             ?: "口コミの投稿に失敗しました"
                 }
 
             } finally {
 
-                if (activeToiletId == toiletId) {
+                if (
+                    activeToiletId ==
+                    toiletId
+                ) {
 
                     _isPosting.value =
                         false
@@ -286,10 +325,6 @@ class ReviewViewModel : ViewModel() {
         }
     }
 
-
-    // =========================================
-    // メッセージ削除
-    // =========================================
 
     fun clearMessages() {
 

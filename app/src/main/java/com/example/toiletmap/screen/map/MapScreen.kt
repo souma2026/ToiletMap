@@ -26,6 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.NotificationsNone
@@ -35,6 +36,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -63,35 +65,22 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+import com.example.toiletmap.model.CleaningRequest
 import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.model.Toilet
+import com.example.toiletmap.screen.cleaning.formatCleaningDateTime
 import kotlinx.coroutines.delay
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
-
-
-/*
- * =====================================
- * 端末の現在地取得状態
- * =====================================
- */
-enum class DeviceLocationStatus {
-    CHECKING,
-    AVAILABLE,
-    PERMISSION_DENIED,
-    DEVICE_LOCATION_OFF,
-    WAITING_FOR_SIGNAL
-}
 
 
 /*
@@ -104,6 +93,7 @@ private val FinderDark = Color(0xFF12313A)
 private val FinderMuted = Color(0xFF748186)
 private val FinderPale = Color(0xFFF5F8F7)
 private val FinderAmber = Color(0xFFF2B544)
+private val FinderBlue = Color(0xFF1976D2)
 private val FinderRed = Color(0xFFD94B4B)
 private val FinderSoftGreen = Color(0xFFE5F4F1)
 private val FinderBorder = Color(0xFFD7DEDC)
@@ -129,13 +119,6 @@ fun MapScreen(
     onSearchToiletSelected: (Toilet) -> Unit = {},
 
     /*
-     * 端末の現在地取得状態
-     */
-    locationStatus:
-    DeviceLocationStatus =
-        DeviceLocationStatus.CHECKING,
-
-    /*
      * 現在地
      */
     onCurrentLocationClick: () -> Unit = {},
@@ -151,17 +134,21 @@ fun MapScreen(
     selectedToilet: Toilet? = null,
 
     /*
-     * 自分が登録したトイレのみ削除可能
+     * 選択中トイレの有効な清掃依頼
      */
-    canDeleteSelectedToilet: Boolean = false,
+    cleaningRequest: CleaningRequest? = null,
+
+    currentUserId: String? = null,
+
+    cleaningActionRequestId: String? = null,
 
     onDismissSelectedToilet: () -> Unit = {},
 
-    onRequestCleaning: (Toilet, Int) -> Unit = { _, _ -> },
+    onRequestCleaning: (Toilet) -> Unit = {},
 
-    onMarkCleaned: (Toilet) -> Unit = {},
+    onAcceptCleaning: (CleaningRequest) -> Unit = {},
 
-    onDeleteToilet: (Toilet) -> Unit = {},
+    onOpenCleaningScreen: () -> Unit = {},
 
     /*
      * 口コミ投稿画面を開く
@@ -177,10 +164,6 @@ fun MapScreen(
      * 通知
      */
     var showNotificationDialog by remember {
-        mutableStateOf(false)
-    }
-
-    var showLocationStatusDialog by remember {
         mutableStateOf(false)
     }
 
@@ -422,20 +405,8 @@ fun MapScreen(
                     }
                 },
 
-                locationStatus =
-                    locationStatus,
-
-                onCurrentLocation = {
-                    if (
-                        locationStatus !=
-                        DeviceLocationStatus.AVAILABLE
-                    ) {
-                        showLocationStatusDialog =
-                            true
-                    }
-
-                    onCurrentLocationClick()
-                },
+                onCurrentLocation =
+                    onCurrentLocationClick,
 
                 modifier =
                     Modifier
@@ -488,32 +459,39 @@ fun MapScreen(
                     toilet =
                         selectedToilet,
 
-                    canDelete =
-                        canDeleteSelectedToilet,
+                    cleaningRequest =
+                        cleaningRequest,
+
+                    currentUserId =
+                        currentUserId,
+
+                    isActionInProgress =
+                        cleaningActionRequestId != null &&
+                                (
+                                        cleaningActionRequestId == selectedToilet.id ||
+                                                cleaningActionRequestId == cleaningRequest?.id
+                                        ),
 
                     onDismiss =
                         onDismissSelectedToilet,
 
                     onRequestCleaning = {
-                            rewardPoints ->
 
                         onRequestCleaning(
-                            selectedToilet,
-                            rewardPoints
-                        )
-                    },
-
-                    onMarkCleaned = {
-                        onMarkCleaned(
                             selectedToilet
                         )
                     },
 
-                    onDelete = {
-                        onDeleteToilet(
-                            selectedToilet
+                    onAcceptCleaning = {
+                            request ->
+
+                        onAcceptCleaning(
+                            request
                         )
                     },
+
+                    onOpenCleaningScreen =
+                        onOpenCleaningScreen,
 
                     onOpenReviews = {
                         onOpenReviews(
@@ -541,67 +519,6 @@ fun MapScreen(
                 )
             }
         }
-    }
-
-
-    /*
-     * =====================================
-     * 現在地状態ダイアログ
-     * =====================================
-     */
-    if (
-        showLocationStatusDialog
-    ) {
-        val locationMessage =
-            when (
-                locationStatus
-            ) {
-                DeviceLocationStatus.CHECKING ->
-                    "現在地を確認しています。数秒待ってからもう一度お試しください。"
-
-                DeviceLocationStatus.AVAILABLE ->
-                    "現在地を正常に取得できています。"
-
-                DeviceLocationStatus.PERMISSION_DENIED ->
-                    "ToiletMapへの位置情報の許可がありません。現在地ボタンを押して、位置情報を許可してください。"
-
-                DeviceLocationStatus.DEVICE_LOCATION_OFF ->
-                    "スマホ本体の位置情報機能がOFFです。端末の設定から位置情報をONにしてください。Googleマップでも現在地が表示されない場合は、この状態の可能性が高いです。"
-
-                DeviceLocationStatus.WAITING_FOR_SIGNAL ->
-                    "スマホ本体の位置情報はONですが、現在地データを取得できていません。屋外などGPS信号を受信しやすい場所で試すか、端末の位置情報機能を一度OFF/ONしてください。エミュレータの場合は位置情報を設定してください。"
-            }
-
-        AlertDialog(
-            onDismissRequest = {
-                showLocationStatusDialog =
-                    false
-            },
-            title = {
-                Text(
-                    text = "現在地の状態",
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    text = locationMessage
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showLocationStatusDialog =
-                            false
-                    }
-                ) {
-                    Text(
-                        text = "閉じる",
-                        color = FinderGreen
-                    )
-                }
-            }
-        )
     }
 
 
@@ -1287,7 +1204,6 @@ private fun SearchResultItem(
 private fun MapControls(
     onZoomIn: () -> Unit,
     onZoomOut: () -> Unit,
-    locationStatus: DeviceLocationStatus,
     onCurrentLocation: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1307,116 +1223,51 @@ private fun MapControls(
 
         /*
          * 現在地
-         *
-         * 正常       : 緑
-         * 確認中     : グレー
-         * 権限なし   : 赤 + !
-         * 本体OFF    : 赤 + !
-         * 測位不能   : オレンジ + !
          */
-        val locationIconColor =
-            when (
-                locationStatus
-            ) {
-                DeviceLocationStatus.AVAILABLE ->
-                    FinderGreen
+        Box(
+            modifier =
+                Modifier
+                    .size(52.dp)
+                    .shadow(
+                        7.dp,
+                        RoundedCornerShape(
+                            18.dp
+                        )
+                    )
+                    .clip(
+                        RoundedCornerShape(
+                            18.dp
+                        )
+                    )
+                    .background(
+                        Color.White
+                    )
+                    .clickable(
+                        onClick =
+                            onCurrentLocation
+                    ),
 
-                DeviceLocationStatus.CHECKING ->
-                    Color(0xFF8A8A8A)
+            contentAlignment =
+                Alignment.Center
+        ) {
 
-                DeviceLocationStatus.PERMISSION_DENIED,
-                DeviceLocationStatus.DEVICE_LOCATION_OFF ->
-                    Color(0xFFD32F2F)
+            Icon(
+                imageVector =
+                    Icons
+                        .Outlined
+                        .LocationOn,
 
-                DeviceLocationStatus.WAITING_FOR_SIGNAL ->
-                    Color(0xFFF57C00)
-            }
+                contentDescription =
+                    "現在地",
 
-        val showWarningBadge =
-            locationStatus == DeviceLocationStatus.PERMISSION_DENIED ||
-                    locationStatus == DeviceLocationStatus.DEVICE_LOCATION_OFF ||
-                    locationStatus == DeviceLocationStatus.WAITING_FOR_SIGNAL
+                tint =
+                    FinderGreen,
 
-        val warningBadgeColor =
-            if (
-                locationStatus ==
-                DeviceLocationStatus.WAITING_FOR_SIGNAL
-            ) {
-                Color(0xFFF57C00)
-            } else {
-                Color(0xFFD32F2F)
-            }
-
-        Box {
-            Box(
                 modifier =
-                    Modifier
-                        .size(52.dp)
-                        .shadow(
-                            7.dp,
-                            RoundedCornerShape(18.dp)
-                        )
-                        .clip(
-                            RoundedCornerShape(18.dp)
-                        )
-                        .background(
-                            Color.White
-                        )
-                        .clickable(
-                            onClick = onCurrentLocation
-                        ),
-                contentAlignment =
-                    Alignment.Center
-            ) {
-                Icon(
-                    imageVector =
-                        Icons.Outlined.LocationOn,
-                    contentDescription =
-                        when (
-                            locationStatus
-                        ) {
-                            DeviceLocationStatus.AVAILABLE ->
-                                "現在地：正常"
-                            DeviceLocationStatus.CHECKING ->
-                                "現在地：確認中"
-                            DeviceLocationStatus.PERMISSION_DENIED ->
-                                "現在地：位置情報権限なし"
-                            DeviceLocationStatus.DEVICE_LOCATION_OFF ->
-                                "現在地：スマホ本体の位置情報OFF"
-                            DeviceLocationStatus.WAITING_FOR_SIGNAL ->
-                                "現在地：位置情報を取得できません"
-                        },
-                    tint =
-                        locationIconColor,
-                    modifier =
-                        Modifier.size(25.dp)
-                )
-            }
-
-            if (
-                showWarningBadge
-            ) {
-                Surface(
-                    modifier =
-                        Modifier
-                            .align(Alignment.TopEnd)
-                            .size(19.dp),
-                    shape = CircleShape,
-                    color = warningBadgeColor,
-                    shadowElevation = 2.dp
-                ) {
-                    Box(
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "!",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
+                    Modifier.size(
+                        25.dp
+                    )
+            )
         }
 
 
@@ -1650,18 +1501,17 @@ private fun LocationSelectionBanner(
 @Composable
 private fun ToiletDetailCard(
     toilet: Toilet,
-    canDelete: Boolean,
+    cleaningRequest: CleaningRequest?,
+    currentUserId: String?,
+    isActionInProgress: Boolean,
     onDismiss: () -> Unit,
-    onRequestCleaning: (Int) -> Unit,
-    onMarkCleaned: () -> Unit,
-    onDelete: () -> Unit,
+    onRequestCleaning: () -> Unit,
+    onAcceptCleaning: (CleaningRequest) -> Unit,
+    onOpenCleaningScreen: () -> Unit,
     onOpenReviews: () -> Unit,
     modifier: Modifier = Modifier
 ) {
 
-    /*
-     * 現在時刻
-     */
     var nowMillis by remember(
         toilet.id,
         toilet.lastCleanedAtMillis
@@ -1673,9 +1523,6 @@ private fun ToiletDetailCard(
     }
 
 
-    /*
-     * 1分ごと更新
-     */
     LaunchedEffect(
         toilet.id,
         toilet.lastCleanedAtMillis
@@ -1686,13 +1533,9 @@ private fun ToiletDetailCard(
             nowMillis =
                 System.currentTimeMillis()
 
-            /*
-             * IDEで
-             * Legacy Long overload...
-             * と表示されることがありますが、
-             * 警告でありエラーではありません。
-             */
-            delay(60_000L)
+            delay(
+                60_000L
+            )
         }
     }
 
@@ -1715,246 +1558,58 @@ private fun ToiletDetailCard(
         )
 
 
-    val requested =
-        toilet.cleaningStatus ==
-                CleaningStatus.REQUESTED
+    /*
+     * cleaning_requests の状態を優先する。
+     * RPC直後に toilets の再読込が完了するまでの間も、
+     * 詳細カードを正しい状態で表示するため。
+     */
+    val cleaningStatus =
+        cleaningRequest?.status
+            ?: toilet.cleaningStatus
+
+
+    val isRequester =
+        currentUserId != null &&
+                cleaningRequest?.requesterId == currentUserId
+
+
+    val isCleaner =
+        currentUserId != null &&
+                cleaningRequest?.cleanerId == currentUserId
 
 
     val statusText =
-        if (requested) {
-            "清掃待ち"
-        } else {
-            "通常"
+        when (cleaningStatus) {
+
+            CleaningStatus.NORMAL ->
+                "通常"
+
+            CleaningStatus.REQUESTED ->
+                "清掃依頼中"
+
+            CleaningStatus.IN_PROGRESS ->
+                "清掃中"
+
+            CleaningStatus.COMPLETED ->
+                "清掃完了"
         }
 
 
     val statusColor =
-        if (requested) {
-            FinderAmber
-        } else {
-            FinderRed
+        when (cleaningStatus) {
+
+            CleaningStatus.NORMAL ->
+                FinderRed
+
+            CleaningStatus.REQUESTED ->
+                FinderAmber
+
+            CleaningStatus.IN_PROGRESS ->
+                FinderBlue
+
+            CleaningStatus.COMPLETED ->
+                FinderGreen
         }
-
-
-    val actionText =
-        if (requested) {
-            "清掃しました（${toilet.cleaningRewardPoints} pt獲得）"
-        } else {
-            "清掃を依頼する"
-        }
-
-
-    val actionIcon =
-        if (requested) {
-            Icons.Outlined.CheckCircle
-        } else {
-            Icons.Outlined.NotificationsNone
-        }
-
-
-    var showRewardDialog by remember(
-        toilet.id
-    ) {
-        mutableStateOf(false)
-    }
-
-
-    var rewardPointText by remember(
-        toilet.id
-    ) {
-        mutableStateOf("10")
-    }
-
-
-    val enteredRewardPoints =
-        rewardPointText.toIntOrNull()
-
-
-    val rewardPointsValid =
-        enteredRewardPoints != null &&
-                enteredRewardPoints in 1..10_000
-
-
-    if (showRewardDialog && !requested) {
-
-        AlertDialog(
-            onDismissRequest = {
-                showRewardDialog = false
-            },
-
-            title = {
-                Text(
-                    text = "清掃依頼の報酬ポイント"
-                )
-            },
-
-            text = {
-                Column(
-                    verticalArrangement =
-                        Arrangement.spacedBy(
-                            10.dp
-                        )
-                ) {
-
-                    Text(
-                        text =
-                            "清掃を完了したユーザーへ支払うポイント数を入力してください。依頼時にあなたの所持ポイントから差し引かれます。"
-                    )
-
-
-                    OutlinedTextField(
-                        value =
-                            rewardPointText,
-
-                        onValueChange = {
-                                newValue ->
-
-                            rewardPointText =
-                                newValue
-                                    .filter {
-                                        it.isDigit()
-                                    }
-                                    .take(5)
-                        },
-
-                        label = {
-                            Text(
-                                "支払うポイント"
-                            )
-                        },
-
-                        suffix = {
-                            Text(
-                                "pt"
-                            )
-                        },
-
-                        singleLine = true,
-
-                        isError =
-                            rewardPointText.isNotBlank() &&
-                                    !rewardPointsValid,
-
-                        supportingText = {
-                            Text(
-                                if (rewardPointsValid) {
-                                    "1～10000ptの範囲で設定できます"
-                                } else {
-                                    "1～10000の整数を入力してください"
-                                }
-                            )
-                        },
-
-                        keyboardOptions =
-                            KeyboardOptions(
-                                keyboardType =
-                                    KeyboardType.Number,
-
-                                imeAction =
-                                    ImeAction.Done
-                            )
-                    )
-                }
-            },
-
-            confirmButton = {
-                TextButton(
-                    onClick = {
-
-                        val rewardPoints =
-                            enteredRewardPoints
-                                ?: return@TextButton
-
-                        if (!rewardPointsValid) {
-                            return@TextButton
-                        }
-
-                        showRewardDialog = false
-
-                        onRequestCleaning(
-                            rewardPoints
-                        )
-                    },
-
-                    enabled =
-                        rewardPointsValid
-                ) {
-                    Text(
-                        "${enteredRewardPoints ?: 0} ptで依頼する"
-                    )
-                }
-            },
-
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        showRewardDialog = false
-                    }
-                ) {
-                    Text(
-                        "キャンセル"
-                    )
-                }
-            }
-        )
-    }
-
-
-    var showDeleteDialog by remember(
-        toilet.id
-    ) {
-        mutableStateOf(false)
-    }
-
-
-    if (showDeleteDialog && canDelete) {
-
-        AlertDialog(
-            onDismissRequest = {
-                showDeleteDialog = false
-            },
-
-            title = {
-                Text(
-                    text = "このトイレを削除しますか？"
-                )
-            },
-
-            text = {
-                Text(
-                    text =
-                        "「${toilet.name}」を地図から削除します。この操作は元に戻せません。清掃依頼中の報酬ポイントがある場合は依頼者へ返金されます。"
-                )
-            },
-
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteDialog = false
-                        onDelete()
-                    }
-                ) {
-                    Text(
-                        text = "削除する",
-                        color = FinderRed,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            },
-
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteDialog = false
-                    }
-                ) {
-                    Text(
-                        "キャンセル"
-                    )
-                }
-            }
-        )
-    }
 
 
     Card(
@@ -2005,17 +1660,18 @@ private fun ToiletDetailCard(
                 )
         ) {
 
-            /*
-             * ハンドル
-             */
             Box(
                 modifier =
                     Modifier
                         .align(
                             Alignment.CenterHorizontally
                         )
-                        .width(38.dp)
-                        .height(4.dp)
+                        .width(
+                            38.dp
+                        )
+                        .height(
+                            4.dp
+                        )
                         .clip(
                             CircleShape
                         )
@@ -2027,9 +1683,6 @@ private fun ToiletDetailCard(
             )
 
 
-            /*
-             * 状態
-             */
             Row(
                 modifier =
                     Modifier.fillMaxWidth(),
@@ -2091,7 +1744,9 @@ private fun ToiletDetailCard(
 
                 Spacer(
                     modifier =
-                        Modifier.weight(1f)
+                        Modifier.weight(
+                            1f
+                        )
                 )
 
 
@@ -2107,9 +1762,7 @@ private fun ToiletDetailCard(
 
                     Icon(
                         imageVector =
-                            Icons
-                                .Outlined
-                                .Close,
+                            Icons.Outlined.Close,
 
                         contentDescription =
                             "閉じる",
@@ -2121,9 +1774,6 @@ private fun ToiletDetailCard(
             }
 
 
-            /*
-             * 名前
-             */
             Text(
                 text =
                     toilet.name,
@@ -2132,9 +1782,7 @@ private fun ToiletDetailCard(
                     FinderDark,
 
                 style =
-                    MaterialTheme
-                        .typography
-                        .titleLarge,
+                    MaterialTheme.typography.titleLarge,
 
                 fontWeight =
                     FontWeight.Bold,
@@ -2147,9 +1795,6 @@ private fun ToiletDetailCard(
             )
 
 
-            /*
-             * 位置
-             */
             Row(
                 verticalAlignment =
                     Alignment.CenterVertically
@@ -2157,9 +1802,7 @@ private fun ToiletDetailCard(
 
                 Icon(
                     imageVector =
-                        Icons
-                            .Outlined
-                            .LocationOn,
+                        Icons.Outlined.LocationOn,
 
                     contentDescription =
                         null,
@@ -2176,7 +1819,9 @@ private fun ToiletDetailCard(
 
                 Spacer(
                     modifier =
-                        Modifier.width(5.dp)
+                        Modifier.width(
+                            5.dp
+                        )
                 )
 
 
@@ -2196,9 +1841,6 @@ private fun ToiletDetailCard(
             }
 
 
-            /*
-             * コメント
-             */
             if (toilet.comment.isNotBlank()) {
 
                 Surface(
@@ -2230,19 +1872,12 @@ private fun ToiletDetailCard(
                             FinderDark,
 
                         style =
-                            MaterialTheme
-                                .typography
-                                .bodyMedium
+                            MaterialTheme.typography.bodyMedium
                     )
                 }
             }
 
 
-            /*
-             * =====================================
-             * 清潔度
-             * =====================================
-             */
             Surface(
                 modifier =
                     Modifier.fillMaxWidth(),
@@ -2291,18 +1926,13 @@ private fun ToiletDetailCard(
 
                             Icon(
                                 imageVector =
-                                    Icons
-                                        .Filled
-                                        .Star,
+                                    Icons.Filled.Star,
 
                                 contentDescription =
                                     null,
 
                                 tint =
-                                    if (
-                                        index <
-                                        cleanliness
-                                    ) {
+                                    if (index < cleanliness) {
 
                                         FinderGreen
 
@@ -2356,139 +1986,267 @@ private fun ToiletDetailCard(
             }
 
 
-            /*
-             * 清掃依頼中
-             */
-            if (requested) {
+            when (cleaningStatus) {
 
-                Text(
-                    text =
-                        "このトイレは清掃依頼中です。清掃したら下のボタンを押してください。",
+                CleaningStatus.NORMAL -> {
 
-                    color =
-                        Color(
-                            0xFF7A6200
-                        ),
+                    Text(
+                        text =
+                            "清掃が必要な場合は、清掃依頼を出せます。予定報酬は5ptです。",
 
-                    fontSize =
-                        12.sp,
+                        color =
+                            FinderMuted,
 
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(
-                                RoundedCornerShape(
-                                    12.dp
-                                )
-                            )
-                            .background(
-                                Color(
-                                    0xFFFFF8E6
-                                )
-                            )
-                            .padding(
-                                10.dp
-                            )
-                )
+                        fontSize =
+                            12.sp
+                    )
+                }
 
 
-                Text(
-                    text =
-                        "清掃報酬：${toilet.cleaningRewardPoints} pt",
+                CleaningStatus.REQUESTED -> {
 
-                    color =
-                        FinderGreen,
-
-                    fontSize =
-                        16.sp,
-
-                    fontWeight =
-                        FontWeight.Bold
-                )
-            }
-
-
-            /*
-             * =====================================
-             * 清掃ボタン
-             * =====================================
-             */
-            Button(
-                onClick = {
-                    if (requested) {
-                        onMarkCleaned()
-                    } else {
-                        showRewardDialog = true
-                    }
-                },
-
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(
-                            50.dp
-                        ),
-
-                shape =
-                    RoundedCornerShape(
-                        14.dp
-                    ),
-
-                colors =
-                    ButtonDefaults.buttonColors(
-                        containerColor =
-                            if (requested) {
-                                FinderAmber
+                    CleaningStatusNotice(
+                        message =
+                            if (isRequester) {
+                                "自分が出した清掃依頼です。別のユーザーが引き受けるまでお待ちください。"
                             } else {
-                                FinderGreen
+                                "このトイレは清掃担当者を募集しています。"
                             },
 
-                        contentColor =
-                            if (requested) {
-                                FinderDark
-                            } else {
-                                Color.White
-                            }
+                        backgroundColor =
+                            Color(
+                                0xFFFFF8E6
+                            ),
+
+                        textColor =
+                            Color(
+                                0xFF7A6200
+                            )
                     )
-            ) {
-
-                Icon(
-                    imageVector =
-                        actionIcon,
-
-                    contentDescription =
-                        null,
-
-                    modifier =
-                        Modifier.size(
-                            20.dp
-                        )
-                )
 
 
-                Spacer(
-                    modifier =
-                        Modifier.width(
-                            8.dp
-                        )
-                )
+                    CleaningRequestInfo(
+                        label =
+                            "依頼日時",
+
+                        value =
+                            formatCleaningDateTime(
+                                cleaningRequest?.requestedAt
+                            )
+                    )
 
 
-                Text(
-                    text =
-                        actionText,
+                    CleaningRequestInfo(
+                        label =
+                            "予定報酬",
 
-                    fontWeight =
-                        FontWeight.Bold
-                )
+                        value =
+                            "${cleaningRequest?.rewardPoints ?: 5} pt"
+                    )
+                }
+
+
+                CleaningStatus.IN_PROGRESS -> {
+
+                    CleaningStatusNotice(
+                        message =
+                            if (isCleaner) {
+                                "あなたがこの清掃を担当しています。清掃画面から担当状況を確認できます。"
+                            } else {
+                                "現在、ほかのユーザーが清掃中です。"
+                            },
+
+                        backgroundColor =
+                            Color(
+                                0xFFEAF2FD
+                            ),
+
+                        textColor =
+                            FinderBlue
+                    )
+
+
+                    CleaningRequestInfo(
+                        label =
+                            "引受日時",
+
+                        value =
+                            formatCleaningDateTime(
+                                cleaningRequest?.acceptedAt
+                            )
+                    )
+
+
+                    CleaningRequestInfo(
+                        label =
+                            "予定報酬",
+
+                        value =
+                            "${cleaningRequest?.rewardPoints ?: 5} pt"
+                    )
+                }
+
+
+                CleaningStatus.COMPLETED -> {
+
+                    CleaningStatusNotice(
+                        message =
+                            "清掃が完了しました。トイレの状態を更新しています。",
+
+                        backgroundColor =
+                            FinderSoftGreen,
+
+                        textColor =
+                            FinderGreen
+                    )
+                }
             }
 
 
-            /*
-             * =====================================
-             * 口コミ投稿ボタン
-             * =====================================
-             */
+            when (cleaningStatus) {
+
+                CleaningStatus.NORMAL -> {
+
+                    CleaningActionButton(
+                        text =
+                            if (isActionInProgress) {
+                                "清掃依頼を送信中"
+                            } else {
+                                "清掃を依頼する"
+                            },
+
+                        icon =
+                            Icons.Outlined.NotificationsNone,
+
+                        containerColor =
+                            FinderGreen,
+
+                        contentColor =
+                            Color.White,
+
+                        isLoading =
+                            isActionInProgress,
+
+                        enabled =
+                            !isActionInProgress,
+
+                        onClick =
+                            onRequestCleaning
+                    )
+                }
+
+
+                CleaningStatus.REQUESTED -> {
+
+                    val request =
+                        cleaningRequest
+
+
+                    CleaningActionButton(
+                        text =
+                            when {
+
+                                request == null ->
+                                    "清掃依頼を読み込み中"
+
+                                isRequester ->
+                                    "自分の清掃依頼です"
+
+                                isActionInProgress ->
+                                    "清掃を引受中"
+
+                                else ->
+                                    "清掃を引き受ける"
+                            },
+
+                        icon =
+                            Icons.Outlined.CleaningServices,
+
+                        containerColor =
+                            FinderAmber,
+
+                        contentColor =
+                            FinderDark,
+
+                        isLoading =
+                            isActionInProgress,
+
+                        enabled =
+                            request != null &&
+                                    !isRequester &&
+                                    !isActionInProgress,
+
+                        onClick = {
+
+                            if (request != null) {
+
+                                onAcceptCleaning(
+                                    request
+                                )
+                            }
+                        }
+                    )
+                }
+
+
+                CleaningStatus.IN_PROGRESS -> {
+
+                    CleaningActionButton(
+                        text =
+                            if (isCleaner) {
+                                "清掃画面を開く"
+                            } else {
+                                "ほかのユーザーが清掃中"
+                            },
+
+                        icon =
+                            Icons.Outlined.CheckCircle,
+
+                        containerColor =
+                            FinderBlue,
+
+                        contentColor =
+                            Color.White,
+
+                        isLoading =
+                            false,
+
+                        enabled =
+                            isCleaner,
+
+                        onClick =
+                            onOpenCleaningScreen
+                    )
+                }
+
+
+                CleaningStatus.COMPLETED -> {
+
+                    CleaningActionButton(
+                        text =
+                            "清掃完了",
+
+                        icon =
+                            Icons.Outlined.CheckCircle,
+
+                        containerColor =
+                            FinderGreen,
+
+                        contentColor =
+                            Color.White,
+
+                        isLoading =
+                            false,
+
+                        enabled =
+                            false,
+
+                        onClick = {}
+                    )
+                }
+            }
+
+
             Button(
                 onClick =
                     onOpenReviews,
@@ -2517,9 +2275,7 @@ private fun ToiletDetailCard(
 
                 Icon(
                     imageVector =
-                        Icons
-                            .Filled
-                            .Star,
+                        Icons.Filled.Star,
 
                     contentDescription =
                         null,
@@ -2547,54 +2303,186 @@ private fun ToiletDetailCard(
                         FontWeight.Bold
                 )
             }
-
-
-            /*
-             * =====================================
-             * トイレ削除ボタン
-             * =====================================
-             *
-             * ログイン中であれば、作成者に関係なく表示する。
-             */
-            if (canDelete) {
-
-                Button(
-                    onClick = {
-                        showDeleteDialog = true
-                    },
-
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(
-                                50.dp
-                            ),
-
-                    shape =
-                        RoundedCornerShape(
-                            14.dp
-                        ),
-
-                    colors =
-                        ButtonDefaults.buttonColors(
-                            containerColor =
-                                Color(0xFFFFECEC),
-
-                            contentColor =
-                                FinderRed
-                        )
-                ) {
-
-                    Text(
-                        text =
-                            "このトイレを削除",
-
-                        fontWeight =
-                            FontWeight.Bold
-                    )
-                }
-            }
         }
+    }
+}
+
+
+@Composable
+private fun CleaningStatusNotice(
+    message: String,
+    backgroundColor: Color,
+    textColor: Color
+) {
+
+    Text(
+        text =
+            message,
+
+        color =
+            textColor,
+
+        fontSize =
+            12.sp,
+
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(
+                    RoundedCornerShape(
+                        12.dp
+                    )
+                )
+                .background(
+                    backgroundColor
+                )
+                .padding(
+                    10.dp
+                )
+    )
+}
+
+
+@Composable
+private fun CleaningRequestInfo(
+    label: String,
+    value: String
+) {
+
+    Row(
+        modifier =
+            Modifier.fillMaxWidth(),
+
+        horizontalArrangement =
+            Arrangement.SpaceBetween
+    ) {
+
+        Text(
+            text =
+                label,
+
+            color =
+                FinderMuted,
+
+            fontSize =
+                12.sp
+        )
+
+
+        Text(
+            text =
+                value,
+
+            color =
+                FinderDark,
+
+            fontSize =
+                12.sp,
+
+            fontWeight =
+                FontWeight.SemiBold
+        )
+    }
+}
+
+
+@Composable
+private fun CleaningActionButton(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    containerColor: Color,
+    contentColor: Color,
+    isLoading: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+
+    Button(
+        onClick =
+            onClick,
+
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(
+                    50.dp
+                ),
+
+        enabled =
+            enabled,
+
+        shape =
+            RoundedCornerShape(
+                14.dp
+            ),
+
+        colors =
+            ButtonDefaults.buttonColors(
+                containerColor =
+                    containerColor,
+
+                contentColor =
+                    contentColor,
+
+                disabledContainerColor =
+                    containerColor.copy(
+                        alpha = 0.35f
+                    ),
+
+                disabledContentColor =
+                    contentColor.copy(
+                        alpha = 0.75f
+                    )
+            )
+    ) {
+
+        if (isLoading) {
+
+            CircularProgressIndicator(
+                modifier =
+                    Modifier.size(
+                        20.dp
+                    ),
+
+                color =
+                    contentColor,
+
+                strokeWidth =
+                    2.dp
+            )
+
+        } else {
+
+            Icon(
+                imageVector =
+                    icon,
+
+                contentDescription =
+                    null,
+
+                modifier =
+                    Modifier.size(
+                        20.dp
+                    )
+            )
+        }
+
+
+        Spacer(
+            modifier =
+                Modifier.width(
+                    8.dp
+                )
+        )
+
+
+        Text(
+            text =
+                text,
+
+            fontWeight =
+                FontWeight.Bold
+        )
     }
 }
 

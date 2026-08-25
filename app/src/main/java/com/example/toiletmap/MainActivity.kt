@@ -1,10 +1,7 @@
 package com.example.toiletmap
 
 import android.Manifest
-import android.content.Context
 import android.content.pm.PackageManager
-import android.location.LocationManager
-import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,17 +14,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
-import com.example.toiletmap.data.supabase.SupabaseClientProvider
 import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.screen.listofuncleaned.UncleanedToilet
-import com.example.toiletmap.screen.map.DeviceLocationStatus
 import com.example.toiletmap.screen.map.MapLibreMapController
 import com.example.toiletmap.ui.ToiletMapApp
 import com.example.toiletmap.ui.theme.ToiletMapTheme
+import com.example.toiletmap.viewmodel.CleaningViewModel
 import com.example.toiletmap.viewmodel.ReviewViewModel
 import com.example.toiletmap.viewmodel.ToiletViewModel
-import io.github.jan.supabase.auth.auth
-import kotlinx.coroutines.delay
 
 
 class MainActivity : ComponentActivity() {
@@ -61,21 +55,11 @@ class MainActivity : ComponentActivity() {
 
     /*
      * =====================================
-     * 端末の現在地取得状態
+     * CleaningViewModel
      * =====================================
      */
-    private var deviceLocationStatus by
-    mutableStateOf(
-        DeviceLocationStatus.CHECKING
-    )
-
-
-    private val locationCheckStartedAtMillis =
-        System.currentTimeMillis()
-
-
-    private var focusCurrentLocationAfterPermission =
-        false
+    private lateinit var cleaningViewModel:
+            CleaningViewModel
 
 
     /*
@@ -92,18 +76,12 @@ class MainActivity : ComponentActivity() {
                 permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
                         permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
 
-            if (
-                granted &&
-                ::mapController.isInitialized
-            ) {
-                mapController
-                    .enableUserLocation(
-                        focus =
-                            focusCurrentLocationAfterPermission
-                    )
-            } else if (
-                !granted
-            ) {
+            if (granted) {
+
+                requestAndShowCurrentLocation()
+
+            } else {
+
                 Toast
                     .makeText(
                         this,
@@ -112,11 +90,6 @@ class MainActivity : ComponentActivity() {
                     )
                     .show()
             }
-
-            refreshDeviceLocationStatus()
-
-            focusCurrentLocationAfterPermission =
-                false
         }
 
 
@@ -164,6 +137,13 @@ class MainActivity : ComponentActivity() {
             ]
 
 
+        cleaningViewModel =
+
+            ViewModelProvider(this)[
+                CleaningViewModel::class.java
+            ]
+
+
         /*
          * =====================================
          * MapLibre
@@ -204,21 +184,6 @@ class MainActivity : ComponentActivity() {
         setContent {
 
             ToiletMapTheme {
-
-
-                /*
-                 * =====================================
-                 * 端末の位置情報状態を定期確認
-                 * =====================================
-                 */
-                LaunchedEffect(Unit) {
-                    while (true) {
-                        refreshDeviceLocationStatus()
-                        delay(
-                            2_000L
-                        )
-                    }
-                }
 
 
                 /*
@@ -306,6 +271,78 @@ class MainActivity : ComponentActivity() {
 
                 /*
                  * =====================================
+                 * 清掃依頼・担当状態
+                 * =====================================
+                 */
+                val cleaningRequests by
+
+                cleaningViewModel
+                    .requests
+                    .collectAsState()
+
+
+                val currentUserId by
+
+                cleaningViewModel
+                    .currentUserId
+                    .collectAsState()
+
+
+                val isLoadingCleaning by
+
+                cleaningViewModel
+                    .isLoading
+                    .collectAsState()
+
+
+                val cleaningActionRequestId by
+
+                cleaningViewModel
+                    .actionRequestId
+                    .collectAsState()
+
+
+                val cleaningErrorMessage by
+
+                cleaningViewModel
+                    .errorMessage
+                    .collectAsState()
+
+
+                val cleaningSuccessMessage by
+
+                cleaningViewModel
+                    .successMessage
+                    .collectAsState()
+
+
+                LaunchedEffect(
+                    cleaningErrorMessage,
+                    cleaningSuccessMessage
+                ) {
+
+                    val message =
+                        cleaningErrorMessage
+                            ?: cleaningSuccessMessage
+                            ?: return@LaunchedEffect
+
+
+                    Toast
+                        .makeText(
+                            this@MainActivity,
+                            message,
+                            Toast.LENGTH_LONG
+                        )
+                        .show()
+
+
+                    cleaningViewModel
+                        .clearMessages()
+                }
+
+
+                /*
+                 * =====================================
                  * 現在選択中のトイレ
                  * =====================================
                  */
@@ -323,23 +360,15 @@ class MainActivity : ComponentActivity() {
 
                 /*
                  * =====================================
-                 * 現在ログイン中ユーザー
+                 * トイレごとの有効な清掃依頼
                  * =====================================
-                 *
-                 * ログイン済みでトイレが選択されていれば、
-                 * 作成者に関係なく削除ボタンを表示する。
                  */
-                val currentUserId =
-                    SupabaseClientProvider
-                        .client
-                        .auth
-                        .currentUserOrNull()
-                        ?.id
+                val cleaningRequestByToiletId =
 
-
-                val canDeleteSelectedToilet =
-                    selectedToilet != null &&
-                            currentUserId != null
+                    cleaningRequests
+                        .associateBy {
+                            it.toiletId
+                        }
 
 
                 /*
@@ -361,6 +390,12 @@ class MainActivity : ComponentActivity() {
                                 toilet ->
 
 
+                            val request =
+                                cleaningRequestByToiletId[
+                                    toilet.id
+                                ]
+
+
                             UncleanedToilet(
 
                                 id =
@@ -379,7 +414,8 @@ class MainActivity : ComponentActivity() {
                                     toilet.lastCleanedAtMillis,
 
                                 rewardPoints =
-                                    toilet.cleaningRewardPoints
+                                    request?.rewardPoints
+                                        ?: toilet.cleaningRewardPoints
                             )
                         }
 
@@ -419,6 +455,20 @@ class MainActivity : ComponentActivity() {
 
 
                 /*
+                 * 清掃依頼が別端末で更新された場合も、
+                 * toilets.cleaning_status を再取得して
+                 * ピンと詳細表示を同期する。
+                 */
+                LaunchedEffect(
+                    cleaningRequests
+                ) {
+
+                    toiletViewModel
+                        .loadToilets()
+                }
+
+
+                /*
                  * =====================================
                  * アプリ本体
                  * =====================================
@@ -448,15 +498,27 @@ class MainActivity : ComponentActivity() {
                         selectedToilet,
 
 
-                    canDeleteSelectedToilet =
-                        canDeleteSelectedToilet,
-
-
                     /*
                      * 清掃待ち一覧
                      */
                     uncleanedToilets =
                         uncleanedToilets,
+
+
+                    /*
+                     * 清掃依頼・担当状態
+                     */
+                    cleaningRequests =
+                        cleaningRequests,
+
+                    currentUserId =
+                        currentUserId,
+
+                    isLoadingCleaning =
+                        isLoadingCleaning,
+
+                    cleaningActionRequestId =
+                        cleaningActionRequestId,
 
 
                     /*
@@ -555,29 +617,11 @@ class MainActivity : ComponentActivity() {
                      * =====================================
                      */
                     onRequestCleaning = {
-                            toilet,
-                            rewardPoints ->
-
-
-                        toiletViewModel
-                            .requestCleaning(
-                                toiletId = toilet.id,
-                                rewardPoints = rewardPoints
-                            )
-                    },
-
-
-                    /*
-                     * =====================================
-                     * 清掃完了
-                     * =====================================
-                     */
-                    onMarkCleaned = {
                             toilet ->
 
 
-                        toiletViewModel
-                            .markCleaned(
+                        cleaningViewModel
+                            .requestCleaning(
                                 toilet.id
                             )
                     },
@@ -585,35 +629,69 @@ class MainActivity : ComponentActivity() {
 
                     /*
                      * =====================================
-                     * トイレ削除
+                     * 清掃を引き受ける
                      * =====================================
                      */
-                    onDeleteToilet = {
-                            toilet ->
+                    onAcceptCleaning = {
+                            request ->
 
 
-                        toiletViewModel
-                            .deleteToilet(
-                                toiletId =
-                                    toilet.id
-                            ) {
+                        cleaningViewModel
+                            .acceptCleaning(
+                                request.id
+                            )
+                    },
 
-                                if (
-                                    selectedToiletId ==
-                                    toilet.id
-                                ) {
-                                    selectedToiletId =
-                                        null
+
+                    /*
+                     * =====================================
+                     * 清掃担当をキャンセル
+                     * =====================================
+                     */
+                    onCancelCleaning = {
+                            request ->
+
+
+                        cleaningViewModel
+                            .cancelCleaning(
+                                request.id
+                            )
+                    },
+
+
+                    onReloadCleaning = {
+
+                        cleaningViewModel
+                            .loadRequests()
+                    },
+
+
+                    /*
+                     * =====================================
+                     * 清掃画面から地図で見る
+                     * =====================================
+                     */
+                    onShowCleaningToiletOnMap = {
+                            toiletId ->
+
+
+                        val toilet =
+                            toilets
+                                .firstOrNull {
+                                    it.id == toiletId
                                 }
 
-                                Toast
-                                    .makeText(
-                                        this@MainActivity,
-                                        "トイレを削除しました",
-                                        Toast.LENGTH_SHORT
-                                    )
-                                    .show()
-                            }
+
+                        if (toilet != null) {
+
+                            selectedToiletId =
+                                toilet.id
+
+                            mapController
+                                .focusOnToilet(
+                                    toilet
+                                )
+                        }
                     },
 
 
@@ -699,15 +777,6 @@ class MainActivity : ComponentActivity() {
 
                     /*
                      * =====================================
-                     * 端末の現在地取得状態
-                     * =====================================
-                     */
-                    locationStatus =
-                        deviceLocationStatus,
-
-
-                    /*
-                     * =====================================
                      * 現在地ボタン
                      * =====================================
                      *
@@ -719,9 +788,7 @@ class MainActivity : ComponentActivity() {
                      */
                     onCurrentLocationRequested = {
 
-                        enableUserLocation(
-                            focus = true
-                        )
+                        showCurrentLocationWithPermissionCheck()
                     }
                 )
             }
@@ -731,84 +798,10 @@ class MainActivity : ComponentActivity() {
 
     /*
      * =====================================
-     * 現在地表示を有効化
+     * 現在地表示の権限確認
      * =====================================
      */
-    private fun enableUserLocation(
-        focus: Boolean
-    ) {
-
-        if (
-            hasLocationPermission()
-        ) {
-            mapController
-                .enableUserLocation(
-                    focus = focus
-                )
-            return
-        }
-
-        focusCurrentLocationAfterPermission =
-            focus
-
-        locationPermissionLauncher
-            .launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
-    }
-
-
-    /*
-     * =====================================
-     * 端末の位置情報状態を更新
-     * =====================================
-     */
-    private fun refreshDeviceLocationStatus() {
-
-        if (
-            !hasLocationPermission()
-        ) {
-            deviceLocationStatus =
-                DeviceLocationStatus.PERMISSION_DENIED
-            return
-        }
-
-        if (
-            !isDeviceLocationServiceEnabled()
-        ) {
-            deviceLocationStatus =
-                DeviceLocationStatus.DEVICE_LOCATION_OFF
-            return
-        }
-
-        if (
-            ::mapController.isInitialized &&
-            mapController.hasRecentUserLocation()
-        ) {
-            deviceLocationStatus =
-                DeviceLocationStatus.AVAILABLE
-            return
-        }
-
-        val elapsedMillis =
-            System.currentTimeMillis() -
-                    locationCheckStartedAtMillis
-
-        deviceLocationStatus =
-            if (
-                elapsedMillis < 8_000L
-            ) {
-                DeviceLocationStatus.CHECKING
-            } else {
-                DeviceLocationStatus.WAITING_FOR_SIGNAL
-            }
-    }
-
-
-    private fun hasLocationPermission(): Boolean {
+    private fun showCurrentLocationWithPermissionCheck() {
 
         val fineGranted =
             ContextCompat.checkSelfPermission(
@@ -822,48 +815,58 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.ACCESS_COARSE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
 
-        return fineGranted ||
-                coarseGranted
+
+        if (
+            fineGranted ||
+            coarseGranted
+        ) {
+
+            requestAndShowCurrentLocation()
+
+        } else {
+
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
     }
 
 
-    private fun isDeviceLocationServiceEnabled(): Boolean {
+    /*
+     * =====================================
+     * 現在位置を取得して地図へ表示
+     * =====================================
+     */
+    private fun requestAndShowCurrentLocation() {
 
-        val locationManager =
-            getSystemService(
-                Context.LOCATION_SERVICE
-            ) as LocationManager
+        mapController
+            .showCurrentLocation(
 
-        return if (
-            Build.VERSION.SDK_INT >=
-            Build.VERSION_CODES.P
-        ) {
-            locationManager
-                .isLocationEnabled
-        } else {
-            val gpsEnabled =
-                try {
-                    locationManager
-                        .isProviderEnabled(
-                            LocationManager.GPS_PROVIDER
+                onSuccess = {
+
+                    Toast
+                        .makeText(
+                            this,
+                            "現在地を表示しました",
+                            Toast.LENGTH_SHORT
                         )
-                } catch (_: Exception) {
-                    false
-                }
+                        .show()
+                },
 
-            val networkEnabled =
-                try {
-                    locationManager
-                        .isProviderEnabled(
-                            LocationManager.NETWORK_PROVIDER
+                onError = { message ->
+
+                    Toast
+                        .makeText(
+                            this,
+                            message,
+                            Toast.LENGTH_LONG
                         )
-                } catch (_: Exception) {
-                    false
+                        .show()
                 }
-
-            gpsEnabled ||
-                    networkEnabled
-        }
+            )
     }
 
 

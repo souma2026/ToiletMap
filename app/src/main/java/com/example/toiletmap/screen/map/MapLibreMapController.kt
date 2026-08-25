@@ -2,13 +2,19 @@ package com.example.toiletmap.screen.map
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Build
 import android.os.Bundle
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -21,15 +27,10 @@ import org.maplibre.android.annotations.Icon
 import org.maplibre.android.annotations.IconFactory
 import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.camera.CameraPosition
-import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
-import org.maplibre.android.location.LocationComponentActivationOptions
-import org.maplibre.android.location.LocationComponentOptions
-import org.maplibre.android.location.modes.CameraMode
-import org.maplibre.android.location.modes.RenderMode
 import org.maplibre.android.module.http.HttpRequestUtil
 
 class MapLibreMapController(
@@ -72,34 +73,6 @@ class MapLibreMapController(
 
     /*
      * =====================================
-     * 読み込み済みStyle
-     * =====================================
-     */
-    private var loadedStyle:
-            Style? =
-        null
-
-
-    /*
-     * =====================================
-     * 現在地表示を有効化する予約
-     * =====================================
-     */
-    private var shouldEnableUserLocation =
-        false
-
-
-    /*
-     * =====================================
-     * 現在地へ移動する予約
-     * =====================================
-     */
-    private var shouldFocusUserLocation =
-        false
-
-
-    /*
-     * =====================================
      * 描画用トイレ一覧
      * =====================================
      *
@@ -116,6 +89,19 @@ class MapLibreMapController(
     private var latestToiletsForRendering:
             List<Toilet> =
         emptyList()
+
+
+    /*
+     * =====================================
+     * 現在地
+     * =====================================
+     *
+     * トイレ一覧の再描画でmap.clear()が呼ばれても
+     * 現在地マーカーを復元できるように保持する。
+     */
+    private var latestCurrentLocation:
+            LatLng? =
+        null
 
 
     /*
@@ -358,17 +344,13 @@ class MapLibreMapController(
                         styleJson
                     )
 
-            ) { style ->
+            ) {
 
                 /*
                  * スタイル読み込み完了
                  */
                 isStyleLoaded =
                     true
-
-
-                loadedStyle =
-                    style
 
 
                 /*
@@ -406,20 +388,6 @@ class MapLibreMapController(
                  * 地図へ表示
                  */
                 renderLatestToilets()
-
-
-                /*
-                 * 権限取得がStyle読み込みより先に終わっていた場合、
-                 * Style読み込み後に現在地表示を有効化する。
-                 */
-                if (
-                    shouldEnableUserLocation
-                ) {
-
-                    activateUserLocation(
-                        style
-                    )
-                }
             }
         }
     }
@@ -498,227 +466,36 @@ class MapLibreMapController(
                         toilet
                 )
             }
-    }
 
 
-    /*
-     * =====================================
-     * 現在地表示を有効化
-     * =====================================
-     *
-     * focus = false
-     * → 青い現在地だけ表示
-     *
-     * focus = true
-     * → 青い現在地を表示し、現在地へカメラ移動
-     */
-    fun enableUserLocation(
-        focus: Boolean = false
-    ) {
+        /*
+         * 現在地を取得済みなら
+         * トイレピンの再描画後にも表示する。
+         */
+        latestCurrentLocation
+            ?.let { currentLocation ->
 
-        if (
-            !hasLocationPermission()
-        ) {
-            return
-        }
-
-        shouldEnableUserLocation =
-            true
-
-        if (
-            focus
-        ) {
-            shouldFocusUserLocation =
-                true
-        }
-
-        val style =
-            loadedStyle
-
-        if (
-            isStyleLoaded &&
-            style != null
-        ) {
-            activateUserLocation(
-                style
-            )
-        }
-    }
-
-
-    /*
-     * =====================================
-     * MapLibre LocationComponentを有効化
-     * =====================================
-     */
-    @SuppressLint("MissingPermission")
-    private fun activateUserLocation(
-        style: Style
-    ) {
-
-        if (
-            !hasLocationPermission()
-        ) {
-            return
-        }
-
-        val map =
-            mapLibreMap
-                ?: return
-
-        val locationComponent =
-            map.locationComponent
-
-        if (
-            !locationComponent.isLocationComponentActivated
-        ) {
-
-            val googleBlue =
-                Color.rgb(
-                    66,
-                    133,
-                    244
-                )
-
-            val locationOptions =
-                LocationComponentOptions
-                    .builder(
-                        activity
-                    )
-                    .foregroundTintColor(
-                        googleBlue
-                    )
-                    .backgroundTintColor(
-                        Color.WHITE
-                    )
-                    // Google Maps風に、現在地の周囲が広がるパルス表示は使わない。
-                    .pulseEnabled(
-                        false
-                    )
-                    // COMPASSモードで表示される方向矢印をGoogle系の青色にする。
-                    .bearingTintColor(
-                        googleBlue
-                    )
-                    // 端末を回したときに矢印が滑らかに回転するようにする。
-                    .compassAnimationEnabled(
-                        true
-                    )
-                    .build()
-
-            val activationOptions =
-                LocationComponentActivationOptions
-                    .builder(
-                        activity,
-                        style
-                    )
-                    .locationComponentOptions(
-                        locationOptions
-                    )
-                    .useDefaultLocationEngine(
-                        true
-                    )
-                    .build()
-
-            locationComponent
-                .activateLocationComponent(
-                    activationOptions
-                )
-        }
-
-        locationComponent
-            .isLocationComponentEnabled =
-            true
-
-        // 現在地を単なる点ではなく、端末の向いている方向を示す矢印で表示する。
-        locationComponent
-            .renderMode =
-            RenderMode.COMPASS
-
-        if (
-            shouldFocusUserLocation
-        ) {
-
-            locationComponent
-                .cameraMode =
-                CameraMode.TRACKING
-
-            val lastLocation =
-                locationComponent
-                    .lastKnownLocation
-
-            if (
-                lastLocation != null
-            ) {
-                map.animateCamera(
-                    CameraUpdateFactory
-                        .newLatLngZoom(
-                            LatLng(
-                                lastLocation.latitude,
-                                lastLocation.longitude
-                            ),
-                            16.0
-                        )
+                addCurrentLocationMarker(
+                    map = map,
+                    position = currentLocation
                 )
             }
-
-            shouldFocusUserLocation =
-                false
-        }
     }
 
 
     /*
      * =====================================
-     * 最近の現在地を取得できているか
+     * 現在位置を取得して表示
      * =====================================
+     *
+     * MainActivity側で位置情報権限を確認した後に
+     * 呼び出す。
      */
-    fun hasRecentUserLocation(
-        maxAgeMillis: Long = 120_000L
-    ): Boolean {
-
-        val map =
-            mapLibreMap
-                ?: return false
-
-        val locationComponent =
-            map.locationComponent
-
-        if (
-            !locationComponent.isLocationComponentActivated ||
-            !locationComponent.isLocationComponentEnabled
-        ) {
-            return false
-        }
-
-        val location =
-            locationComponent
-                .lastKnownLocation
-                ?: return false
-
-        val locationTime =
-            location.time
-
-        if (
-            locationTime <= 0L
-        ) {
-            return false
-        }
-
-        val ageMillis =
-            System.currentTimeMillis() -
-                    locationTime
-
-        return ageMillis in
-                0L..maxAgeMillis
-    }
-
-
-    /*
-     * =====================================
-     * 位置情報権限確認
-     * =====================================
-     */
-    private fun hasLocationPermission(): Boolean {
+    @SuppressLint("MissingPermission")
+    fun showCurrentLocation(
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
 
         val fineGranted =
             ContextCompat.checkSelfPermission(
@@ -732,8 +509,366 @@ class MapLibreMapController(
                 Manifest.permission.ACCESS_COARSE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
 
-        return fineGranted ||
-                coarseGranted
+
+        if (!fineGranted && !coarseGranted) {
+
+            onError(
+                "現在地を表示するには位置情報の許可が必要です"
+            )
+
+            return
+        }
+
+
+        val locationManager =
+            activity.getSystemService(
+                Context.LOCATION_SERVICE
+            ) as LocationManager
+
+
+        /*
+         * 未清掃画面と同じ取得方法。
+         * 有効な全プロバイダから最後に取得された位置を集め、
+         * 一番新しい位置を現在地として使用する。
+         */
+        val enabledProviders =
+            locationManager.getProviders(true)
+
+
+        val lastKnownLocation =
+            enabledProviders
+                .mapNotNull { provider ->
+
+                    try {
+
+                        locationManager
+                            .getLastKnownLocation(
+                                provider
+                            )
+
+                    } catch (
+                        e: SecurityException
+                    ) {
+
+                        null
+                    }
+                }
+                .maxByOrNull {
+                    it.time
+                }
+
+
+        if (lastKnownLocation != null) {
+
+            showLocationOnMap(
+                latitude = lastKnownLocation.latitude,
+                longitude = lastKnownLocation.longitude
+            )
+
+            onSuccess()
+
+            return
+        }
+
+
+        /*
+         * 保存済み位置がまだ無い場合だけ、
+         * 新しい位置を1回取得する。
+         */
+        val provider =
+            when {
+
+                fineGranted &&
+                        locationManager.isProviderEnabled(
+                            LocationManager.GPS_PROVIDER
+                        ) ->
+                    LocationManager.GPS_PROVIDER
+
+                locationManager.isProviderEnabled(
+                    LocationManager.NETWORK_PROVIDER
+                ) ->
+                    LocationManager.NETWORK_PROVIDER
+
+                else ->
+                    enabledProviders.firstOrNull()
+            }
+
+
+        if (provider == null) {
+
+            onError(
+                "端末の位置情報がOFFです。位置情報をONにしてからもう一度お試しください"
+            )
+
+            return
+        }
+
+
+        fun handleLocation(
+            location: Location?
+        ) {
+
+            if (location == null) {
+
+                onError(
+                    "現在位置を取得できませんでした。位置情報をONにして再度お試しください"
+                )
+
+                return
+            }
+
+
+            showLocationOnMap(
+                latitude = location.latitude,
+                longitude = location.longitude
+            )
+
+            onSuccess()
+        }
+
+
+        if (
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.R
+        ) {
+
+            locationManager.getCurrentLocation(
+                provider,
+                null,
+                activity.mainExecutor
+            ) { location ->
+
+                handleLocation(
+                    location
+                )
+            }
+
+        } else {
+
+            val listener =
+                object : LocationListener {
+
+                    override fun onLocationChanged(
+                        location: Location
+                    ) {
+
+                        locationManager
+                            .removeUpdates(
+                                this
+                            )
+
+                        handleLocation(
+                            location
+                        )
+                    }
+
+                    override fun onProviderDisabled(
+                        provider: String
+                    ) {
+
+                        locationManager
+                            .removeUpdates(
+                                this
+                            )
+
+                        onError(
+                            "位置情報がOFFになりました"
+                        )
+                    }
+                }
+
+
+            @Suppress("DEPRECATION")
+            locationManager.requestSingleUpdate(
+                provider,
+                listener,
+                Looper.getMainLooper()
+            )
+        }
+    }
+
+
+    /*
+     * =====================================
+     * 現在地を地図へ反映
+     * =====================================
+     */
+    private fun showLocationOnMap(
+        latitude: Double,
+        longitude: Double
+    ) {
+
+        /*
+         * 地図のStyle読み込み前でも位置を保持しておく。
+         * Style読み込み完了後のrenderLatestToilets()で
+         * 現在地マーカーを確実に復元できる。
+         */
+        latestCurrentLocation =
+            LatLng(
+                latitude,
+                longitude
+            )
+
+
+        val map =
+            mapLibreMap
+                ?: return
+
+
+        if (
+            !isStyleLoaded
+        ) {
+
+            return
+        }
+
+
+        /*
+         * トイレピン + 現在地をまとめて再描画
+         */
+        renderLatestToilets()
+
+
+        /*
+         * 現在地へカメラ移動
+         */
+        map.cameraPosition =
+            CameraPosition
+                .Builder()
+                .target(
+                    LatLng(
+                        latitude,
+                        longitude
+                    )
+                )
+                .zoom(
+                    16.5
+                )
+                .build()
+    }
+
+
+    /*
+     * =====================================
+     * 現在地マーカーを追加
+     * =====================================
+     */
+    private fun addCurrentLocationMarker(
+        map: MapLibreMap,
+        position: LatLng
+    ) {
+
+        map.addMarker(
+            MarkerOptions()
+                .position(
+                    position
+                )
+                .title(
+                    "現在地"
+                )
+                .icon(
+                    createCurrentLocationIcon()
+                )
+        )
+    }
+
+
+    /*
+     * =====================================
+     * 現在地マーカー画像
+     * =====================================
+     *
+     * 青い円 + 白い縁で、
+     * トイレピンと区別しやすくする。
+     */
+    private fun createCurrentLocationIcon(): Icon {
+
+        val density =
+            activity
+                .resources
+                .displayMetrics
+                .density
+
+
+        val size =
+            (
+                    28f *
+                            density
+                    ).toInt()
+
+
+        val bitmap =
+            Bitmap.createBitmap(
+                size,
+                size,
+                Bitmap.Config.ARGB_8888
+            )
+
+
+        val canvas =
+            Canvas(
+                bitmap
+            )
+
+
+        val center =
+            size /
+                    2f
+
+
+        val whitePaint =
+            Paint(
+                Paint.ANTI_ALIAS_FLAG
+            ).apply {
+
+                color =
+                    Color.WHITE
+
+                style =
+                    Paint.Style.FILL
+            }
+
+
+        val bluePaint =
+            Paint(
+                Paint.ANTI_ALIAS_FLAG
+            ).apply {
+
+                color =
+                    Color.rgb(
+                        33,
+                        150,
+                        243
+                    )
+
+                style =
+                    Paint.Style.FILL
+            }
+
+
+        canvas.drawCircle(
+            center,
+            center,
+            13f * density,
+            whitePaint
+        )
+
+
+        canvas.drawCircle(
+            center,
+            center,
+            9f * density,
+            bluePaint
+        )
+
+
+        return IconFactory
+            .getInstance(
+                activity
+            )
+            .fromBitmap(
+                bitmap
+            )
     }
 
 
@@ -909,7 +1044,15 @@ class MapLibreMapController(
 
                 CleaningStatus.REQUESTED ->
 
-                    "清掃待ち"
+                    "清掃依頼中"
+
+                CleaningStatus.IN_PROGRESS ->
+
+                    "清掃中"
+
+                CleaningStatus.COMPLETED ->
+
+                    "清掃完了"
             }
 
 
@@ -943,6 +1086,12 @@ class MapLibreMapController(
      *
      * REQUESTED
      * → 黄色
+     *
+     * IN_PROGRESS
+     * → 青
+     *
+     * COMPLETED
+     * → 緑
      */
     private fun createMarkerIcon(
         status: CleaningStatus
@@ -1023,6 +1172,32 @@ class MapLibreMapController(
                         255,
                         193,
                         7
+                    )
+
+
+                /*
+                 * 清掃中
+                 * → 青
+                 */
+                CleaningStatus.IN_PROGRESS ->
+
+                    Color.rgb(
+                        33,
+                        150,
+                        243
+                    )
+
+
+                /*
+                 * 清掃完了
+                 * → 緑
+                 */
+                CleaningStatus.COMPLETED ->
+
+                    Color.rgb(
+                        11,
+                        131,
+                        119
                     )
             }
 

@@ -16,7 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Warning
@@ -55,7 +55,7 @@ private val NavBackground =
  * =============================================
  *
  * 0 = 未清掃
- * 1 = 更新
+ * 1 = 清掃
  * 2 = マップ
  * 3 = 追加
  * 4 = アカウント
@@ -154,7 +154,7 @@ fun BottomNavigationBar(
                  * =============================================
                  * 左側
                  *
-                 * 未清掃 / 更新
+                 * 未清掃 / 清掃
                  * =============================================
                  */
                 Row(
@@ -200,18 +200,18 @@ fun BottomNavigationBar(
 
 
                     /*
-                     * 更新
+                     * 清掃
                      * 1
                      */
                     BottomNavItem(
 
                         label =
-                            "更新",
+                            "清掃",
 
                         icon =
                             Icons
                                 .Outlined
-                                .Edit,
+                                .CleaningServices,
 
                         selected =
                             selectedScreen == 1,

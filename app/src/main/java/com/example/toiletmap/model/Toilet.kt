@@ -17,7 +17,13 @@ enum class CleaningStatus {
     NORMAL,
 
     // 清掃依頼中：黄色いピン
-    REQUESTED
+    REQUESTED,
+
+    // 清掃担当者が決まり清掃中：青いピン
+    IN_PROGRESS,
+
+    // 履歴保存用。トイレ表示は完了後に NORMAL へ戻す
+    COMPLETED
 }
 
 
