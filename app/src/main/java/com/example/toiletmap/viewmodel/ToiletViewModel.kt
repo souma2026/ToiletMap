@@ -43,7 +43,7 @@ class ToiletViewModel : ViewModel() {
 
         private const val
                 AUTO_REFRESH_INTERVAL_MS =
-            5 * 60 * 1000L
+            60 * 60 * 1000L
     }
 
 
