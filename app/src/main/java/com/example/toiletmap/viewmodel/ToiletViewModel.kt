@@ -359,6 +359,44 @@ class ToiletViewModel : ViewModel() {
 
     /*
      * =====================================
+     * トイレ削除
+     * =====================================
+     */
+    fun deleteToilet(
+        toiletId: String,
+        onDeleted: () -> Unit = {}
+    ) {
+
+        viewModelScope.launch {
+
+            try {
+
+                repository
+                    .deleteToilet(
+                        toiletId
+                    )
+
+                _errorMessage.value =
+                    null
+
+                onDeleted()
+
+            } catch (
+                e: Exception
+            ) {
+
+                e.printStackTrace()
+
+                _errorMessage.value =
+                    e.message
+                        ?: "トイレの削除に失敗しました"
+            }
+        }
+    }
+
+
+    /*
+     * =====================================
      * 表示済みエラーを消す
      * =====================================
      */
