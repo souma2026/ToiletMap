@@ -2,6 +2,7 @@ package com.example.toiletmap.screen.map
 
 import android.view.ViewGroup
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,6 +50,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -61,7 +63,10 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -1644,11 +1649,116 @@ private fun ToiletDetailCard(
         }
 
 
+    /*
+     * =====================================
+     * Google Maps風の3段階詳細パネル
+     * =====================================
+     *
+     * PEEK     : トイレ名などの概要を表示
+     * HALF     : 清掃状態などを確認しやすい高さ
+     * EXPANDED : 画面の大部分まで展開
+     *
+     * 上端のハンドルを上下にドラッグすると高さが変わる。
+     */
+    val detailScrollState =
+        rememberScrollState()
+
+    /*
+     * =====================================
+     * スクロール案内の表示状態
+     * =====================================
+     *
+     * トイレ詳細を開いた直後だけ薄く案内を表示する。
+     * 実際に内容を少しでもスクロールしたら、
+     * そのトイレを開いている間は再表示しない。
+     */
+    var hasScrolledDetail by
+        remember(toilet.id) {
+            mutableStateOf(false)
+        }
+
+    LaunchedEffect(
+        detailScrollState.value
+    ) {
+        if (detailScrollState.value > 0) {
+            hasScrolledDetail = true
+        }
+    }
+
+    val density =
+        LocalDensity.current
+
+    val screenHeightDp =
+        LocalConfiguration.current.screenHeightDp.toFloat()
+
+    val peekHeightDp =
+        190f
+
+    val halfHeightDp =
+        360f
+
+    val expandedHeightDp =
+        (screenHeightDp * 0.72f)
+            .coerceIn(
+                460f,
+                680f
+            )
+
+    var detailHeightDp by
+        remember(toilet.id) {
+            mutableFloatStateOf(
+                peekHeightDp
+            )
+        }
+
+    LaunchedEffect(
+        toilet.id,
+        detailHeightDp <= peekHeightDp + 0.5f
+    ) {
+        if (
+            detailHeightDp <= peekHeightDp + 0.5f &&
+            detailScrollState.value != 0
+        ) {
+            detailScrollState.scrollTo(0)
+        }
+    }
+
+    fun snapDetailHeight() {
+        val candidates =
+            listOf(
+                peekHeightDp,
+                halfHeightDp,
+                expandedHeightDp
+            )
+
+        detailHeightDp =
+            candidates.minBy { candidate ->
+                kotlin.math.abs(
+                    candidate - detailHeightDp
+                )
+            }
+    }
+
+    fun cycleDetailHeight() {
+        detailHeightDp =
+            when {
+                detailHeightDp < (peekHeightDp + halfHeightDp) / 2f ->
+                    halfHeightDp
+
+                detailHeightDp < (halfHeightDp + expandedHeightDp) / 2f ->
+                    expandedHeightDp
+
+                else ->
+                    peekHeightDp
+            }
+    }
+
+
     Card(
         modifier =
             modifier
-                .heightIn(
-                    max = 380.dp
+                .height(
+                    detailHeightDp.dp
                 )
                 .shadow(
                     14.dp,
@@ -1675,45 +1785,30 @@ private fun ToiletDetailCard(
             )
     ) {
 
-        Column(
+        Box(
             modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(
-                        rememberScrollState()
-                    )
-                    .padding(
-                        18.dp
-                    ),
+                Modifier.fillMaxWidth()
+        ) {
+
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(
+                            detailScrollState
+                        )
+                        .padding(
+                            start = 18.dp,
+                            top = 42.dp,
+                            end = 18.dp,
+                            bottom = 28.dp
+                        ),
 
             verticalArrangement =
                 Arrangement.spacedBy(
                     12.dp
                 )
         ) {
-
-            Box(
-                modifier =
-                    Modifier
-                        .align(
-                            Alignment.CenterHorizontally
-                        )
-                        .width(
-                            38.dp
-                        )
-                        .height(
-                            4.dp
-                        )
-                        .clip(
-                            CircleShape
-                        )
-                        .background(
-                            Color(
-                                0xFFD8DEDC
-                            )
-                        )
-            )
-
 
             Row(
                 modifier =
@@ -1780,29 +1875,6 @@ private fun ToiletDetailCard(
                             1f
                         )
                 )
-
-
-                IconButton(
-                    onClick =
-                        onDismiss,
-
-                    modifier =
-                        Modifier.size(
-                            34.dp
-                        )
-                ) {
-
-                    Icon(
-                        imageVector =
-                            Icons.Outlined.Close,
-
-                        contentDescription =
-                            "閉じる",
-
-                        tint =
-                            FinderDark
-                    )
-                }
             }
 
 
@@ -2384,6 +2456,216 @@ private fun ToiletDetailCard(
 
                     fontWeight =
                         FontWeight.Bold
+                )
+            }
+        }
+
+
+            /*
+             * =====================================
+             * スクロール案内
+             * =====================================
+             *
+             * 詳細をまだ一度もスクロールしていないときだけ、
+             * 下部に薄い案内を表示する。
+             */
+            if (
+                !hasScrolledDetail &&
+                detailScrollState.maxValue > 0
+            ) {
+
+                Surface(
+                    modifier =
+                        Modifier
+                            .align(
+                                Alignment.BottomCenter
+                            )
+                            .padding(
+                                bottom = 12.dp
+                            )
+                            .zIndex(
+                                4f
+                            ),
+
+                    shape =
+                        RoundedCornerShape(
+                            50.dp
+                        ),
+
+                    color =
+                        Color.White.copy(
+                            alpha = 0.72f
+                        ),
+
+                    shadowElevation =
+                        1.dp
+                ) {
+
+                    Text(
+                        text =
+                            "スクロールしてください",
+
+                        modifier =
+                            Modifier.padding(
+                                horizontal = 14.dp,
+                                vertical = 7.dp
+                            ),
+
+                        color =
+                            FinderMuted.copy(
+                                alpha = 0.78f
+                            ),
+
+                        fontSize =
+                            11.sp,
+
+                        fontWeight =
+                            FontWeight.Medium
+                    )
+                }
+            }
+
+
+            /*
+             * =====================================
+             * 固定の閉じるボタン
+             * =====================================
+             *
+             * 詳細をスクロールしても右上から動かない。
+             */
+            Surface(
+                modifier =
+                    Modifier
+                        .align(
+                            Alignment.TopEnd
+                        )
+                        .padding(
+                            top = 8.dp,
+                            end = 8.dp
+                        )
+                        .zIndex(
+                            2f
+                        ),
+
+                shape =
+                    CircleShape,
+
+                color =
+                    Color.White.copy(
+                        alpha = 0.96f
+                    ),
+
+                shadowElevation =
+                    3.dp
+            ) {
+
+                IconButton(
+                    onClick =
+                        onDismiss,
+
+                    modifier =
+                        Modifier.size(
+                            38.dp
+                        )
+                ) {
+
+                    Icon(
+                        imageVector =
+                            Icons.Outlined.Close,
+
+                        contentDescription =
+                            "閉じる",
+
+                        tint =
+                            FinderDark
+                    )
+                }
+            }
+
+
+            /*
+             * =====================================
+             * 固定ドラッグハンドル
+             * =====================================
+             *
+             * Google Mapsの詳細パネルのように、
+             * 上端を上下ドラッグして
+             * PEEK / HALF / EXPANDED の3段階に切り替える。
+             * タップでも段階を切り替えられる。
+             */
+            Box(
+                modifier =
+                    Modifier
+                        .align(
+                            Alignment.TopCenter
+                        )
+                        .width(
+                            120.dp
+                        )
+                        .height(
+                            34.dp
+                        )
+                        .zIndex(
+                            3f
+                        )
+                        .pointerInput(
+                            toilet.id,
+                            expandedHeightDp
+                        ) {
+                            detectVerticalDragGestures(
+                                onVerticalDrag = {
+                                        change,
+                                        dragAmount ->
+
+                                    change.consume()
+
+                                    val dragDp =
+                                        with(density) {
+                                            dragAmount.toDp().value
+                                        }
+
+                                    detailHeightDp =
+                                        (detailHeightDp - dragDp)
+                                            .coerceIn(
+                                                peekHeightDp,
+                                                expandedHeightDp
+                                            )
+                                },
+
+                                onDragEnd = {
+                                    snapDetailHeight()
+                                },
+
+                                onDragCancel = {
+                                    snapDetailHeight()
+                                }
+                            )
+                        }
+                        .clickable {
+                            cycleDetailHeight()
+                        },
+
+                contentAlignment =
+                    Alignment.Center
+            ) {
+
+                Box(
+                    modifier =
+                        Modifier
+                            .width(
+                                42.dp
+                            )
+                            .height(
+                                5.dp
+                            )
+                            .clip(
+                                CircleShape
+                            )
+                            .background(
+                                Color(
+                                    0xFFC7CECC
+                                )
+                            )
                 )
             }
         }
