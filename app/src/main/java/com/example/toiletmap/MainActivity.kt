@@ -16,385 +16,129 @@ import com.example.toiletmap.ui.ToiletMapApp
 import com.example.toiletmap.ui.theme.ToiletMapTheme
 import com.example.toiletmap.viewmodel.ToiletViewModel
 
-
 class MainActivity : ComponentActivity() {
 
-    /*
-     * =====================================
-     * MapLibre
-     * =====================================
-     */
-    private lateinit var mapController:
-            MapLibreMapController
-
+    private lateinit var mapController: MapLibreMapController
+    private lateinit var toiletViewModel: ToiletViewModel
 
     /*
-     * =====================================
-     * ToiletViewModel
-     * =====================================
+     * 地図のピン、検索結果、未清掃一覧のいずれかで
+     * 選択されたトイレのIDを保持する。
      */
-    private lateinit var toiletViewModel:
-            ToiletViewModel
+    private var selectedToiletId by mutableStateOf<String?>(null)
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
-    /*
-     * =====================================
-     * 現在選択中のトイレID
-     * =====================================
-     *
-     * ・地図のピンを押した
-     * ・検索結果を押した
-     *
-     * どちらの場合もここを書き換える。
-     */
-    private var selectedToiletId by
-    mutableStateOf<String?>(
-        null
-    )
-
-
-    override fun onCreate(
-        savedInstanceState: Bundle?
-    ) {
-
-        super.onCreate(
-            savedInstanceState
-        )
-
-
-        /*
-         * =====================================
-         * ViewModel
-         * =====================================
-         */
         toiletViewModel =
+            ViewModelProvider(this)[ToiletViewModel::class.java]
 
-            ViewModelProvider(this)[
-                ToiletViewModel::class.java
-            ]
-
-
-        /*
-         * =====================================
-         * MapLibre
-         * =====================================
-         */
         mapController =
-
             MapLibreMapController(
-
-                activity =
-                    this,
-
-                savedInstanceState =
-                    savedInstanceState
+                activity = this,
+                savedInstanceState = savedInstanceState
             )
 
+        /* 地図上のピンを押したとき */
+        mapController.setOnToiletMarkerClickListener { toilet ->
+            selectedToiletId = toilet.id
+        }
 
-        /*
-         * =====================================
-         * 地図上のトイレピンを押した
-         * =====================================
-         */
-        mapController
-            .setOnToiletMarkerClickListener {
-                    toilet ->
-
-
-                selectedToiletId =
-                    toilet.id
-            }
-
-
-        /*
-         * =====================================
-         * Compose
-         * =====================================
-         */
         setContent {
-
             ToiletMapTheme {
+                val toilets by toiletViewModel.toilets.collectAsState()
 
-
-                /*
-                 * =====================================
-                 * Supabaseから取得した
-                 * トイレ一覧
-                 * =====================================
-                 */
-                val toilets by
-
-                toiletViewModel
-                    .toilets
-                    .collectAsState()
-
-
-                /*
-                 * =====================================
-                 * 現在選択中のトイレ
-                 * =====================================
-                 */
                 val selectedToilet =
+                    toilets.firstOrNull { toilet ->
+                        toilet.id == selectedToiletId
+                    }
 
-                    toilets
-                        .firstOrNull {
-                                toilet ->
-
-
-                            toilet.id ==
-                                    selectedToiletId
-                        }
-
-
-                /*
-                 * =====================================
-                 * 清掃待ちトイレ
-                 * =====================================
-                 */
                 val uncleanedToilets =
-
                     toilets
-                        .filter {
-                                toilet ->
-
-
-                            toilet.cleaningStatus ==
-                                    CleaningStatus.REQUESTED
+                        .filter { toilet ->
+                            toilet.cleaningStatus == CleaningStatus.REQUESTED
                         }
-                        .map {
-                                toilet ->
-
-
+                        .map { toilet ->
                             UncleanedToilet(
-
-                                id =
-                                    toilet.id,
-
-                                name =
-                                    toilet.name,
-
-                                latitude =
-                                    toilet.latitude,
-
-                                longitude =
-                                    toilet.longitude,
-
-                                lastCleanedAtMillis =
-                                    toilet.lastCleanedAtMillis
+                                id = toilet.id,
+                                name = toilet.name,
+                                latitude = toilet.latitude,
+                                longitude = toilet.longitude,
+                                lastCleanedAtMillis = toilet.lastCleanedAtMillis
                             )
                         }
 
-
-                /*
-                 * =====================================
-                 * トイレ一覧が更新されたら
-                 * 地図上のピンを更新
-                 * =====================================
-                 */
-                LaunchedEffect(
-                    toilets
-                ) {
-
-                    mapController
-                        .showToilets(
-                            toilets
-                        )
+                /* Supabaseの一覧が変わったら地図のピンを更新する。 */
+                LaunchedEffect(toilets) {
+                    mapController.showToilets(toilets)
                 }
 
-
-                /*
-                 * =====================================
-                 * アプリ本体
-                 * =====================================
-                 */
                 ToiletMapApp(
+                    mapView = mapController.mapView,
+                    toilets = toilets,
+                    selectedToilet = selectedToilet,
+                    uncleanedToilets = uncleanedToilets,
 
                     /*
-                     * MapLibre
+                     * 未清掃一覧の「地図で見る」を押したとき。
+                     * UncleanedToiletのIDから元のToiletを取得し、
+                     * 選択状態にして地図を移動する。
                      */
-                    mapView =
-                        mapController.mapView,
+                    onShowUncleanedToiletOnMap = { uncleanedToilet ->
+                        val toilet =
+                            toilets.firstOrNull { candidate ->
+                                candidate.id == uncleanedToilet.id
+                            }
 
-
-                    /*
-                     * =====================================
-                     * 検索対象
-                     * =====================================
-                     */
-                    toilets =
-                        toilets,
-
-
-                    /*
-                     * 現在選択中
-                     */
-                    selectedToilet =
-                        selectedToilet,
-
-
-                    /*
-                     * 清掃待ち一覧
-                     */
-                    uncleanedToilets =
-                        uncleanedToilets,
-
-
-                    /*
-                     * =====================================
-                     * 検索結果を押した
-                     * =====================================
-                     */
-                    onSearchToiletSelected = {
-                            toilet ->
-
-
-                        /*
-                         * 選択中にする
-                         */
-                        selectedToiletId =
-                            toilet.id
-
-
-                        /*
-                         * そのトイレへ地図移動
-                         */
-                        mapController
-                            .focusOnToilet(
-                                toilet
-                            )
+                        if (toilet != null) {
+                            selectedToiletId = toilet.id
+                            mapController.focusOnToilet(toilet)
+                        }
                     },
 
+                    /* 検索結果を押したとき */
+                    onSearchToiletSelected = { toilet ->
+                        selectedToiletId = toilet.id
+                        mapController.focusOnToilet(toilet)
+                    },
 
-                    /*
-                     * =====================================
-                     * 詳細を閉じる
-                     * =====================================
-                     */
+                    /* トイレ詳細を閉じたとき */
                     onDismissSelectedToilet = {
-
-
-                        selectedToiletId =
-                            null
+                        selectedToiletId = null
                     },
 
-
-                    /*
-                     * =====================================
-                     * 清掃依頼
-                     * =====================================
-                     */
-                    onRequestCleaning = {
-                            toilet ->
-
-
-                        toiletViewModel
-                            .requestCleaning(
-                                toilet.id
-                            )
+                    /* 清掃依頼 */
+                    onRequestCleaning = { toilet ->
+                        toiletViewModel.requestCleaning(toilet.id)
                     },
 
-
-                    /*
-                     * =====================================
-                     * 清掃完了
-                     * =====================================
-                     */
-                    onMarkCleaned = {
-                            toilet ->
-
-
-                        toiletViewModel
-                            .markCleaned(
-                                toilet.id
-                            )
+                    /* 清掃完了 */
+                    onMarkCleaned = { toilet ->
+                        toiletViewModel.markCleaned(toilet.id)
                     },
 
-
-                    /*
-                     * =====================================
-                     * トイレ追加
-                     * =====================================
-                     */
-                    onAddToilet = {
-                            toilet ->
-
-
-                        toiletViewModel
-                            .addToilet(
-                                toilet
-                            )
-
-
-                        /*
-                         * 登録したトイレを選択
-                         */
-                        selectedToiletId =
-                            toilet.id
-
-
-                        /*
-                         * 登録場所へ移動
-                         */
-                        mapController
-                            .focusOnToilet(
-                                toilet
-                            )
+                    /* トイレ追加 */
+                    onAddToilet = { toilet ->
+                        toiletViewModel.addToilet(toilet)
+                        selectedToiletId = toilet.id
+                        mapController.focusOnToilet(toilet)
                     },
 
-
-                    /*
-                     * =====================================
-                     * 現在地ボタン
-                     * =====================================
-                     *
-                     * 現在は一旦無効。
-                     *
-                     * 検索機能を安定させた後に
-                     * MapLibreMapControllerと合わせて
-                     * 再度実装する。
-                     */
+                    /* 現在地機能は一旦無効 */
                     onCurrentLocationRequested = {
-
-                        // 現在地機能は一旦無効
                     }
                 )
             }
         }
     }
 
-
-    /*
-     * =====================================
-     * MapView状態保存
-     * =====================================
-     */
-    override fun onSaveInstanceState(
-        outState: Bundle
-    ) {
-
-        mapController
-            .onSaveInstanceState(
-                outState
-            )
-
-
-        super.onSaveInstanceState(
-            outState
-        )
+    override fun onSaveInstanceState(outState: Bundle) {
+        mapController.onSaveInstanceState(outState)
+        super.onSaveInstanceState(outState)
     }
 
-
-    /*
-     * =====================================
-     * メモリ不足
-     * =====================================
-     */
     override fun onLowMemory() {
-
         super.onLowMemory()
-
-
-        mapController
-            .onLowMemory()
+        mapController.onLowMemory()
     }
 }
