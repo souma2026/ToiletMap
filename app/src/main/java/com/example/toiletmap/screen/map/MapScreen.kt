@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +55,11 @@ import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.model.Toilet
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.layout.onGloballyPositioned
+import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.camera.CameraUpdateFactory
 
 
 // =============================================
@@ -107,6 +113,127 @@ fun MapScreen(
     onCancelLocationSelection:
         () -> Unit = {}
 ) {
+
+
+    // =============================================
+    // トイレ詳細カードの高さ
+    // =============================================
+    //
+    // 詳細カードが表示されたとき、
+    // カードに隠れていない地図部分の中央へ
+    // 選択したピンを移動するために使う。
+    // 単位はpx。
+    // =============================================
+
+    var detailCardHeightPx by
+    remember {
+
+        mutableIntStateOf(
+            0
+        )
+    }
+
+
+    // =============================================
+    // 選択されたトイレへカメラ移動
+    // =============================================
+    //
+    // selectedToiletが変わり、
+    // 詳細カードの高さを取得できたタイミングで、
+    //
+    // ・選択したトイレへ移動
+    // ・15.5までズーム
+    // ・詳細カードを除いた地図部分の中央へ表示
+    //
+    // を行う。
+    // =============================================
+
+    LaunchedEffect(
+        selectedToilet?.id,
+        detailCardHeightPx
+    ) {
+
+        val toilet =
+            selectedToilet
+
+
+        if (
+            toilet != null &&
+            detailCardHeightPx > 0
+        ) {
+
+            mapView.getMapAsync {
+                    map ->
+
+
+                val cameraPosition =
+
+                    CameraPosition
+                        .Builder()
+
+                        .target(
+
+                            LatLng(
+                                toilet.latitude,
+                                toilet.longitude
+                            )
+                        )
+
+                        // 周辺も確認できる程度のズーム
+                        .zoom(
+                            15.5
+                        )
+
+                        // 詳細カードの高さ分だけ
+                        // 下側にカメラpaddingを入れる。
+                        // これにより、ピンがカードに隠れず、
+                        // 残っている地図部分の中央付近に来る。
+                        .padding(
+                            0.0,
+                            0.0,
+                            0.0,
+                            detailCardHeightPx.toDouble()
+                        )
+
+                        .build()
+
+
+                map.easeCamera(
+
+                    CameraUpdateFactory
+                        .newCameraPosition(
+                            cameraPosition
+                        ),
+
+                    500
+                )
+            }
+
+        } else if (
+            toilet == null
+        ) {
+
+            // 詳細を閉じたら、
+            // 次の地図操作に影響しないよう
+            // camera paddingを元に戻す。
+            mapView.getMapAsync {
+                    map ->
+
+                map.easeCamera(
+
+                    CameraUpdateFactory
+                        .paddingTo(
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0
+                        ),
+
+                    300
+                )
+            }
+        }
+    }
 
 
     // =============================================
@@ -338,6 +465,14 @@ fun MapScreen(
                         .padding(
                             12.dp
                         )
+                        .onGloballyPositioned {
+                                coordinates ->
+
+                            detailCardHeightPx =
+                                coordinates
+                                    .size
+                                    .height
+                        }
             )
         }
     }
