@@ -1,7 +1,10 @@
 package com.example.toiletmap
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
@@ -9,6 +12,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.screen.listofuncleaned.UncleanedToilet
@@ -46,6 +50,37 @@ class MainActivity : ComponentActivity() {
      */
     private lateinit var reviewViewModel:
             ReviewViewModel
+
+
+    /*
+     * =====================================
+     * 位置情報権限リクエスト
+     * =====================================
+     */
+    private val locationPermissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { permissions ->
+
+            val granted =
+                permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                        permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+
+            if (granted) {
+
+                requestAndShowCurrentLocation()
+
+            } else {
+
+                Toast
+                    .makeText(
+                        this,
+                        "現在地を表示するには位置情報の許可が必要です",
+                        Toast.LENGTH_LONG
+                    )
+                    .show()
+            }
+        }
 
 
     /*
@@ -556,19 +591,93 @@ class MainActivity : ComponentActivity() {
                      * 現在地ボタン
                      * =====================================
                      *
-                     * 現在は一旦無効。
+                     * 権限がある場合:
+                     * → 現在位置を取得して地図へ表示
                      *
-                     * 検索機能を安定させた後に
-                     * MapLibreMapControllerと合わせて
-                     * 再度実装する。
+                     * 権限がない場合:
+                     * → Androidの権限ダイアログを表示
                      */
                     onCurrentLocationRequested = {
 
-                        // 現在地機能は一旦無効
+                        showCurrentLocationWithPermissionCheck()
                     }
                 )
             }
         }
+    }
+
+
+    /*
+     * =====================================
+     * 現在地表示の権限確認
+     * =====================================
+     */
+    private fun showCurrentLocationWithPermissionCheck() {
+
+        val fineGranted =
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+        val coarseGranted =
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+
+        if (
+            fineGranted ||
+            coarseGranted
+        ) {
+
+            requestAndShowCurrentLocation()
+
+        } else {
+
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
+
+
+    /*
+     * =====================================
+     * 現在位置を取得して地図へ表示
+     * =====================================
+     */
+    private fun requestAndShowCurrentLocation() {
+
+        mapController
+            .showCurrentLocation(
+
+                onSuccess = {
+
+                    Toast
+                        .makeText(
+                            this,
+                            "現在地を表示しました",
+                            Toast.LENGTH_SHORT
+                        )
+                        .show()
+                },
+
+                onError = { message ->
+
+                    Toast
+                        .makeText(
+                            this,
+                            message,
+                            Toast.LENGTH_LONG
+                        )
+                        .show()
+                }
+            )
     }
 
 
