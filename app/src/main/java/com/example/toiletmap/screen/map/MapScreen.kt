@@ -63,6 +63,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -130,7 +131,7 @@ fun MapScreen(
 
     onDismissSelectedToilet: () -> Unit = {},
 
-    onRequestCleaning: (Toilet) -> Unit = {},
+    onRequestCleaning: (Toilet, Int) -> Unit = { _, _ -> },
 
     onMarkCleaned: (Toilet) -> Unit = {},
 
@@ -447,8 +448,11 @@ fun MapScreen(
                         onDismissSelectedToilet,
 
                     onRequestCleaning = {
+                            rewardPoints ->
+
                         onRequestCleaning(
-                            selectedToilet
+                            selectedToilet,
+                            rewardPoints
                         )
                     },
 
@@ -1467,7 +1471,7 @@ private fun LocationSelectionBanner(
 private fun ToiletDetailCard(
     toilet: Toilet,
     onDismiss: () -> Unit,
-    onRequestCleaning: () -> Unit,
+    onRequestCleaning: (Int) -> Unit,
     onMarkCleaned: () -> Unit,
     onOpenReviews: () -> Unit,
     modifier: Modifier = Modifier
@@ -1552,7 +1556,7 @@ private fun ToiletDetailCard(
 
     val actionText =
         if (requested) {
-            "清掃しました"
+            "清掃しました（${toilet.cleaningRewardPoints} pt獲得）"
         } else {
             "清掃を依頼する"
         }
@@ -1564,6 +1568,154 @@ private fun ToiletDetailCard(
         } else {
             Icons.Outlined.NotificationsNone
         }
+
+
+    var showRewardDialog by remember(
+        toilet.id
+    ) {
+        mutableStateOf(false)
+    }
+
+
+    var rewardPointText by remember(
+        toilet.id
+    ) {
+        mutableStateOf("10")
+    }
+
+
+    val enteredRewardPoints =
+        rewardPointText.toIntOrNull()
+
+
+    val rewardPointsValid =
+        enteredRewardPoints != null &&
+                enteredRewardPoints in 1..10_000
+
+
+    if (showRewardDialog && !requested) {
+
+        AlertDialog(
+            onDismissRequest = {
+                showRewardDialog = false
+            },
+
+            title = {
+                Text(
+                    text = "清掃依頼の報酬ポイント"
+                )
+            },
+
+            text = {
+                Column(
+                    verticalArrangement =
+                        Arrangement.spacedBy(
+                            10.dp
+                        )
+                ) {
+
+                    Text(
+                        text =
+                            "清掃を完了したユーザーへ支払うポイント数を入力してください。依頼時にあなたの所持ポイントから差し引かれます。"
+                    )
+
+
+                    OutlinedTextField(
+                        value =
+                            rewardPointText,
+
+                        onValueChange = {
+                                newValue ->
+
+                            rewardPointText =
+                                newValue
+                                    .filter {
+                                        it.isDigit()
+                                    }
+                                    .take(5)
+                        },
+
+                        label = {
+                            Text(
+                                "支払うポイント"
+                            )
+                        },
+
+                        suffix = {
+                            Text(
+                                "pt"
+                            )
+                        },
+
+                        singleLine = true,
+
+                        isError =
+                            rewardPointText.isNotBlank() &&
+                                    !rewardPointsValid,
+
+                        supportingText = {
+                            Text(
+                                if (rewardPointsValid) {
+                                    "1～10000ptの範囲で設定できます"
+                                } else {
+                                    "1～10000の整数を入力してください"
+                                }
+                            )
+                        },
+
+                        keyboardOptions =
+                            KeyboardOptions(
+                                keyboardType =
+                                    KeyboardType.Number,
+
+                                imeAction =
+                                    ImeAction.Done
+                            )
+                    )
+                }
+            },
+
+            confirmButton = {
+                TextButton(
+                    onClick = {
+
+                        val rewardPoints =
+                            enteredRewardPoints
+                                ?: return@TextButton
+
+                        if (!rewardPointsValid) {
+                            return@TextButton
+                        }
+
+                        showRewardDialog = false
+
+                        onRequestCleaning(
+                            rewardPoints
+                        )
+                    },
+
+                    enabled =
+                        rewardPointsValid
+                ) {
+                    Text(
+                        "${enteredRewardPoints ?: 0} ptで依頼する"
+                    )
+                }
+            },
+
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showRewardDialog = false
+                    }
+                ) {
+                    Text(
+                        "キャンセル"
+                    )
+                }
+            }
+        )
+    }
 
 
     Card(
@@ -1999,6 +2151,21 @@ private fun ToiletDetailCard(
                                 10.dp
                             )
                 )
+
+
+                Text(
+                    text =
+                        "清掃報酬：${toilet.cleaningRewardPoints} pt",
+
+                    color =
+                        FinderGreen,
+
+                    fontSize =
+                        16.sp,
+
+                    fontWeight =
+                        FontWeight.Bold
+                )
             }
 
 
@@ -2008,12 +2175,13 @@ private fun ToiletDetailCard(
              * =====================================
              */
             Button(
-                onClick =
+                onClick = {
                     if (requested) {
-                        onMarkCleaned
+                        onMarkCleaned()
                     } else {
-                        onRequestCleaning
-                    },
+                        showRewardDialog = true
+                    }
+                },
 
                 modifier =
                     Modifier

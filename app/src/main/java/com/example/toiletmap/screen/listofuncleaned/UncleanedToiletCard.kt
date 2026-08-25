@@ -222,6 +222,22 @@ fun UncleanedToiletCard(
                         fontSize =
                             12.sp
                     )
+
+
+                    Text(
+
+                        text =
+                            "報酬 ${toilet.rewardPoints} pt",
+
+                        color =
+                            FinderGreen,
+
+                        fontSize =
+                            13.sp,
+
+                        fontWeight =
+                            FontWeight.Bold
+                    )
                 }
 
 

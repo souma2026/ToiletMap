@@ -285,7 +285,8 @@ class ToiletViewModel : ViewModel() {
      * =====================================
      */
     fun requestCleaning(
-        toiletId: String
+        toiletId: String,
+        rewardPoints: Int
     ) {
 
         viewModelScope.launch {
@@ -294,7 +295,8 @@ class ToiletViewModel : ViewModel() {
 
                 repository
                     .requestCleaning(
-                        toiletId
+                        toiletId = toiletId,
+                        rewardPoints = rewardPoints
                     )
 
 
@@ -352,6 +354,18 @@ class ToiletViewModel : ViewModel() {
                         ?: "清掃状態の更新に失敗しました"
             }
         }
+    }
+
+
+    /*
+     * =====================================
+     * 表示済みエラーを消す
+     * =====================================
+     */
+    fun clearErrorMessage() {
+
+        _errorMessage.value =
+            null
     }
 
 

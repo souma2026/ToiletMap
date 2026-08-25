@@ -106,7 +106,7 @@ fun ToiletMapApp(
      * 清掃依頼
      */
     onRequestCleaning:
-        (Toilet) -> Unit,
+        (Toilet, Int) -> Unit,
 
 
     /*
