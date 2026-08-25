@@ -119,6 +119,11 @@ fun MapScreen(
     onSearchToiletSelected: (Toilet) -> Unit = {},
 
     /*
+     * 隠しゲーム用ロゴタップ
+     */
+    onSecretLogoTap: () -> Unit = {},
+
+    /*
      * 現在地
      */
     onCurrentLocationClick: () -> Unit = {},
@@ -334,6 +339,9 @@ fun MapScreen(
 
             onToiletSelected =
                 onSearchToiletSelected,
+
+            onSecretLogoTap =
+                onSecretLogoTap,
 
             onNotificationClick = {
                 showNotificationDialog =
@@ -582,6 +590,7 @@ fun MapScreen(
 private fun FinderHeader(
     toilets: List<Toilet>,
     onToiletSelected: (Toilet) -> Unit,
+    onSecretLogoTap: () -> Unit,
     onNotificationClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -746,11 +755,20 @@ private fun FinderHeader(
                     modifier =
                         Modifier
                             .size(44.dp)
+                            .clip(
+                                RoundedCornerShape(
+                                    13.dp
+                                )
+                            )
                             .background(
                                 color = FinderGreen,
                                 shape = RoundedCornerShape(
                                     13.dp
                                 )
+                            )
+                            .clickable(
+                                onClick =
+                                    onSecretLogoTap
                             ),
 
                     contentAlignment =

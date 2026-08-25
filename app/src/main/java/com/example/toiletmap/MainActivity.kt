@@ -20,6 +20,7 @@ import com.example.toiletmap.screen.map.MapLibreMapController
 import com.example.toiletmap.ui.ToiletMapApp
 import com.example.toiletmap.ui.theme.ToiletMapTheme
 import com.example.toiletmap.viewmodel.CleaningViewModel
+import com.example.toiletmap.viewmodel.GameViewModel
 import com.example.toiletmap.viewmodel.ReviewViewModel
 import com.example.toiletmap.viewmodel.ToiletViewModel
 
@@ -60,6 +61,15 @@ class MainActivity : ComponentActivity() {
      */
     private lateinit var cleaningViewModel:
             CleaningViewModel
+
+
+    /*
+     * =====================================
+     * Secret Game ViewModel
+     * =====================================
+     */
+    private lateinit var gameViewModel:
+            GameViewModel
 
 
     /*
@@ -141,6 +151,13 @@ class MainActivity : ComponentActivity() {
 
             ViewModelProvider(this)[
                 CleaningViewModel::class.java
+            ]
+
+
+        gameViewModel =
+
+            ViewModelProvider(this)[
+                GameViewModel::class.java
             ]
 
 
@@ -474,6 +491,13 @@ class MainActivity : ComponentActivity() {
                  * =====================================
                  */
                 ToiletMapApp(
+
+                    /*
+                     * 隠しゲーム
+                     */
+                    gameViewModel =
+                        gameViewModel,
+
 
                     /*
                      * MapLibre
