@@ -132,6 +132,13 @@ fun ToiletMapApp(
 
 
     /*
+     * 清掃完了
+     */
+    onCompleteCleaning:
+        (CleaningRequest) -> Unit,
+
+
+    /*
      * 清掃担当をキャンセル
      */
     onCancelCleaning:
@@ -164,10 +171,10 @@ fun ToiletMapApp(
      */
     onSubmitReview:
         (
-            String,
-            Int,
-            String
-        ) -> Unit,
+        String,
+        Int,
+        String
+    ) -> Unit,
 
 
     /*
@@ -457,6 +464,9 @@ fun ToiletMapApp(
                             )
                         },
 
+                        onCompleteCleaning =
+                            onCompleteCleaning,
+
                         onCancelCleaning =
                             onCancelCleaning,
 
@@ -576,6 +586,21 @@ fun ToiletMapApp(
 
                             selectedScreen =
                                 1
+                        },
+
+
+                        /*
+                         * 未ログイン時はアカウント画面へ誘導
+                         */
+                        onOpenAccount = {
+
+                            showReviewDialog =
+                                false
+
+                            onDismissSelectedToilet()
+
+                            selectedScreen =
+                                4
                         },
 
 

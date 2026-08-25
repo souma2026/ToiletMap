@@ -74,6 +74,7 @@ fun CleaningScreen(
     actionRequestId: String?,
     onRefresh: () -> Unit,
     onShowOnMap: (CleaningRequest) -> Unit,
+    onCompleteCleaning: (CleaningRequest) -> Unit,
     onCancelCleaning: (CleaningRequest) -> Unit,
     onOpenUncleaned: () -> Unit,
     onOpenAccount: () -> Unit
@@ -290,6 +291,11 @@ fun CleaningScreen(
                                     request
                                 )
                             },
+                            onCompleteCleaning = {
+                                onCompleteCleaning(
+                                    request
+                                )
+                            },
                             onCancelCleaning = {
                                 onCancelCleaning(
                                     request
@@ -320,6 +326,7 @@ private fun CleaningAssignmentCard(
     toilet: Toilet?,
     isActionInProgress: Boolean,
     onShowOnMap: () -> Unit,
+    onCompleteCleaning: () -> Unit,
     onCancelCleaning: () -> Unit
 ) {
 
@@ -548,24 +555,46 @@ private fun CleaningAssignmentCard(
             }
 
 
-            OutlinedButton(
-                onClick = {},
+            Button(
+                onClick =
+                    onCompleteCleaning,
                 modifier =
                     Modifier.fillMaxWidth(),
                 enabled =
-                    false,
+                    !isActionInProgress,
                 shape =
                     RoundedCornerShape(
                         12.dp
+                    ),
+                colors =
+                    ButtonDefaults.buttonColors(
+                        containerColor =
+                            CleaningGreen
                     )
             ) {
 
-                Icon(
-                    imageVector =
-                        Icons.Outlined.CheckCircle,
-                    contentDescription =
-                        null
-                )
+                if (isActionInProgress) {
+
+                    CircularProgressIndicator(
+                        modifier =
+                            Modifier.size(
+                                18.dp
+                            ),
+                        color =
+                            Color.White,
+                        strokeWidth =
+                            2.dp
+                    )
+
+                } else {
+
+                    Icon(
+                        imageVector =
+                            Icons.Outlined.CheckCircle,
+                        contentDescription =
+                            null
+                    )
+                }
 
                 Spacer(
                     modifier =
@@ -576,7 +605,11 @@ private fun CleaningAssignmentCard(
 
                 Text(
                     text =
-                        "清掃完了（次の段階で実装）"
+                        if (isActionInProgress) {
+                            "清掃完了を記録中"
+                        } else {
+                            "清掃完了"
+                        }
                 )
             }
 
@@ -627,7 +660,7 @@ private fun CleaningAssignmentCard(
 
             Text(
                 text =
-                    "清掃完了と報酬ポイント付与は、次の実装段階で有効になります。",
+                    "この段階では清掃完了の記録のみ行います。報酬ポイント付与は次の段階で実装します。",
                 color =
                     CleaningMuted,
                 fontSize =

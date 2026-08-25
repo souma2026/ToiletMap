@@ -229,6 +229,61 @@ class CleaningViewModel : ViewModel() {
     }
 
 
+    fun completeCleaning(
+        requestId: String
+    ) {
+
+        if (_actionRequestId.value != null) {
+            return
+        }
+
+        viewModelScope.launch {
+
+            _actionRequestId.value =
+                requestId
+
+            try {
+
+                repository.completeCleaning(
+                    requestId
+                )
+
+                val refreshed =
+                    refresh()
+
+                if (refreshed) {
+
+                    _errorMessage.value =
+                        null
+
+                    _successMessage.value =
+                        "清掃完了を記録しました"
+
+                } else {
+
+                    _successMessage.value =
+                        "清掃完了は記録されました。表示を更新できなかったため、更新ボタンを押してください"
+                }
+
+            } catch (
+                e: Exception
+            ) {
+
+                e.printStackTrace()
+
+                _errorMessage.value =
+                    e.message
+                        ?: "清掃完了の記録に失敗しました"
+
+            } finally {
+
+                _actionRequestId.value =
+                    null
+            }
+        }
+    }
+
+
     fun cancelCleaning(
         requestId: String
     ) {

@@ -645,6 +645,22 @@ class MainActivity : ComponentActivity() {
 
                     /*
                      * =====================================
+                     * 清掃完了
+                     * =====================================
+                     */
+                    onCompleteCleaning = {
+                            request ->
+
+
+                        cleaningViewModel
+                            .completeCleaning(
+                                request.id
+                            )
+                    },
+
+
+                    /*
+                     * =====================================
                      * 清掃担当をキャンセル
                      * =====================================
                      */
