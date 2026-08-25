@@ -21,6 +21,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun PointCard(
     points: Int,
+    title: String = "所持ポイント",
+    supportingText: String? = null,
     modifier: Modifier = Modifier
 ) {
 
@@ -56,7 +58,7 @@ fun PointCard(
 
                 Text(
                     text =
-                        "所持ポイント",
+                        title,
 
                     style =
                         MaterialTheme.typography.bodyMedium,
@@ -85,6 +87,26 @@ fun PointCard(
                     fontWeight =
                         FontWeight.Bold
                 )
+
+
+                if (!supportingText.isNullOrBlank()) {
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(4.dp)
+                    )
+
+                    Text(
+                        text =
+                            supportingText,
+
+                        style =
+                            MaterialTheme.typography.bodySmall,
+
+                        color =
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
 

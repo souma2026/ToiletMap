@@ -11,5 +11,16 @@ data class UserProfile(
     @SerialName("avatar_url")
     val avatarUrl: String? = null,
 
-    val points: Int = 0
+    /*
+     * 既存ポイント。
+     * これまでのアカウント機能との互換性を維持するため残す。
+     */
+    val points: Int = 0,
+
+    /*
+     * 清掃完了でもらえる報酬ポイント。
+     * 第5段階から利用する。
+     */
+    @SerialName("reward_points")
+    val rewardPoints: Int = 0
 )

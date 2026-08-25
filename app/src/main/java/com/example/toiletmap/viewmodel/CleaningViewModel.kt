@@ -242,6 +242,19 @@ class CleaningViewModel : ViewModel() {
             _actionRequestId.value =
                 requestId
 
+            /*
+             * 完了前の依頼情報から、今回付与される報酬を保持する。
+             * RPC成功後はCOMPLETEDになり、active一覧から消えるため、
+             * 先に取得しておく。
+             */
+            val earnedRewardPoints =
+                _requests.value
+                    .firstOrNull { request ->
+                        request.id == requestId
+                    }
+                    ?.rewardPoints
+                    ?: 0
+
             try {
 
                 repository.completeCleaning(
@@ -257,7 +270,11 @@ class CleaningViewModel : ViewModel() {
                         null
 
                     _successMessage.value =
-                        "清掃完了を記録しました"
+                        if (earnedRewardPoints > 0) {
+                            "清掃完了！${earnedRewardPoints}ptを獲得しました"
+                        } else {
+                            "清掃完了を記録しました"
+                        }
 
                 } else {
 
