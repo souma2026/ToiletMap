@@ -4,9 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.toiletmap.data.repository.ToiletRepository
 import com.example.toiletmap.model.Toilet
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 
@@ -19,6 +22,29 @@ class ToiletViewModel : ViewModel() {
      */
     private val repository =
         ToiletRepository()
+
+
+    /*
+     * =====================================
+     * 自動更新の間隔
+     * =====================================
+     *
+     * 10秒
+     *
+     * 変更したい場合は
+     *
+     * 5秒  -> 5_000L
+     * 10秒 -> 10_000L
+     * 30秒 -> 30_000L
+     *
+     * のように変更可能
+     */
+    companion object {
+
+        private const val
+                AUTO_REFRESH_INTERVAL_MS =
+            5 * 60 * 1000L
+    }
 
 
     /*
@@ -52,15 +78,127 @@ class ToiletViewModel : ViewModel() {
 
     /*
      * =====================================
-     * ViewModel作成時
+     * 自動更新Job
+     * =====================================
      *
-     * Supabaseから
-     * トイレ一覧を読み込む
+     * 同じ自動更新処理が
+     * 二重起動しないように保持する
+     */
+    private var autoRefreshJob:
+            Job? =
+        null
+
+
+    /*
+     * =====================================
+     * ViewModel作成時
      * =====================================
      */
     init {
 
+        /*
+         * 最初に1回
+         * Supabaseから取得
+         */
         loadToilets()
+
+
+        /*
+         * その後
+         * 定期更新開始
+         */
+        startAutoRefresh()
+    }
+
+
+    /*
+     * =====================================
+     * 自動更新開始
+     * =====================================
+     *
+     * 10秒ごとに
+     * Supabaseから最新状態を取得する
+     */
+    private fun startAutoRefresh() {
+
+        /*
+         * すでに動いている場合は
+         * 二重起動しない
+         */
+        if (
+            autoRefreshJob?.isActive ==
+            true
+        ) {
+
+            return
+        }
+
+
+        autoRefreshJob =
+
+            viewModelScope.launch {
+
+                /*
+                 * ViewModelが生きている間
+                 * 繰り返す
+                 */
+                while (
+                    isActive
+                ) {
+
+                    /*
+                     * 10秒待つ
+                     */
+                    delay(
+                        AUTO_REFRESH_INTERVAL_MS
+                    )
+
+
+                    /*
+                     * Supabaseから
+                     * 最新データを取得
+                     */
+                    refreshToiletsSilently()
+                }
+            }
+    }
+
+
+    /*
+     * =====================================
+     * 自動更新用
+     * =====================================
+     *
+     * 通信が一時的に失敗しても
+     * アプリを止めない。
+     *
+     * 次の10秒後に
+     * また取得を試す。
+     */
+    private suspend fun refreshToiletsSilently() {
+
+        try {
+
+            repository
+                .loadToilets()
+
+
+            /*
+             * 取得成功
+             */
+            _errorMessage.value =
+                null
+
+        } catch (
+            e: Exception
+        ) {
+
+            /*
+             * 自動更新なので
+             * エラーでアプリを止めない
+             */
+            e.printStackTrace()
+        }
     }
 
 
@@ -68,6 +206,9 @@ class ToiletViewModel : ViewModel() {
      * =====================================
      * トイレ一覧取得
      * =====================================
+     *
+     * 初回読み込みや
+     * 手動更新用
      */
     fun loadToilets() {
 
@@ -130,6 +271,7 @@ class ToiletViewModel : ViewModel() {
 
 
                 _errorMessage.value =
+
                     e.message
                         ?: "トイレの登録に失敗しました"
             }
@@ -167,6 +309,7 @@ class ToiletViewModel : ViewModel() {
 
 
                 _errorMessage.value =
+
                     e.message
                         ?: "清掃依頼に失敗しました"
             }
@@ -204,9 +347,33 @@ class ToiletViewModel : ViewModel() {
 
 
                 _errorMessage.value =
+
                     e.message
                         ?: "清掃状態の更新に失敗しました"
             }
         }
+    }
+
+
+    /*
+     * =====================================
+     * ViewModel破棄時
+     * =====================================
+     */
+    override fun onCleared() {
+
+        /*
+         * 念のため
+         * 自動更新を終了
+         */
+        autoRefreshJob
+            ?.cancel()
+
+
+        autoRefreshJob =
+            null
+
+
+        super.onCleared()
     }
 }
