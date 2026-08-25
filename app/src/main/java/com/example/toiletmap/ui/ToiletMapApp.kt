@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -120,6 +121,26 @@ fun ToiletMapApp(
         mutableIntStateOf(
             2
         )
+    }
+
+
+    /*
+     * =====================================
+     * Map画面を開いたら現在地を表示
+     * =====================================
+     *
+     * 未清掃画面と同じように、画面表示時に
+     * 自動で現在地取得を開始する。
+     * Mapへ戻ってきたときも位置を更新する。
+     */
+    LaunchedEffect(
+        selectedScreen
+    ) {
+
+        if (selectedScreen == 2) {
+
+            onCurrentLocationRequested()
+        }
     }
 
 

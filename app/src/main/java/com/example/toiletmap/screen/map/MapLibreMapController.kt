@@ -1,12 +1,22 @@
 package com.example.toiletmap.screen.map
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Build
 import android.os.Bundle
+import android.os.Looper
 import androidx.activity.ComponentActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.example.toiletmap.model.CleaningStatus
@@ -79,6 +89,19 @@ class MapLibreMapController(
     private var latestToiletsForRendering:
             List<Toilet> =
         emptyList()
+
+
+    /*
+     * =====================================
+     * 現在地
+     * =====================================
+     *
+     * トイレ一覧の再描画でmap.clear()が呼ばれても
+     * 現在地マーカーを復元できるように保持する。
+     */
+    private var latestCurrentLocation:
+            LatLng? =
+        null
 
 
     /*
@@ -443,6 +466,409 @@ class MapLibreMapController(
                         toilet
                 )
             }
+
+
+        /*
+         * 現在地を取得済みなら
+         * トイレピンの再描画後にも表示する。
+         */
+        latestCurrentLocation
+            ?.let { currentLocation ->
+
+                addCurrentLocationMarker(
+                    map = map,
+                    position = currentLocation
+                )
+            }
+    }
+
+
+    /*
+     * =====================================
+     * 現在位置を取得して表示
+     * =====================================
+     *
+     * MainActivity側で位置情報権限を確認した後に
+     * 呼び出す。
+     */
+    @SuppressLint("MissingPermission")
+    fun showCurrentLocation(
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+
+        val fineGranted =
+            ContextCompat.checkSelfPermission(
+                activity,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+        val coarseGranted =
+            ContextCompat.checkSelfPermission(
+                activity,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+
+        if (!fineGranted && !coarseGranted) {
+
+            onError(
+                "現在地を表示するには位置情報の許可が必要です"
+            )
+
+            return
+        }
+
+
+        val locationManager =
+            activity.getSystemService(
+                Context.LOCATION_SERVICE
+            ) as LocationManager
+
+
+        /*
+         * 未清掃画面と同じ取得方法。
+         * 有効な全プロバイダから最後に取得された位置を集め、
+         * 一番新しい位置を現在地として使用する。
+         */
+        val enabledProviders =
+            locationManager.getProviders(true)
+
+
+        val lastKnownLocation =
+            enabledProviders
+                .mapNotNull { provider ->
+
+                    try {
+
+                        locationManager
+                            .getLastKnownLocation(
+                                provider
+                            )
+
+                    } catch (
+                        e: SecurityException
+                    ) {
+
+                        null
+                    }
+                }
+                .maxByOrNull {
+                    it.time
+                }
+
+
+        if (lastKnownLocation != null) {
+
+            showLocationOnMap(
+                latitude = lastKnownLocation.latitude,
+                longitude = lastKnownLocation.longitude
+            )
+
+            onSuccess()
+
+            return
+        }
+
+
+        /*
+         * 保存済み位置がまだ無い場合だけ、
+         * 新しい位置を1回取得する。
+         */
+        val provider =
+            when {
+
+                fineGranted &&
+                        locationManager.isProviderEnabled(
+                            LocationManager.GPS_PROVIDER
+                        ) ->
+                    LocationManager.GPS_PROVIDER
+
+                locationManager.isProviderEnabled(
+                    LocationManager.NETWORK_PROVIDER
+                ) ->
+                    LocationManager.NETWORK_PROVIDER
+
+                else ->
+                    enabledProviders.firstOrNull()
+            }
+
+
+        if (provider == null) {
+
+            onError(
+                "端末の位置情報がOFFです。位置情報をONにしてからもう一度お試しください"
+            )
+
+            return
+        }
+
+
+        fun handleLocation(
+            location: Location?
+        ) {
+
+            if (location == null) {
+
+                onError(
+                    "現在位置を取得できませんでした。位置情報をONにして再度お試しください"
+                )
+
+                return
+            }
+
+
+            showLocationOnMap(
+                latitude = location.latitude,
+                longitude = location.longitude
+            )
+
+            onSuccess()
+        }
+
+
+        if (
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.R
+        ) {
+
+            locationManager.getCurrentLocation(
+                provider,
+                null,
+                activity.mainExecutor
+            ) { location ->
+
+                handleLocation(
+                    location
+                )
+            }
+
+        } else {
+
+            val listener =
+                object : LocationListener {
+
+                    override fun onLocationChanged(
+                        location: Location
+                    ) {
+
+                        locationManager
+                            .removeUpdates(
+                                this
+                            )
+
+                        handleLocation(
+                            location
+                        )
+                    }
+
+                    override fun onProviderDisabled(
+                        provider: String
+                    ) {
+
+                        locationManager
+                            .removeUpdates(
+                                this
+                            )
+
+                        onError(
+                            "位置情報がOFFになりました"
+                        )
+                    }
+                }
+
+
+            @Suppress("DEPRECATION")
+            locationManager.requestSingleUpdate(
+                provider,
+                listener,
+                Looper.getMainLooper()
+            )
+        }
+    }
+
+
+    /*
+     * =====================================
+     * 現在地を地図へ反映
+     * =====================================
+     */
+    private fun showLocationOnMap(
+        latitude: Double,
+        longitude: Double
+    ) {
+
+        /*
+         * 地図のStyle読み込み前でも位置を保持しておく。
+         * Style読み込み完了後のrenderLatestToilets()で
+         * 現在地マーカーを確実に復元できる。
+         */
+        latestCurrentLocation =
+            LatLng(
+                latitude,
+                longitude
+            )
+
+
+        val map =
+            mapLibreMap
+                ?: return
+
+
+        if (
+            !isStyleLoaded
+        ) {
+
+            return
+        }
+
+
+        /*
+         * トイレピン + 現在地をまとめて再描画
+         */
+        renderLatestToilets()
+
+
+        /*
+         * 現在地へカメラ移動
+         */
+        map.cameraPosition =
+            CameraPosition
+                .Builder()
+                .target(
+                    LatLng(
+                        latitude,
+                        longitude
+                    )
+                )
+                .zoom(
+                    16.5
+                )
+                .build()
+    }
+
+
+    /*
+     * =====================================
+     * 現在地マーカーを追加
+     * =====================================
+     */
+    private fun addCurrentLocationMarker(
+        map: MapLibreMap,
+        position: LatLng
+    ) {
+
+        map.addMarker(
+            MarkerOptions()
+                .position(
+                    position
+                )
+                .title(
+                    "現在地"
+                )
+                .icon(
+                    createCurrentLocationIcon()
+                )
+        )
+    }
+
+
+    /*
+     * =====================================
+     * 現在地マーカー画像
+     * =====================================
+     *
+     * 青い円 + 白い縁で、
+     * トイレピンと区別しやすくする。
+     */
+    private fun createCurrentLocationIcon(): Icon {
+
+        val density =
+            activity
+                .resources
+                .displayMetrics
+                .density
+
+
+        val size =
+            (
+                    28f *
+                            density
+                    ).toInt()
+
+
+        val bitmap =
+            Bitmap.createBitmap(
+                size,
+                size,
+                Bitmap.Config.ARGB_8888
+            )
+
+
+        val canvas =
+            Canvas(
+                bitmap
+            )
+
+
+        val center =
+            size /
+                    2f
+
+
+        val whitePaint =
+            Paint(
+                Paint.ANTI_ALIAS_FLAG
+            ).apply {
+
+                color =
+                    Color.WHITE
+
+                style =
+                    Paint.Style.FILL
+            }
+
+
+        val bluePaint =
+            Paint(
+                Paint.ANTI_ALIAS_FLAG
+            ).apply {
+
+                color =
+                    Color.rgb(
+                        33,
+                        150,
+                        243
+                    )
+
+                style =
+                    Paint.Style.FILL
+            }
+
+
+        canvas.drawCircle(
+            center,
+            center,
+            13f * density,
+            whitePaint
+        )
+
+
+        canvas.drawCircle(
+            center,
+            center,
+            9f * density,
+            bluePaint
+        )
+
+
+        return IconFactory
+            .getInstance(
+                activity
+            )
+            .fromBitmap(
+                bitmap
+            )
     }
 
 
