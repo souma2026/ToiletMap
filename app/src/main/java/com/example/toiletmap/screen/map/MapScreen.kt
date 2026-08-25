@@ -1957,11 +1957,37 @@ private fun ToiletDetailCard(
     }
 
 
+    /*
+     * 詳細カードのスクロール状態。
+     * 閉じるボタンとスクロール案内は、このスクロール領域の外に置く。
+     */
+    val detailScrollState =
+        rememberScrollState()
+
+    /*
+     * スクロール案内は最初の1回だけ表示する。
+     * ユーザーが少しでもスクロールしたら、そのトイレの詳細を閉じるまで再表示しない。
+     */
+    var hasUserScrolledDetail by
+        remember(toilet.id) {
+            mutableStateOf(false)
+        }
+
+    LaunchedEffect(
+        toilet.id,
+        detailScrollState.value
+    ) {
+        if (detailScrollState.value > 0) {
+            hasUserScrolledDetail = true
+        }
+    }
+
+
     Card(
         modifier =
             modifier
                 .heightIn(
-                    max = 380.dp
+                    max = 300.dp
                 )
                 .shadow(
                     14.dp,
@@ -1988,22 +2014,30 @@ private fun ToiletDetailCard(
             )
     ) {
 
-        Column(
+        Box(
             modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(
-                        rememberScrollState()
-                    )
-                    .padding(
-                        18.dp
-                    ),
-
-            verticalArrangement =
-                Arrangement.spacedBy(
-                    12.dp
-                )
+                Modifier.fillMaxWidth()
         ) {
+
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(
+                            detailScrollState
+                        )
+                        .padding(
+                            start = 18.dp,
+                            top = 18.dp,
+                            end = 18.dp,
+                            bottom = 62.dp
+                        ),
+
+                verticalArrangement =
+                    Arrangement.spacedBy(
+                        12.dp
+                    )
+            ) {
 
             /*
              * ハンドル
@@ -2094,30 +2128,6 @@ private fun ToiletDetailCard(
                         Modifier.weight(1f)
                 )
 
-
-                IconButton(
-                    onClick =
-                        onDismiss,
-
-                    modifier =
-                        Modifier.size(
-                            34.dp
-                        )
-                ) {
-
-                    Icon(
-                        imageVector =
-                            Icons
-                                .Outlined
-                                .Close,
-
-                        contentDescription =
-                            "閉じる",
-
-                        tint =
-                            FinderDark
-                    )
-                }
             }
 
 
@@ -2591,6 +2601,135 @@ private fun ToiletDetailCard(
 
                         fontWeight =
                             FontWeight.Bold
+                    )
+                }
+            }
+
+            /*
+             * スクロールする詳細内容はここまで。
+             */
+            }
+
+            /*
+             * =====================================
+             * 固定の閉じるボタン
+             * =====================================
+             *
+             * スクロール領域の外に置いているため、
+             * 詳細をスクロールしても右上から動かない。
+             */
+            Surface(
+                modifier =
+                    Modifier
+                        .align(
+                            Alignment.TopEnd
+                        )
+                        .padding(
+                            top = 8.dp,
+                            end = 8.dp
+                        )
+                        .zIndex(
+                            2f
+                        ),
+
+                shape =
+                    CircleShape,
+
+                color =
+                    Color.White.copy(
+                        alpha = 0.96f
+                    ),
+
+                shadowElevation =
+                    3.dp
+            ) {
+
+                IconButton(
+                    onClick =
+                        onDismiss,
+
+                    modifier =
+                        Modifier.size(
+                            38.dp
+                        )
+                ) {
+
+                    Icon(
+                        imageVector =
+                            Icons
+                                .Outlined
+                                .Close,
+
+                        contentDescription =
+                            "閉じる",
+
+                        tint =
+                            FinderDark
+                    )
+                }
+            }
+
+
+            /*
+             * =====================================
+             * スクロール案内
+             * =====================================
+             *
+             * 最初だけ薄く表示する。
+             * 少しでもスクロールしたら、その詳細を閉じるまで再表示しない。
+             */
+            if (
+                detailScrollState.canScrollForward &&
+                !hasUserScrolledDetail
+            ) {
+
+                Surface(
+                    modifier =
+                        Modifier
+                            .align(
+                                Alignment.BottomCenter
+                            )
+                            .padding(
+                                bottom = 8.dp
+                            )
+                            .zIndex(
+                                2f
+                            ),
+
+                    shape =
+                        RoundedCornerShape(
+                            18.dp
+                        ),
+
+                    color =
+                        Color.White.copy(
+                            alpha = 0.72f
+                        ),
+
+                    shadowElevation =
+                        1.dp
+                ) {
+
+                    Text(
+                        text =
+                            "▼  スクロールして詳細を見る",
+
+                        modifier =
+                            Modifier.padding(
+                                horizontal = 12.dp,
+                                vertical = 6.dp
+                            ),
+
+                        color =
+                            FinderDark.copy(
+                                alpha = 0.52f
+                            ),
+
+                        fontSize =
+                            11.sp,
+
+                        fontWeight =
+                            FontWeight.Medium
                     )
                 }
             }
