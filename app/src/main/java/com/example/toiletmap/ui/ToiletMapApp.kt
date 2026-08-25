@@ -22,6 +22,7 @@ import com.example.toiletmap.screen.account.AccountScreen
 import com.example.toiletmap.screen.add.AddToiletScreen
 import com.example.toiletmap.screen.listofuncleaned.ListOfUncleanedScreen
 import com.example.toiletmap.screen.listofuncleaned.UncleanedToilet
+import com.example.toiletmap.screen.map.DeviceLocationStatus
 import com.example.toiletmap.screen.map.MapScreen
 import com.example.toiletmap.screen.review.ReviewDialog
 import com.example.toiletmap.ui.components.BottomNavigationBar
@@ -146,6 +147,14 @@ fun ToiletMapApp(
      */
     onAddToilet:
         (Toilet) -> Unit,
+
+
+    /*
+     * 端末の現在地取得状態
+     */
+    locationStatus:
+    DeviceLocationStatus =
+        DeviceLocationStatus.CHECKING,
 
 
     /*
@@ -410,6 +419,13 @@ fun ToiletMapApp(
                          */
                         onSearchToiletSelected =
                             onSearchToiletSelected,
+
+
+                        /*
+                         * 端末の現在地取得状態
+                         */
+                        locationStatus =
+                            locationStatus,
 
 
                         /*
