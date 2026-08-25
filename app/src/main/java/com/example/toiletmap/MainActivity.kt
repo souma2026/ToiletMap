@@ -1,7 +1,10 @@
 package com.example.toiletmap
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
+import android.location.LocationManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -14,13 +17,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
+import com.example.toiletmap.data.supabase.SupabaseClientProvider
 import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.screen.listofuncleaned.UncleanedToilet
+import com.example.toiletmap.screen.map.DeviceLocationStatus
 import com.example.toiletmap.screen.map.MapLibreMapController
 import com.example.toiletmap.ui.ToiletMapApp
 import com.example.toiletmap.ui.theme.ToiletMapTheme
 import com.example.toiletmap.viewmodel.ReviewViewModel
 import com.example.toiletmap.viewmodel.ToiletViewModel
+import io.github.jan.supabase.auth.auth
+import kotlinx.coroutines.delay
 
 
 class MainActivity : ComponentActivity() {
@@ -54,6 +61,25 @@ class MainActivity : ComponentActivity() {
 
     /*
      * =====================================
+     * 端末の現在地取得状態
+     * =====================================
+     */
+    private var deviceLocationStatus by
+    mutableStateOf(
+        DeviceLocationStatus.CHECKING
+    )
+
+
+    private val locationCheckStartedAtMillis =
+        System.currentTimeMillis()
+
+
+    private var focusCurrentLocationAfterPermission =
+        false
+
+
+    /*
+     * =====================================
      * 位置情報権限リクエスト
      * =====================================
      */
@@ -66,12 +92,18 @@ class MainActivity : ComponentActivity() {
                 permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
                         permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
 
-            if (granted) {
-
-                requestAndShowCurrentLocation()
-
-            } else {
-
+            if (
+                granted &&
+                ::mapController.isInitialized
+            ) {
+                mapController
+                    .enableUserLocation(
+                        focus =
+                            focusCurrentLocationAfterPermission
+                    )
+            } else if (
+                !granted
+            ) {
                 Toast
                     .makeText(
                         this,
@@ -80,6 +112,11 @@ class MainActivity : ComponentActivity() {
                     )
                     .show()
             }
+
+            refreshDeviceLocationStatus()
+
+            focusCurrentLocationAfterPermission =
+                false
         }
 
 
@@ -167,6 +204,21 @@ class MainActivity : ComponentActivity() {
         setContent {
 
             ToiletMapTheme {
+
+
+                /*
+                 * =====================================
+                 * 端末の位置情報状態を定期確認
+                 * =====================================
+                 */
+                LaunchedEffect(Unit) {
+                    while (true) {
+                        refreshDeviceLocationStatus()
+                        delay(
+                            2_000L
+                        )
+                    }
+                }
 
 
                 /*
@@ -267,6 +319,27 @@ class MainActivity : ComponentActivity() {
                             toilet.id ==
                                     selectedToiletId
                         }
+
+
+                /*
+                 * =====================================
+                 * 現在ログイン中ユーザー
+                 * =====================================
+                 *
+                 * ログイン済みでトイレが選択されていれば、
+                 * 作成者に関係なく削除ボタンを表示する。
+                 */
+                val currentUserId =
+                    SupabaseClientProvider
+                        .client
+                        .auth
+                        .currentUserOrNull()
+                        ?.id
+
+
+                val canDeleteSelectedToilet =
+                    selectedToilet != null &&
+                            currentUserId != null
 
 
                 /*
@@ -373,6 +446,10 @@ class MainActivity : ComponentActivity() {
                      */
                     selectedToilet =
                         selectedToilet,
+
+
+                    canDeleteSelectedToilet =
+                        canDeleteSelectedToilet,
 
 
                     /*
@@ -508,6 +585,40 @@ class MainActivity : ComponentActivity() {
 
                     /*
                      * =====================================
+                     * トイレ削除
+                     * =====================================
+                     */
+                    onDeleteToilet = {
+                            toilet ->
+
+
+                        toiletViewModel
+                            .deleteToilet(
+                                toiletId =
+                                    toilet.id
+                            ) {
+
+                                if (
+                                    selectedToiletId ==
+                                    toilet.id
+                                ) {
+                                    selectedToiletId =
+                                        null
+                                }
+
+                                Toast
+                                    .makeText(
+                                        this@MainActivity,
+                                        "トイレを削除しました",
+                                        Toast.LENGTH_SHORT
+                                    )
+                                    .show()
+                            }
+                    },
+
+
+                    /*
+                     * =====================================
                      * 口コミを開く・再読込
                      * =====================================
                      */
@@ -588,6 +699,15 @@ class MainActivity : ComponentActivity() {
 
                     /*
                      * =====================================
+                     * 端末の現在地取得状態
+                     * =====================================
+                     */
+                    locationStatus =
+                        deviceLocationStatus,
+
+
+                    /*
+                     * =====================================
                      * 現在地ボタン
                      * =====================================
                      *
@@ -599,7 +719,9 @@ class MainActivity : ComponentActivity() {
                      */
                     onCurrentLocationRequested = {
 
-                        showCurrentLocationWithPermissionCheck()
+                        enableUserLocation(
+                            focus = true
+                        )
                     }
                 )
             }
@@ -609,10 +731,84 @@ class MainActivity : ComponentActivity() {
 
     /*
      * =====================================
-     * 現在地表示の権限確認
+     * 現在地表示を有効化
      * =====================================
      */
-    private fun showCurrentLocationWithPermissionCheck() {
+    private fun enableUserLocation(
+        focus: Boolean
+    ) {
+
+        if (
+            hasLocationPermission()
+        ) {
+            mapController
+                .enableUserLocation(
+                    focus = focus
+                )
+            return
+        }
+
+        focusCurrentLocationAfterPermission =
+            focus
+
+        locationPermissionLauncher
+            .launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+    }
+
+
+    /*
+     * =====================================
+     * 端末の位置情報状態を更新
+     * =====================================
+     */
+    private fun refreshDeviceLocationStatus() {
+
+        if (
+            !hasLocationPermission()
+        ) {
+            deviceLocationStatus =
+                DeviceLocationStatus.PERMISSION_DENIED
+            return
+        }
+
+        if (
+            !isDeviceLocationServiceEnabled()
+        ) {
+            deviceLocationStatus =
+                DeviceLocationStatus.DEVICE_LOCATION_OFF
+            return
+        }
+
+        if (
+            ::mapController.isInitialized &&
+            mapController.hasRecentUserLocation()
+        ) {
+            deviceLocationStatus =
+                DeviceLocationStatus.AVAILABLE
+            return
+        }
+
+        val elapsedMillis =
+            System.currentTimeMillis() -
+                    locationCheckStartedAtMillis
+
+        deviceLocationStatus =
+            if (
+                elapsedMillis < 8_000L
+            ) {
+                DeviceLocationStatus.CHECKING
+            } else {
+                DeviceLocationStatus.WAITING_FOR_SIGNAL
+            }
+    }
+
+
+    private fun hasLocationPermission(): Boolean {
 
         val fineGranted =
             ContextCompat.checkSelfPermission(
@@ -626,58 +822,48 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.ACCESS_COARSE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
 
-
-        if (
-            fineGranted ||
-            coarseGranted
-        ) {
-
-            requestAndShowCurrentLocation()
-
-        } else {
-
-            locationPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
-        }
+        return fineGranted ||
+                coarseGranted
     }
 
 
-    /*
-     * =====================================
-     * 現在位置を取得して地図へ表示
-     * =====================================
-     */
-    private fun requestAndShowCurrentLocation() {
+    private fun isDeviceLocationServiceEnabled(): Boolean {
 
-        mapController
-            .showCurrentLocation(
+        val locationManager =
+            getSystemService(
+                Context.LOCATION_SERVICE
+            ) as LocationManager
 
-                onSuccess = {
-
-                    Toast
-                        .makeText(
-                            this,
-                            "現在地を表示しました",
-                            Toast.LENGTH_SHORT
+        return if (
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.P
+        ) {
+            locationManager
+                .isLocationEnabled
+        } else {
+            val gpsEnabled =
+                try {
+                    locationManager
+                        .isProviderEnabled(
+                            LocationManager.GPS_PROVIDER
                         )
-                        .show()
-                },
-
-                onError = { message ->
-
-                    Toast
-                        .makeText(
-                            this,
-                            message,
-                            Toast.LENGTH_LONG
-                        )
-                        .show()
+                } catch (_: Exception) {
+                    false
                 }
-            )
+
+            val networkEnabled =
+                try {
+                    locationManager
+                        .isProviderEnabled(
+                            LocationManager.NETWORK_PROVIDER
+                        )
+                } catch (_: Exception) {
+                    false
+                }
+
+            gpsEnabled ||
+                    networkEnabled
+        }
     }
 
 

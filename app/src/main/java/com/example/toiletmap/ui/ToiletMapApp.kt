@@ -22,6 +22,7 @@ import com.example.toiletmap.screen.account.AccountScreen
 import com.example.toiletmap.screen.add.AddToiletScreen
 import com.example.toiletmap.screen.listofuncleaned.ListOfUncleanedScreen
 import com.example.toiletmap.screen.listofuncleaned.UncleanedToilet
+import com.example.toiletmap.screen.map.DeviceLocationStatus
 import com.example.toiletmap.screen.map.MapScreen
 import com.example.toiletmap.screen.review.ReviewDialog
 import com.example.toiletmap.ui.components.BottomNavigationBar
@@ -53,6 +54,14 @@ fun ToiletMapApp(
      */
     selectedToilet:
     Toilet?,
+
+
+    /*
+     * 選択中のトイレを削除できるか
+     * （自分が登録したトイレのみtrue）
+     */
+    canDeleteSelectedToilet:
+    Boolean,
 
 
     /*
@@ -117,6 +126,13 @@ fun ToiletMapApp(
 
 
     /*
+     * トイレ削除
+     */
+    onDeleteToilet:
+        (Toilet) -> Unit,
+
+
+    /*
      * 口コミ一覧取得
      */
     onLoadReviews:
@@ -146,6 +162,14 @@ fun ToiletMapApp(
      */
     onAddToilet:
         (Toilet) -> Unit,
+
+
+    /*
+     * 端末の現在地取得状態
+     */
+    locationStatus:
+    DeviceLocationStatus =
+        DeviceLocationStatus.CHECKING,
 
 
     /*
@@ -413,6 +437,13 @@ fun ToiletMapApp(
 
 
                         /*
+                         * 端末の現在地取得状態
+                         */
+                        locationStatus =
+                            locationStatus,
+
+
+                        /*
                          * 現在地
                          */
                         onCurrentLocationClick =
@@ -431,6 +462,10 @@ fun ToiletMapApp(
                          */
                         selectedToilet =
                             selectedToilet,
+
+
+                        canDeleteSelectedToilet =
+                            canDeleteSelectedToilet,
 
 
                         /*
@@ -452,6 +487,14 @@ fun ToiletMapApp(
                          */
                         onMarkCleaned =
                             onMarkCleaned,
+
+
+
+                        /*
+                         * トイレ削除
+                         */
+                        onDeleteToilet =
+                            onDeleteToilet,
 
 
                         /*

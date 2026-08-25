@@ -67,29 +67,12 @@ class ReviewViewModel : ViewModel() {
 
 
     /*
-     * 現在、口コミを表示しているトイレID。
-     * 別のトイレへ切り替えたあとに古い通信結果が届いても、
-     * 新しいトイレの画面を上書きしないために使用する。
-     */
-    private var activeToiletId:
-            String? =
-        null
-
-
-    private var loadRequestId:
-            Long =
-        0L
-
-
-    /*
-     * 選択中のトイレが変わったときに呼ぶ。
      */
     fun prepareForToilet(
         toiletId: String?
     ) {
 
         if (
-            activeToiletId ==
             toiletId
         ) {
 
@@ -97,11 +80,8 @@ class ReviewViewModel : ViewModel() {
         }
 
 
-        activeToiletId =
             toiletId
 
-        loadRequestId +=
-            1L
 
         _reviews.value =
             emptyList()
@@ -117,7 +97,6 @@ class ReviewViewModel : ViewModel() {
 
 
     /*
-     * 選択中トイレの口コミを取得する。
      */
     fun loadReviews(
         toiletId: String
@@ -127,9 +106,6 @@ class ReviewViewModel : ViewModel() {
             toiletId.isBlank()
         ) {
 
-            _reviews.value =
-                emptyList()
-
             _errorMessage.value =
                 "口コミを表示するトイレを選択してください"
 
@@ -137,11 +113,8 @@ class ReviewViewModel : ViewModel() {
         }
 
 
-        activeToiletId =
             toiletId
 
-        val requestId =
-            ++loadRequestId
 
 
         _isLoading.value =
@@ -150,11 +123,6 @@ class ReviewViewModel : ViewModel() {
         _errorMessage.value =
             null
 
-        _successMessage.value =
-            null
-
-
-        viewModelScope.launch {
 
             try {
 
@@ -166,10 +134,6 @@ class ReviewViewModel : ViewModel() {
 
 
                 if (
-                    activeToiletId ==
-                    toiletId &&
-                    loadRequestId ==
-                    requestId
                 ) {
 
                     _reviews.value =
@@ -184,27 +148,16 @@ class ReviewViewModel : ViewModel() {
 
 
                 if (
-                    activeToiletId ==
-                    toiletId &&
-                    loadRequestId ==
-                    requestId
                 ) {
 
                     _errorMessage.value =
                         e.message
-                            ?.takeIf {
-                                it.isNotBlank()
-                            }
                             ?: "口コミの取得に失敗しました"
                 }
 
             } finally {
 
                 if (
-                    activeToiletId ==
-                    toiletId &&
-                    loadRequestId ==
-                    requestId
                 ) {
 
                     _isLoading.value =
@@ -216,7 +169,6 @@ class ReviewViewModel : ViewModel() {
 
 
     /*
-     * 口コミを投稿し、成功したら同じトイレの一覧を再取得する。
      */
     fun addReview(
         toiletId: String,
@@ -232,21 +184,11 @@ class ReviewViewModel : ViewModel() {
         }
 
 
-        activeToiletId =
             toiletId
 
-        loadRequestId +=
-            1L
 
         _isPosting.value =
             true
-
-        /*
-         * 投稿開始時点で、それ以前の一覧読込表示を終了する。
-         * 古い読込処理はloadRequestIdにより結果を反映しない。
-         */
-        _isLoading.value =
-            false
 
         _errorMessage.value =
             null
@@ -254,8 +196,6 @@ class ReviewViewModel : ViewModel() {
         _successMessage.value =
             null
 
-
-        viewModelScope.launch {
 
             try {
 
@@ -280,7 +220,6 @@ class ReviewViewModel : ViewModel() {
 
 
                 if (
-                    activeToiletId ==
                     toiletId
                 ) {
 
@@ -299,22 +238,17 @@ class ReviewViewModel : ViewModel() {
 
 
                 if (
-                    activeToiletId ==
                     toiletId
                 ) {
 
                     _errorMessage.value =
                         e.message
-                            ?.takeIf {
-                                it.isNotBlank()
-                            }
                             ?: "口コミの投稿に失敗しました"
                 }
 
             } finally {
 
                 if (
-                    activeToiletId ==
                     toiletId
                 ) {
 
