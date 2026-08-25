@@ -27,6 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.NotificationsNone
@@ -36,6 +37,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -75,8 +77,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+import com.example.toiletmap.model.CleaningRequest
 import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.model.Toilet
+import com.example.toiletmap.screen.cleaning.formatCleaningDateTime
 import kotlinx.coroutines.delay
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -109,6 +113,7 @@ private val FinderDark = Color(0xFF12313A)
 private val FinderMuted = Color(0xFF748186)
 private val FinderPale = Color(0xFFF5F8F7)
 private val FinderAmber = Color(0xFFF2B544)
+private val FinderBlue = Color(0xFF1976D2)
 private val FinderRed = Color(0xFFD94B4B)
 private val FinderSoftGreen = Color(0xFFE5F4F1)
 private val FinderBorder = Color(0xFFD7DEDC)
@@ -156,7 +161,16 @@ fun MapScreen(
     selectedToilet: Toilet? = null,
 
     /*
-     * 自分が登録したトイレのみ削除可能
+     * 選択中トイレの有効な清掃依頼
+     */
+    cleaningRequest: CleaningRequest? = null,
+
+    currentUserId: String? = null,
+
+    cleaningActionRequestId: String? = null,
+
+    /*
+     * ログイン中なら削除可能
      */
     canDeleteSelectedToilet: Boolean = false,
 
@@ -164,7 +178,9 @@ fun MapScreen(
 
     onRequestCleaning: (Toilet, Int) -> Unit = { _, _ -> },
 
-    onMarkCleaned: (Toilet) -> Unit = {},
+    onAcceptCleaning: (CleaningRequest) -> Unit = {},
+
+    onOpenCleaningScreen: () -> Unit = {},
 
     onDeleteToilet: (Toilet) -> Unit = {},
 
@@ -493,6 +509,19 @@ fun MapScreen(
                     toilet =
                         selectedToilet,
 
+                    cleaningRequest =
+                        cleaningRequest,
+
+                    currentUserId =
+                        currentUserId,
+
+                    isActionInProgress =
+                        cleaningActionRequestId != null &&
+                                (
+                                        cleaningActionRequestId == selectedToilet.id ||
+                                                cleaningActionRequestId == cleaningRequest?.id
+                                        ),
+
                     canDelete =
                         canDeleteSelectedToilet,
 
@@ -508,11 +537,11 @@ fun MapScreen(
                         )
                     },
 
-                    onMarkCleaned = {
-                        onMarkCleaned(
-                            selectedToilet
-                        )
-                    },
+                    onAcceptCleaning =
+                        onAcceptCleaning,
+
+                    onOpenCleaningScreen =
+                        onOpenCleaningScreen,
 
                     onDelete = {
                         onDeleteToilet(
@@ -1655,191 +1684,136 @@ private fun LocationSelectionBanner(
 @Composable
 private fun ToiletDetailCard(
     toilet: Toilet,
+    cleaningRequest: CleaningRequest?,
+    currentUserId: String?,
+    isActionInProgress: Boolean,
     canDelete: Boolean,
     onDismiss: () -> Unit,
     onRequestCleaning: (Int) -> Unit,
-    onMarkCleaned: () -> Unit,
+    onAcceptCleaning: (CleaningRequest) -> Unit,
+    onOpenCleaningScreen: () -> Unit,
     onDelete: () -> Unit,
     onOpenReviews: () -> Unit,
     modifier: Modifier = Modifier
 ) {
 
-    /*
-     * 現在時刻
-     */
     var nowMillis by remember(
         toilet.id,
         toilet.lastCleanedAtMillis
     ) {
-
         mutableLongStateOf(
             System.currentTimeMillis()
         )
     }
 
-
-    /*
-     * 1分ごと更新
-     */
     LaunchedEffect(
         toilet.id,
         toilet.lastCleanedAtMillis
     ) {
-
         while (true) {
-
             nowMillis =
                 System.currentTimeMillis()
-
-            /*
-             * IDEで
-             * Legacy Long overload...
-             * と表示されることがありますが、
-             * 警告でありエラーではありません。
-             */
             delay(60_000L)
         }
     }
 
-
     val cleanliness =
-        toilet.cleanliness
-            .coerceIn(
-                0,
-                5
-            )
-
+        toilet.cleanliness.coerceIn(0, 5)
 
     val elapsed =
         formatElapsedSinceCleaning(
-            lastCleanedAtMillis =
-                toilet.lastCleanedAtMillis,
-
-            nowMillis =
-                nowMillis
+            lastCleanedAtMillis = toilet.lastCleanedAtMillis,
+            nowMillis = nowMillis
         )
 
+    /*
+     * cleaning_requests の状態を優先する。
+     * RPC直後に toilets の再読込が終わるまでの間も表示を同期する。
+     */
+    val cleaningStatus =
+        cleaningRequest?.status
+            ?: toilet.cleaningStatus
 
-    val requested =
-        toilet.cleaningStatus ==
-                CleaningStatus.REQUESTED
+    val isRequester =
+        currentUserId != null &&
+                cleaningRequest?.requesterId == currentUserId
 
+    val isCleaner =
+        currentUserId != null &&
+                cleaningRequest?.cleanerId == currentUserId
 
     val statusText =
-        if (requested) {
-            "清掃待ち"
-        } else {
-            "通常"
+        when (cleaningStatus) {
+            CleaningStatus.NORMAL -> "通常"
+            CleaningStatus.REQUESTED -> "清掃依頼中"
+            CleaningStatus.IN_PROGRESS -> "清掃中"
+            CleaningStatus.COMPLETED -> "清掃完了"
         }
-
 
     val statusColor =
-        if (requested) {
-            FinderAmber
-        } else {
-            FinderRed
+        when (cleaningStatus) {
+            CleaningStatus.NORMAL -> FinderRed
+            CleaningStatus.REQUESTED -> FinderAmber
+            CleaningStatus.IN_PROGRESS -> FinderBlue
+            CleaningStatus.COMPLETED -> FinderGreen
         }
 
-
-    val actionText =
-        if (requested) {
-            "清掃しました（${toilet.cleaningRewardPoints} pt獲得）"
-        } else {
-            "清掃を依頼する"
-        }
-
-
-    val actionIcon =
-        if (requested) {
-            Icons.Outlined.CheckCircle
-        } else {
-            Icons.Outlined.NotificationsNone
-        }
-
-
-    var showRewardDialog by remember(
-        toilet.id
-    ) {
+    var showRewardDialog by remember(toilet.id) {
         mutableStateOf(false)
     }
 
-
-    var rewardPointText by remember(
-        toilet.id
-    ) {
+    var rewardPointText by remember(toilet.id) {
         mutableStateOf("10")
     }
 
-
     val enteredRewardPoints =
         rewardPointText.toIntOrNull()
-
 
     val rewardPointsValid =
         enteredRewardPoints != null &&
                 enteredRewardPoints in 1..10_000
 
-
-    if (showRewardDialog && !requested) {
-
+    if (
+        showRewardDialog &&
+        cleaningStatus == CleaningStatus.NORMAL
+    ) {
         AlertDialog(
             onDismissRequest = {
                 showRewardDialog = false
             },
-
             title = {
                 Text(
                     text = "清掃依頼の報酬ポイント"
                 )
             },
-
             text = {
                 Column(
                     verticalArrangement =
-                        Arrangement.spacedBy(
-                            10.dp
-                        )
+                        Arrangement.spacedBy(10.dp)
                 ) {
-
                     Text(
                         text =
                             "清掃を完了したユーザーへ支払うポイント数を入力してください。依頼時にあなたの所持ポイントから差し引かれます。"
                     )
 
-
                     OutlinedTextField(
-                        value =
-                            rewardPointText,
-
-                        onValueChange = {
-                                newValue ->
-
+                        value = rewardPointText,
+                        onValueChange = { newValue ->
                             rewardPointText =
                                 newValue
-                                    .filter {
-                                        it.isDigit()
-                                    }
+                                    .filter { it.isDigit() }
                                     .take(5)
                         },
-
                         label = {
-                            Text(
-                                "支払うポイント"
-                            )
+                            Text("支払うポイント")
                         },
-
                         suffix = {
-                            Text(
-                                "pt"
-                            )
+                            Text("pt")
                         },
-
                         singleLine = true,
-
                         isError =
                             rewardPointText.isNotBlank() &&
                                     !rewardPointsValid,
-
                         supportingText = {
                             Text(
                                 if (rewardPointsValid) {
@@ -1849,23 +1823,17 @@ private fun ToiletDetailCard(
                                 }
                             )
                         },
-
                         keyboardOptions =
                             KeyboardOptions(
-                                keyboardType =
-                                    KeyboardType.Number,
-
-                                imeAction =
-                                    ImeAction.Done
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done
                             )
                     )
                 }
             },
-
             confirmButton = {
                 TextButton(
                     onClick = {
-
                         val rewardPoints =
                             enteredRewardPoints
                                 ?: return@TextButton
@@ -1875,63 +1843,47 @@ private fun ToiletDetailCard(
                         }
 
                         showRewardDialog = false
-
-                        onRequestCleaning(
-                            rewardPoints
-                        )
+                        onRequestCleaning(rewardPoints)
                     },
-
-                    enabled =
-                        rewardPointsValid
+                    enabled = rewardPointsValid
                 ) {
                     Text(
                         "${enteredRewardPoints ?: 0} ptで依頼する"
                     )
                 }
             },
-
             dismissButton = {
                 TextButton(
                     onClick = {
                         showRewardDialog = false
                     }
                 ) {
-                    Text(
-                        "キャンセル"
-                    )
+                    Text("キャンセル")
                 }
             }
         )
     }
 
-
-    var showDeleteDialog by remember(
-        toilet.id
-    ) {
+    var showDeleteDialog by remember(toilet.id) {
         mutableStateOf(false)
     }
 
-
     if (showDeleteDialog && canDelete) {
-
         AlertDialog(
             onDismissRequest = {
                 showDeleteDialog = false
             },
-
             title = {
                 Text(
                     text = "このトイレを削除しますか？"
                 )
             },
-
             text = {
                 Text(
                     text =
                         "「${toilet.name}」を地図から削除します。この操作は元に戻せません。清掃依頼中の報酬ポイントがある場合は依頼者へ返金されます。"
                 )
             },
-
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -1946,33 +1898,19 @@ private fun ToiletDetailCard(
                     )
                 }
             },
-
             dismissButton = {
                 TextButton(
                     onClick = {
                         showDeleteDialog = false
                     }
                 ) {
-                    Text(
-                        "キャンセル"
-                    )
+                    Text("キャンセル")
                 }
             }
         )
     }
 
-
-    /*
-     * =====================================
-     * Google Maps風の3段階詳細パネル
-     * =====================================
-     *
-     * PEEK     : トイレ名などの概要だけ見える
-     * HALF     : 従来と同程度の高さ
-     * EXPANDED : 画面の大部分まで展開
-     *
-     * 上端のハンドルを上下にドラッグすると高さが変わる。
-     */
+    /* Google Maps風 PEEK / HALF / EXPANDED の3段階詳細パネル */
     val detailScrollState =
         rememberScrollState()
 
@@ -1982,30 +1920,16 @@ private fun ToiletDetailCard(
     val screenHeightDp =
         LocalConfiguration.current.screenHeightDp.toFloat()
 
-    val peekHeightDp =
-        190f
-
-    val halfHeightDp =
-        320f
-
+    val peekHeightDp = 190f
+    val halfHeightDp = 320f
     val expandedHeightDp =
         (screenHeightDp * 0.72f)
-            .coerceIn(
-                430f,
-                620f
-            )
+            .coerceIn(430f, 620f)
 
-    var detailHeightDp by
-    remember(toilet.id) {
-        mutableFloatStateOf(
-            peekHeightDp
-        )
+    var detailHeightDp by remember(toilet.id) {
+        mutableFloatStateOf(peekHeightDp)
     }
 
-    /*
-     * 新しいトイレを開いたとき、またはPEEKまで縮めたときは
-     * 詳細内容を先頭へ戻す。
-     */
     LaunchedEffect(
         toilet.id,
         detailHeightDp <= peekHeightDp + 0.5f
@@ -2048,191 +1972,97 @@ private fun ToiletDetailCard(
             }
     }
 
-
     Card(
         modifier =
             modifier
-                .height(
-                    detailHeightDp.dp
-                )
+                .height(detailHeightDp.dp)
                 .shadow(
                     14.dp,
-                    RoundedCornerShape(
-                        24.dp
-                    )
+                    RoundedCornerShape(24.dp)
                 ),
-
         shape =
-            RoundedCornerShape(
-                24.dp
-            ),
-
+            RoundedCornerShape(24.dp),
         colors =
             CardDefaults.cardColors(
-                containerColor =
-                    Color.White
+                containerColor = Color.White
             ),
-
         elevation =
             CardDefaults.cardElevation(
-                defaultElevation =
-                    4.dp
+                defaultElevation = 4.dp
             )
     ) {
-
         Box(
-            modifier =
-                Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth()
         ) {
-
             Column(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .verticalScroll(
-                            detailScrollState
-                        )
+                        .verticalScroll(detailScrollState)
                         .padding(
                             start = 18.dp,
                             top = 42.dp,
                             end = 18.dp,
                             bottom = 28.dp
                         ),
-
                 verticalArrangement =
-                    Arrangement.spacedBy(
-                        12.dp
-                    )
+                    Arrangement.spacedBy(12.dp)
             ) {
-
-                /*
-                 * 状態
-                 */
                 Row(
-                    modifier =
-                        Modifier.fillMaxWidth(),
-
-                    verticalAlignment =
-                        Alignment.CenterVertically
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-
                     Surface(
-                        color =
-                            statusColor.copy(
-                                alpha = 0.13f
-                            ),
-
-                        shape =
-                            RoundedCornerShape(
-                                8.dp
-                            )
+                        color = statusColor.copy(alpha = 0.13f),
+                        shape = RoundedCornerShape(8.dp)
                     ) {
-
                         Text(
-                            text =
-                                statusText,
-
+                            text = statusText,
                             modifier =
                                 Modifier.padding(
                                     horizontal = 10.dp,
                                     vertical = 6.dp
                                 ),
-
-                            color =
-                                statusColor,
-
-                            fontSize =
-                                12.sp,
-
-                            fontWeight =
-                                FontWeight.Bold
+                            color = statusColor,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
 
-
                     Text(
-                        text =
-                            "トイレ情報",
-
-                        modifier =
-                            Modifier.padding(
-                                start = 8.dp
-                            ),
-
-                        color =
-                            FinderMuted,
-
-                        fontSize =
-                            13.sp
+                        text = "トイレ情報",
+                        modifier = Modifier.padding(start = 8.dp),
+                        color = FinderMuted,
+                        fontSize = 13.sp
                     )
-
 
                     Spacer(
-                        modifier =
-                            Modifier.weight(1f)
+                        modifier = Modifier.weight(1f)
                     )
-
                 }
 
-
-                /*
-                 * 名前
-                 */
                 Text(
-                    text =
-                        toilet.name,
-
-                    color =
-                        FinderDark,
-
-                    style =
-                        MaterialTheme
-                            .typography
-                            .titleLarge,
-
-                    fontWeight =
-                        FontWeight.Bold,
-
-                    maxLines =
-                        1,
-
-                    overflow =
-                        TextOverflow.Ellipsis
+                    text = toilet.name,
+                    color = FinderDark,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
 
-
-                /*
-                 * 位置
-                 */
                 Row(
-                    verticalAlignment =
-                        Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-
                     Icon(
-                        imageVector =
-                            Icons
-                                .Outlined
-                                .LocationOn,
-
-                        contentDescription =
-                            null,
-
-                        tint =
-                            FinderMuted,
-
-                        modifier =
-                            Modifier.size(
-                                18.dp
-                            )
+                        imageVector = Icons.Outlined.LocationOn,
+                        contentDescription = null,
+                        tint = FinderMuted,
+                        modifier = Modifier.size(18.dp)
                     )
-
 
                     Spacer(
-                        modifier =
-                            Modifier.width(5.dp)
+                        modifier = Modifier.width(5.dp)
                     )
-
 
                     Text(
                         text =
@@ -2240,505 +2070,326 @@ private fun ToiletDetailCard(
                                 toilet.latitude,
                                 toilet.longitude
                             ),
-
-                        color =
-                            FinderMuted,
-
-                        fontSize =
-                            12.sp
+                        color = FinderMuted,
+                        fontSize = 12.sp
                     )
                 }
 
-
-                /*
-                 * コメント
-                 */
                 if (toilet.comment.isNotBlank()) {
-
                     Surface(
-                        modifier =
-                            Modifier.fillMaxWidth(),
-
-                        color =
-                            Color(
-                                0xFFF3F5F4
-                            ),
-
-                        shape =
-                            RoundedCornerShape(
-                                11.dp
-                            )
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFFF3F5F4),
+                        shape = RoundedCornerShape(11.dp)
                     ) {
-
                         Text(
-                            text =
-                                toilet.comment,
-
+                            text = toilet.comment,
                             modifier =
                                 Modifier.padding(
                                     horizontal = 11.dp,
                                     vertical = 8.dp
                                 ),
-
-                            color =
-                                FinderDark,
-
-                            style =
-                                MaterialTheme
-                                    .typography
-                                    .bodyMedium
+                            color = FinderDark,
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
                 }
 
-
-                /*
-                 * =====================================
-                 * 清潔度
-                 * =====================================
-                 */
                 Surface(
-                    modifier =
-                        Modifier.fillMaxWidth(),
-
-                    color =
-                        Color(
-                            0xFFF8FAF9
-                        ),
-
-                    shape =
-                        RoundedCornerShape(
-                            16.dp
-                        )
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xFFF8FAF9),
+                    shape = RoundedCornerShape(16.dp)
                 ) {
-
                     Column(
-                        modifier =
-                            Modifier.padding(
-                                14.dp
-                            ),
-
-                        verticalArrangement =
-                            Arrangement.spacedBy(
-                                9.dp
-                            )
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
                     ) {
-
                         Text(
-                            text =
-                                "きれいさ",
-
-                            color =
-                                FinderMuted,
-
-                            fontSize =
-                                12.sp
+                            text = "きれいさ",
+                            color = FinderMuted,
+                            fontSize = 12.sp
                         )
-
 
                         Row(
-                            verticalAlignment =
-                                Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-
                             repeat(5) { index ->
-
                                 Icon(
-                                    imageVector =
-                                        Icons
-                                            .Filled
-                                            .Star,
-
-                                    contentDescription =
-                                        null,
-
+                                    imageVector = Icons.Filled.Star,
+                                    contentDescription = null,
                                     tint =
-                                        if (
-                                            index <
-                                            cleanliness
-                                        ) {
-
+                                        if (index < cleanliness) {
                                             FinderGreen
-
                                         } else {
-
-                                            Color(
-                                                0xFFD7DEDC
-                                            )
+                                            Color(0xFFD7DEDC)
                                         },
-
-                                    modifier =
-                                        Modifier.size(
-                                            20.dp
-                                        )
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
 
-
                             Spacer(
-                                modifier =
-                                    Modifier.width(
-                                        7.dp
-                                    )
+                                modifier = Modifier.width(7.dp)
                             )
 
-
                             Text(
-                                text =
-                                    "$cleanliness.0",
-
-                                color =
-                                    FinderDark,
-
-                                fontWeight =
-                                    FontWeight.SemiBold
+                                text = "$cleanliness.0",
+                                color = FinderDark,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
 
-
                         Text(
-                            text =
-                                "前回の清掃完了：$elapsed",
-
-                            color =
-                                FinderMuted,
-
-                            fontSize =
-                                12.sp
+                            text = "前回の清掃完了：$elapsed",
+                            color = FinderMuted,
+                            fontSize = 12.sp
                         )
                     }
                 }
 
+                when (cleaningStatus) {
+                    CleaningStatus.NORMAL -> {
+                        Text(
+                            text =
+                                "清掃が必要な場合は、報酬ポイントを設定して清掃依頼を出せます。",
+                            color = FinderMuted,
+                            fontSize = 12.sp
+                        )
+                    }
 
-                /*
-                 * 清掃依頼中
-                 */
-                if (requested) {
-
-                    Text(
-                        text =
-                            "このトイレは清掃依頼中です。清掃したら下のボタンを押してください。",
-
-                        color =
-                            Color(
-                                0xFF7A6200
-                            ),
-
-                        fontSize =
-                            12.sp,
-
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(
-                                    RoundedCornerShape(
-                                        12.dp
-                                    )
-                                )
-                                .background(
-                                    Color(
-                                        0xFFFFF8E6
-                                    )
-                                )
-                                .padding(
-                                    10.dp
-                                )
-                    )
-
-
-                    Text(
-                        text =
-                            "清掃報酬：${toilet.cleaningRewardPoints} pt",
-
-                        color =
-                            FinderGreen,
-
-                        fontSize =
-                            16.sp,
-
-                        fontWeight =
-                            FontWeight.Bold
-                    )
-                }
-
-
-                /*
-                 * =====================================
-                 * 清掃ボタン
-                 * =====================================
-                 */
-                Button(
-                    onClick = {
-                        if (requested) {
-                            onMarkCleaned()
-                        } else {
-                            showRewardDialog = true
-                        }
-                    },
-
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(
-                                50.dp
-                            ),
-
-                    shape =
-                        RoundedCornerShape(
-                            14.dp
-                        ),
-
-                    colors =
-                        ButtonDefaults.buttonColors(
-                            containerColor =
-                                if (requested) {
-                                    FinderAmber
+                    CleaningStatus.REQUESTED -> {
+                        CleaningStatusNotice(
+                            message =
+                                if (isRequester) {
+                                    "自分が出した清掃依頼です。別のユーザーが引き受けるまでお待ちください。"
                                 } else {
-                                    FinderGreen
+                                    "このトイレは清掃担当者を募集しています。"
                                 },
-
-                            contentColor =
-                                if (requested) {
-                                    FinderDark
-                                } else {
-                                    Color.White
-                                }
+                            backgroundColor = Color(0xFFFFF8E6),
+                            textColor = Color(0xFF7A6200)
                         )
-                ) {
 
-                    Icon(
-                        imageVector =
-                            actionIcon,
+                        CleaningRequestInfo(
+                            label = "依頼日時",
+                            value =
+                                formatCleaningDateTime(
+                                    cleaningRequest?.requestedAt
+                                )
+                        )
 
-                        contentDescription =
-                            null,
+                        CleaningRequestInfo(
+                            label = "予定報酬",
+                            value =
+                                "${cleaningRequest?.rewardPoints ?: toilet.cleaningRewardPoints} pt"
+                        )
+                    }
 
-                        modifier =
-                            Modifier.size(
-                                20.dp
-                            )
-                    )
+                    CleaningStatus.IN_PROGRESS -> {
+                        CleaningStatusNotice(
+                            message =
+                                if (isCleaner) {
+                                    "あなたがこの清掃を担当しています。清掃画面から完了登録できます。"
+                                } else {
+                                    "現在、ほかのユーザーが清掃中です。"
+                                },
+                            backgroundColor = Color(0xFFEAF2FD),
+                            textColor = FinderBlue
+                        )
 
+                        CleaningRequestInfo(
+                            label = "引受日時",
+                            value =
+                                formatCleaningDateTime(
+                                    cleaningRequest?.acceptedAt
+                                )
+                        )
 
-                    Spacer(
-                        modifier =
-                            Modifier.width(
-                                8.dp
-                            )
-                    )
+                        CleaningRequestInfo(
+                            label = "予定報酬",
+                            value =
+                                "${cleaningRequest?.rewardPoints ?: toilet.cleaningRewardPoints} pt"
+                        )
+                    }
 
-
-                    Text(
-                        text =
-                            actionText,
-
-                        fontWeight =
-                            FontWeight.Bold
-                    )
+                    CleaningStatus.COMPLETED -> {
+                        CleaningStatusNotice(
+                            message =
+                                "清掃が完了しました。トイレの状態を更新しています。",
+                            backgroundColor = FinderSoftGreen,
+                            textColor = FinderGreen
+                        )
+                    }
                 }
 
+                when (cleaningStatus) {
+                    CleaningStatus.NORMAL -> {
+                        CleaningActionButton(
+                            text =
+                                if (isActionInProgress) {
+                                    "清掃依頼を送信中"
+                                } else {
+                                    "清掃を依頼する"
+                                },
+                            icon = Icons.Outlined.NotificationsNone,
+                            containerColor = FinderGreen,
+                            contentColor = Color.White,
+                            isLoading = isActionInProgress,
+                            enabled = !isActionInProgress,
+                            onClick = {
+                                showRewardDialog = true
+                            }
+                        )
+                    }
 
-                /*
-                 * =====================================
-                 * 口コミ投稿ボタン
-                 * =====================================
-                 */
+                    CleaningStatus.REQUESTED -> {
+                        val request = cleaningRequest
+
+                        CleaningActionButton(
+                            text =
+                                when {
+                                    request == null ->
+                                        "清掃依頼を読み込み中"
+
+                                    isRequester ->
+                                        "自分の清掃依頼です"
+
+                                    isActionInProgress ->
+                                        "清掃を引受中"
+
+                                    else ->
+                                        "清掃を引き受ける"
+                                },
+                            icon = Icons.Outlined.CleaningServices,
+                            containerColor = FinderAmber,
+                            contentColor = FinderDark,
+                            isLoading = isActionInProgress,
+                            enabled =
+                                request != null &&
+                                        !isRequester &&
+                                        !isActionInProgress,
+                            onClick = {
+                                if (request != null) {
+                                    onAcceptCleaning(request)
+                                }
+                            }
+                        )
+                    }
+
+                    CleaningStatus.IN_PROGRESS -> {
+                        CleaningActionButton(
+                            text =
+                                if (isCleaner) {
+                                    "清掃画面を開く"
+                                } else {
+                                    "ほかのユーザーが清掃中"
+                                },
+                            icon = Icons.Outlined.CheckCircle,
+                            containerColor = FinderBlue,
+                            contentColor = Color.White,
+                            isLoading = false,
+                            enabled = isCleaner,
+                            onClick = onOpenCleaningScreen
+                        )
+                    }
+
+                    CleaningStatus.COMPLETED -> {
+                        CleaningActionButton(
+                            text = "清掃完了",
+                            icon = Icons.Outlined.CheckCircle,
+                            containerColor = FinderGreen,
+                            contentColor = Color.White,
+                            isLoading = false,
+                            enabled = false,
+                            onClick = {}
+                        )
+                    }
+                }
+
                 Button(
-                    onClick =
-                        onOpenReviews,
-
+                    onClick = onOpenReviews,
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .height(
-                                50.dp
-                            ),
-
-                    shape =
-                        RoundedCornerShape(
-                            14.dp
-                        ),
-
+                            .height(50.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors =
                         ButtonDefaults.buttonColors(
-                            containerColor =
-                                FinderSoftGreen,
-
-                            contentColor =
-                                FinderGreen
+                            containerColor = FinderSoftGreen,
+                            contentColor = FinderGreen
                         )
                 ) {
-
                     Icon(
-                        imageVector =
-                            Icons
-                                .Filled
-                                .Star,
-
-                        contentDescription =
-                            null,
-
-                        modifier =
-                            Modifier.size(
-                                20.dp
-                            )
+                        imageVector = Icons.Filled.Star,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
                     )
-
 
                     Spacer(
-                        modifier =
-                            Modifier.width(
-                                8.dp
-                            )
+                        modifier = Modifier.width(8.dp)
                     )
 
-
                     Text(
-                        text =
-                            "口コミを投稿",
-
-                        fontWeight =
-                            FontWeight.Bold
+                        text = "口コミを投稿",
+                        fontWeight = FontWeight.Bold
                     )
                 }
 
-
-                /*
-                 * =====================================
-                 * トイレ削除ボタン
-                 * =====================================
-                 *
-                 * ログイン中であれば、作成者に関係なく表示する。
-                 */
                 if (canDelete) {
-
                     Button(
                         onClick = {
                             showDeleteDialog = true
                         },
-
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .height(
-                                    50.dp
-                                ),
-
-                        shape =
-                            RoundedCornerShape(
-                                14.dp
-                            ),
-
+                                .height(50.dp),
+                        shape = RoundedCornerShape(14.dp),
                         colors =
                             ButtonDefaults.buttonColors(
-                                containerColor =
-                                    Color(0xFFFFECEC),
-
-                                contentColor =
-                                    FinderRed
+                                containerColor = Color(0xFFFFECEC),
+                                contentColor = FinderRed
                             )
                     ) {
-
                         Text(
-                            text =
-                                "このトイレを削除",
-
-                            fontWeight =
-                                FontWeight.Bold
+                            text = "このトイレを削除",
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
-
-                /*
-                 * スクロールする詳細内容はここまで。
-                 */
             }
 
-            /*
-             * =====================================
-             * 固定の閉じるボタン
-             * =====================================
-             *
-             * スクロール領域の外に置いているため、
-             * 詳細をスクロールしても右上から動かない。
-             */
+            /* 固定の閉じるボタン */
             Surface(
                 modifier =
                     Modifier
-                        .align(
-                            Alignment.TopEnd
-                        )
+                        .align(Alignment.TopEnd)
                         .padding(
                             top = 8.dp,
                             end = 8.dp
                         )
-                        .zIndex(
-                            2f
-                        ),
-
-                shape =
-                    CircleShape,
-
-                color =
-                    Color.White.copy(
-                        alpha = 0.96f
-                    ),
-
-                shadowElevation =
-                    3.dp
+                        .zIndex(2f),
+                shape = CircleShape,
+                color = Color.White.copy(alpha = 0.96f),
+                shadowElevation = 3.dp
             ) {
-
                 IconButton(
-                    onClick =
-                        onDismiss,
-
-                    modifier =
-                        Modifier.size(
-                            38.dp
-                        )
+                    onClick = onDismiss,
+                    modifier = Modifier.size(38.dp)
                 ) {
-
                     Icon(
-                        imageVector =
-                            Icons
-                                .Outlined
-                                .Close,
-
-                        contentDescription =
-                            "閉じる",
-
-                        tint =
-                            FinderDark
+                        imageVector = Icons.Outlined.Close,
+                        contentDescription = "閉じる",
+                        tint = FinderDark
                     )
                 }
             }
 
-
-            /*
-             * =====================================
-             * 固定ドラッグハンドル
-             * =====================================
-             *
-             * Google Mapsの詳細パネルのように、
-             * 上端のハンドルを上下ドラッグして
-             * PEEK / HALF / EXPANDED の3段階に切り替える。
-             * タップでも段階を切り替えられる。
-             */
+            /* 固定ドラッグハンドル */
             Box(
                 modifier =
                     Modifier
-                        .align(
-                            Alignment.TopCenter
-                        )
-                        .width(
-                            120.dp
-                        )
-                        .height(
-                            34.dp
-                        )
-                        .zIndex(
-                            3f
-                        )
+                        .align(Alignment.TopCenter)
+                        .width(120.dp)
+                        .height(34.dp)
+                        .zIndex(3f)
                         .pointerInput(
                             toilet.id,
                             expandedHeightDp
@@ -2762,11 +2413,9 @@ private fun ToiletDetailCard(
                                                 expandedHeightDp
                                             )
                                 },
-
                                 onDragEnd = {
                                     snapDetailHeight()
                                 },
-
                                 onDragCancel = {
                                     snapDetailHeight()
                                 }
@@ -2775,27 +2424,16 @@ private fun ToiletDetailCard(
                         .clickable {
                             cycleDetailHeight()
                         },
-
-                contentAlignment =
-                    Alignment.Center
+                contentAlignment = Alignment.Center
             ) {
-
                 Box(
                     modifier =
                         Modifier
-                            .width(
-                                42.dp
-                            )
-                            .height(
-                                5.dp
-                            )
-                            .clip(
-                                CircleShape
-                            )
+                            .width(42.dp)
+                            .height(5.dp)
+                            .clip(CircleShape)
                             .background(
-                                Color(
-                                    0xFFC7CECC
-                                )
+                                Color(0xFFC7CECC)
                             )
                 )
             }
@@ -2804,18 +2442,107 @@ private fun ToiletDetailCard(
 }
 
 
-/*
- * =====================================
- * 前回清掃からの経過時間
- * =====================================
- *
- * 今回のReturn type mismatchの
- * 原因だった部分。
- *
- * returnと戻り値を同じ文として
- * 書くように修正している。
- * =====================================
- */
+@Composable
+private fun CleaningStatusNotice(
+    message: String,
+    backgroundColor: Color,
+    textColor: Color
+) {
+    Text(
+        text = message,
+        color = textColor,
+        fontSize = 12.sp,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(
+                    RoundedCornerShape(12.dp)
+                )
+                .background(backgroundColor)
+                .padding(10.dp)
+    )
+}
+
+
+@Composable
+private fun CleaningRequestInfo(
+    label: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            color = FinderMuted,
+            fontSize = 12.sp
+        )
+
+        Text(
+            text = value,
+            color = FinderDark,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+
+@Composable
+private fun CleaningActionButton(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    containerColor: Color,
+    contentColor: Color,
+    isLoading: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(50.dp),
+        enabled = enabled,
+        shape = RoundedCornerShape(14.dp),
+        colors =
+            ButtonDefaults.buttonColors(
+                containerColor = containerColor,
+                contentColor = contentColor,
+                disabledContainerColor =
+                    containerColor.copy(alpha = 0.35f),
+                disabledContentColor =
+                    contentColor.copy(alpha = 0.75f)
+            )
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                color = contentColor,
+                strokeWidth = 2.dp
+            )
+        } else {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        Spacer(
+            modifier = Modifier.width(8.dp)
+        )
+
+        Text(
+            text = text,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+
 private fun formatElapsedSinceCleaning(
     lastCleanedAtMillis: Long?,
     nowMillis: Long

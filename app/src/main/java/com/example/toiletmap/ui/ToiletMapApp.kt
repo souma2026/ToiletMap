@@ -3,9 +3,7 @@ package com.example.toiletmap.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -13,13 +11,14 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
+import com.example.toiletmap.model.CleaningRequest
+import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.model.Toilet
 import com.example.toiletmap.model.ToiletReview
 import com.example.toiletmap.screen.account.AccountScreen
 import com.example.toiletmap.screen.add.AddToiletScreen
+import com.example.toiletmap.screen.cleaning.CleaningScreen
 import com.example.toiletmap.screen.listofuncleaned.ListOfUncleanedScreen
 import com.example.toiletmap.screen.listofuncleaned.UncleanedToilet
 import com.example.toiletmap.screen.map.DeviceLocationStatus
@@ -57,18 +56,26 @@ fun ToiletMapApp(
 
 
     /*
-     * 選択中のトイレを削除できるか
-     * （自分が登録したトイレのみtrue）
-     */
-    canDeleteSelectedToilet:
-    Boolean,
-
-
-    /*
      * 清掃依頼中一覧
      */
     uncleanedToilets:
     List<UncleanedToilet>,
+
+
+    /*
+     * 清掃依頼・担当状態
+     */
+    cleaningRequests:
+    List<CleaningRequest>,
+
+    currentUserId:
+    String?,
+
+    isLoadingCleaning:
+    Boolean,
+
+    cleaningActionRequestId:
+    String?,
 
 
     /*
@@ -119,10 +126,38 @@ fun ToiletMapApp(
 
 
     /*
+     * 清掃を引き受ける
+     */
+    onAcceptCleaning:
+        (CleaningRequest) -> Unit,
+
+
+    /*
      * 清掃完了
      */
-    onMarkCleaned:
-        (Toilet) -> Unit,
+    onCompleteCleaning:
+        (CleaningRequest) -> Unit,
+
+
+    /*
+     * 清掃担当をキャンセル
+     */
+    onCancelCleaning:
+        (CleaningRequest) -> Unit,
+
+
+    /*
+     * 清掃依頼を再読込
+     */
+    onReloadCleaning:
+        () -> Unit,
+
+
+    /*
+     * 清掃画面から対象トイレを地図で開く
+     */
+    onShowCleaningToiletOnMap:
+        (String) -> Unit,
 
 
     /*
@@ -187,7 +222,7 @@ fun ToiletMapApp(
      * =====================================
      *
      * 0 = 未清掃一覧
-     * 1 = 状態更新
+     * 1 = 清掃
      * 2 = Map
      * 3 = トイレ追加
      * 4 = アカウント
@@ -214,9 +249,17 @@ fun ToiletMapApp(
         selectedScreen
     ) {
 
-        if (selectedScreen == 2) {
+        when (selectedScreen) {
 
-            onCurrentLocationRequested()
+            0,
+            1 ->
+                onReloadCleaning()
+
+            2 -> {
+
+                onReloadCleaning()
+                onCurrentLocationRequested()
+            }
         }
     }
 
@@ -400,12 +443,61 @@ fun ToiletMapApp(
 
                 /*
                  * =====================================
-                 * 状態更新
+                 * 清掃
                  * =====================================
                  */
                 1 -> {
 
-                    StatusPlaceholderScreen()
+                    CleaningScreen(
+
+                        requests =
+                            cleaningRequests,
+
+                        toilets =
+                            toilets,
+
+                        currentUserId =
+                            currentUserId,
+
+                        isLoading =
+                            isLoadingCleaning,
+
+                        actionRequestId =
+                            cleaningActionRequestId,
+
+                        onRefresh =
+                            onReloadCleaning,
+
+                        onShowOnMap = {
+                                request ->
+
+
+                            selectedScreen =
+                                2
+
+                            onShowCleaningToiletOnMap(
+                                request.toiletId
+                            )
+                        },
+
+                        onCompleteCleaning =
+                            onCompleteCleaning,
+
+                        onCancelCleaning =
+                            onCancelCleaning,
+
+                        onOpenUncleaned = {
+
+                            selectedScreen =
+                                0
+                        },
+
+                        onOpenAccount = {
+
+                            selectedScreen =
+                                4
+                        }
+                    )
                 }
 
 
@@ -436,9 +528,6 @@ fun ToiletMapApp(
                             onSearchToiletSelected,
 
 
-                        /*
-                         * 端末の現在地取得状態
-                         */
                         locationStatus =
                             locationStatus,
 
@@ -463,9 +552,33 @@ fun ToiletMapApp(
                         selectedToilet =
                             selectedToilet,
 
-
                         canDeleteSelectedToilet =
-                            canDeleteSelectedToilet,
+                            currentUserId != null,
+
+
+                        /*
+                         * 選択中トイレの有効な清掃依頼
+                         */
+                        cleaningRequest =
+                            selectedToilet
+                                ?.let { toilet ->
+
+                                    cleaningRequests
+                                        .firstOrNull { request ->
+
+                                            request.toiletId == toilet.id &&
+                                                    (
+                                                            request.status == CleaningStatus.REQUESTED ||
+                                                                    request.status == CleaningStatus.IN_PROGRESS
+                                                            )
+                                        }
+                                },
+
+                        currentUserId =
+                            currentUserId,
+
+                        cleaningActionRequestId =
+                            cleaningActionRequestId,
 
 
                         /*
@@ -483,16 +596,22 @@ fun ToiletMapApp(
 
 
                         /*
-                         * 清掃完了
+                         * 清掃を引き受ける
                          */
-                        onMarkCleaned =
-                            onMarkCleaned,
-
+                        onAcceptCleaning =
+                            onAcceptCleaning,
 
 
                         /*
-                         * トイレ削除
+                         * 自分の担当状況を開く
                          */
+                        onOpenCleaningScreen = {
+
+                            selectedScreen =
+                                1
+                        },
+
+
                         onDeleteToilet =
                             onDeleteToilet,
 
@@ -795,42 +914,6 @@ fun ToiletMapApp(
 
                 onClearReviewMessages()
             }
-        )
-    }
-}
-
-
-/*
- * =====================================
- * 仮の状態更新画面
- * =====================================
- */
-@Composable
-private fun StatusPlaceholderScreen() {
-
-    Box(
-
-        modifier =
-            Modifier
-                .fillMaxSize(),
-
-        contentAlignment =
-            Alignment.Center
-
-    ) {
-
-        Text(
-
-            text =
-                "トイレのレビュー・状態更新\n\nこの画面は後で実装します",
-
-            textAlign =
-                TextAlign.Center,
-
-            style =
-                MaterialTheme
-                    .typography
-                    .titleMedium
         )
     }
 }

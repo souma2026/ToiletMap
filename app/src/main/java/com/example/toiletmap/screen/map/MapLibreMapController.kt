@@ -909,7 +909,15 @@ class MapLibreMapController(
 
                 CleaningStatus.REQUESTED ->
 
-                    "清掃待ち"
+                    "清掃依頼中"
+
+                CleaningStatus.IN_PROGRESS ->
+
+                    "清掃中"
+
+                CleaningStatus.COMPLETED ->
+
+                    "清掃完了"
             }
 
 
@@ -1023,6 +1031,22 @@ class MapLibreMapController(
                         255,
                         193,
                         7
+                    )
+
+                CleaningStatus.IN_PROGRESS ->
+
+                    Color.rgb(
+                        33,
+                        150,
+                        243
+                    )
+
+                CleaningStatus.COMPLETED ->
+
+                    Color.rgb(
+                        11,
+                        131,
+                        119
                     )
             }
 
