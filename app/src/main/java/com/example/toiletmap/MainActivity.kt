@@ -262,6 +262,19 @@ class MainActivity : ComponentActivity() {
                 toiletViewModel
                     .supplementalToilets
                     .collectAsState()
+                /*
+ * =====================================
+ * 選択中トイレの完全な詳細データ
+ * =====================================
+ *
+ * ピンや検索結果を選択した時だけ
+ * Supabaseから1件取得される。
+ */
+                val selectedToilet by
+
+                toiletViewModel
+                    .selectedToilet
+                    .collectAsState()
 
 
                 val errorMessage by
@@ -417,28 +430,33 @@ class MainActivity : ComponentActivity() {
                  * を重複なしでまとめる。
                  * 地図描画そのものには toilets だけを使う。
                  */
+                /*
+ * =====================================
+ * UIで使用できるトイレ一覧
+ * =====================================
+ *
+ * 優先順位
+ *
+ * 1. 選択中の完全な詳細データ
+ * 2. 清掃用に取得した完全データ
+ * 3. 地図表示用の軽量データ
+ *
+ * 同じIDがあった場合は
+ * 上にある完全データを優先する。
+ */
                 val knownToilets =
 
-                    (toilets + supplementalToilets)
+                    (
+                            listOfNotNull(
+                                selectedToilet
+                            ) +
+
+                                    supplementalToilets +
+
+                                    toilets
+                            )
                         .distinctBy {
                             it.id
-                        }
-
-
-                /*
-                 * =====================================
-                 * 現在選択中のトイレ
-                 * =====================================
-                 */
-                val selectedToilet =
-
-                    knownToilets
-                        .firstOrNull {
-                                toilet ->
-
-
-                            toilet.id ==
-                                    selectedToiletId
                         }
 
 
@@ -510,14 +528,50 @@ class MainActivity : ComponentActivity() {
                  * 以前の口コミ状態をリセット
                  * =====================================
                  */
+                /*
+ * =====================================
+ * 選択中トイレが変わった
+ * =====================================
+ */
                 LaunchedEffect(
                     selectedToiletId
                 ) {
 
+                    /*
+                     * 口コミ側の準備
+                     */
                     reviewViewModel
                         .prepareForToilet(
                             selectedToiletId
                         )
+
+
+                    val toiletId =
+                        selectedToiletId
+
+
+                    if (
+                        toiletId == null
+                    ) {
+
+                        /*
+                         * 詳細カードを閉じた
+                         */
+                        toiletViewModel
+                            .clearSelectedToilet()
+
+                    } else {
+
+                        /*
+                         * =====================================
+                         * この1件だけSupabaseから詳細取得
+                         * =====================================
+                         */
+                        toiletViewModel
+                            .loadToiletDetail(
+                                toiletId
+                            )
+                    }
                 }
 
 
@@ -548,11 +602,13 @@ class MainActivity : ComponentActivity() {
                 ) {
 
                     /*
-                     * 地図範囲外の清掃対象でも一覧から確認できるよう、
-                     * 必要なIDだけ追加取得する。
+                     * =====================================
+                     * 清掃対象だけ完全データ取得
+                     * =====================================
                      */
                     toiletViewModel
                         .loadSupplementalToilets(
+
                             cleaningRequests
                                 .map {
                                     it.toiletId
@@ -561,11 +617,34 @@ class MainActivity : ComponentActivity() {
 
 
                     /*
-                     * 現在表示している地図範囲も再取得し、
-                     * cleaning_status の変化を反映する。
+                     * =====================================
+                     * 現在表示範囲の軽量データ更新
+                     * =====================================
                      */
                     toiletViewModel
                         .loadToilets()
+
+
+                    /*
+                     * =====================================
+                     * 詳細カードを開いている場合
+                     * その1件だけ再取得
+                     * =====================================
+                     */
+                    selectedToiletId
+                        ?.let {
+                                toiletId ->
+
+                            toiletViewModel
+                                .loadToiletDetail(
+
+                                    toiletId =
+                                        toiletId,
+
+                                    force =
+                                        true
+                                )
+                        }
                 }
 
 
