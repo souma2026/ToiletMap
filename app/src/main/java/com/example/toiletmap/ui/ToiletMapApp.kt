@@ -204,6 +204,12 @@ fun ToiletMapApp(
     }
 
 
+
+    var searchText by
+    rememberSaveable {
+        mutableStateOf("")
+    }
+
     /*
      * =====================================
      * Scaffold
@@ -359,6 +365,12 @@ fun ToiletMapApp(
 
                         mapView =
                             mapView,
+
+                        searchText = searchText,
+
+                        onSearchTextChange = {
+                            searchText = it
+                        },
 
 
                         /*
