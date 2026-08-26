@@ -7,6 +7,7 @@ import com.example.toiletmap.model.UserProfile
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.storage.storage
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -109,6 +110,43 @@ object AccountRepository {
             .auth
             .currentUserOrNull() != null
     }
+
+    // =========================================
+    // デイリー清掃依頼ポイント更新
+    // =========================================
+
+    suspend fun refreshDailyRequestPoints() {
+
+        /*
+         * 保存済みセッションの復元完了を待つ。
+         */
+        supabase.auth.awaitInitialization()
+
+
+        /*
+         * 未ログイン時は何もしない。
+         */
+        if (
+            supabase
+                .auth
+                .currentUserOrNull() == null
+        ) {
+
+            return
+        }
+
+
+        /*
+         * 日付判定・残高更新はSupabase側で行う。
+         * Android端末の時計だけを信用しない。
+         */
+        supabase
+            .postgrest
+            .rpc(
+                "refresh_daily_request_points"
+            )
+    }
+
 
     // =========================================
     // プロフィール取得

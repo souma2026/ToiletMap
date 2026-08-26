@@ -201,6 +201,20 @@ fun ProfileScreen(
 
         try {
 
+            /*
+             * 第6段階:
+             * アカウント画面を開いた時点で、
+             * 本日の清掃依頼ポイントをSupabase側で更新する。
+             *
+             * 同じ日に何度呼んでも1回分しか処理されない。
+             */
+            AccountRepository
+                .refreshDailyRequestPoints()
+
+
+            /*
+             * 更新後の残高を取得する。
+             */
             reloadProfile()
 
 
@@ -574,17 +588,25 @@ fun ProfileScreen(
             )
 
 
-            // =====================================
-            // ポイント
-            // =====================================
-
+            /*
+             * =====================================
+             * 清掃依頼ポイント
+             * =====================================
+             *
+             * 第6段階で追加。
+             * 毎日、日本時間の0:00を基準に10ptまで回復し、
+             * 清掃依頼1件につき3pt消費する。
+             */
             PointCard(
                 points =
-                    profile?.points
+                    profile?.requestPoints
                         ?: 0,
 
                 title =
-                    "所持ポイント",
+                    "清掃依頼ポイント",
+
+                supportingText =
+                    "毎日10ptまで回復・清掃依頼1件につき3pt消費",
 
                 modifier =
                     Modifier.padding(
