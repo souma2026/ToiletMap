@@ -19,17 +19,17 @@ data class UserProfile(
 
     /*
      * 清掃完了でもらえる報酬ポイント。
-     * 第5段階から利用する。
      */
     @SerialName("reward_points")
     val rewardPoints: Int = 0,
 
     /*
      * 清掃依頼を出すために使うポイント。
-     * 毎日、日本時間の0:00を基準に10ptまで回復する。
+     * 毎日、日本時間の日付変更を基準に20pt加算される。
+     * 上限でリセットせず、未使用分は翌日以降へ繰り越す。
      */
     @SerialName("request_points")
-    val requestPoints: Int = 10,
+    val requestPoints: Int = 20,
 
     /*
      * 最後にデイリー清掃依頼ポイントを更新した日。

@@ -10,38 +10,34 @@ import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-
 /**
- * 清掃依頼の取得と、Supabase RPC の呼び出しを担当する。
+ * 清掃依頼の取得と Supabase RPC の呼び出しを担当する。
  *
- * 状態変更は Android からテーブルを直接 UPDATE せず、
- * PostgreSQL Function 内で行ロックを取得して実行する。
+ * ポイント仕様:
+ * - 依頼 4pt  -> 清掃報酬 5pt
+ * - 依頼 8pt  -> 清掃報酬 10pt
+ * - 依頼 12pt -> 清掃報酬 15pt
+ * - 清掃依頼ポイントは日本時間で1日ごとに +20pt
+ * - 未使用分はリセットせず繰り越す
+ *
+ * ポイント残高の増減や清掃状態の変更は Android から直接 UPDATE せず、
+ * PostgreSQL Function 内でロックを取得して実行する。
  */
 class CleaningRepository {
 
     companion object {
-
-        /**
-         * 依頼者が選択できる清掃依頼ポイント。
-         *
-         * Supabase 側でも同じ値を検証するため、
-         * Android 側の値だけを書き換えても不正な依頼は作成できない。
-         */
-        val SELECTABLE_REQUEST_POINTS =
+        val SELECTABLE_REQUEST_POINTS: Set<Int> =
             setOf(
-                1,
-                3,
-                5
+                4,
+                8,
+                12
             )
     }
-
 
     private val supabase =
         SupabaseClientProvider.client
 
-
     suspend fun getCurrentUserId(): String? {
-
         supabase.auth.awaitInitialization()
 
         return supabase
@@ -50,54 +46,52 @@ class CleaningRepository {
             ?.id
     }
 
-
     /**
-     * デイリー回復を適用したうえで、現在の清掃依頼ポイントを取得する。
+     * 現在の清掃依頼ポイントを取得する。
+     *
+     * 取得前にデイリー更新 RPC を呼ぶ。
+     * SQL 側で同一日付の二重加算を防止しているため、
+     * マップ画面・アカウント画面の両方から呼ばれても安全。
      */
     suspend fun loadCurrentRequestPoints(
         userId: String
     ): Int {
+        val loggedInUserId =
+            requireLoggedIn(
+                "依頼ポイントを確認するにはログインが必要です"
+            )
 
-        requireLoggedIn(
-            "清掃依頼ポイントを確認するにはログインが必要です"
-        )
+        if (loggedInUserId != userId) {
+            throw IllegalStateException(
+                "ログイン中のユーザー情報と一致しません"
+            )
+        }
 
-        /*
-         * 日付判定は端末時刻ではなく Supabase 側で行う。
-         * 同じ日に複数回呼んでも二重回復しない。
-         */
         supabase
             .postgrest
             .rpc(
-                function =
-                    "refresh_daily_request_points"
+                function = "refresh_daily_request_points"
             )
 
         return supabase
             .from("profiles")
             .select {
+                limit(1)
 
                 filter {
-
                     eq(
                         "id",
                         userId
                     )
                 }
             }
-            .decodeSingle<UserProfile>()
-            .requestPoints
+            .decodeList<UserProfile>()
+            .firstOrNull()
+            ?.requestPoints
+            ?: 0
     }
 
-
     suspend fun loadActiveRequests(): List<CleaningRequest> {
-
-        /*
-         * 件数が小さい段階では全件取得してから active のみを残す。
-         * completed は履歴として DB に保持するが、通常画面には表示しない。
-         *
-         * 報酬が高い依頼を先にし、同じ報酬なら古い依頼を先にする。
-         */
         return supabase
             .from("cleaning_requests")
             .select()
@@ -106,21 +100,15 @@ class CleaningRepository {
                 it.status == CleaningStatus.REQUESTED ||
                         it.status == CleaningStatus.IN_PROGRESS
             }
-            .sortedWith(
-                compareByDescending<CleaningRequest> {
-                    it.rewardPoints
-                }.thenBy {
-                    it.requestedAt ?: it.createdAt.orEmpty()
-                }
-            )
+            .sortedByDescending {
+                it.requestedAt ?: it.createdAt.orEmpty()
+            }
     }
-
 
     suspend fun requestCleaning(
         toiletId: String,
         requestPoints: Int
     ) {
-
         requireLoggedIn(
             "清掃を依頼するにはログインが必要です"
         )
@@ -128,7 +116,7 @@ class CleaningRepository {
         require(
             requestPoints in SELECTABLE_REQUEST_POINTS
         ) {
-            "清掃依頼ポイントは1pt・3pt・5ptから選択してください"
+            "清掃依頼ポイントは4pt・8pt・12ptから選択してください"
         }
 
         supabase
@@ -137,7 +125,6 @@ class CleaningRepository {
                 function = "request_cleaning_with_selected_points",
                 parameters =
                     buildJsonObject {
-
                         put(
                             "p_toilet_id",
                             toiletId
@@ -151,11 +138,9 @@ class CleaningRepository {
             )
     }
 
-
     suspend fun acceptCleaning(
         cleaningRequestId: String
     ) {
-
         requireLoggedIn(
             "清掃を引き受けるにはログインが必要です"
         )
@@ -174,11 +159,9 @@ class CleaningRepository {
             )
     }
 
-
     suspend fun completeCleaning(
         cleaningRequestId: String
     ) {
-
         requireLoggedIn(
             "清掃を完了するにはログインが必要です"
         )
@@ -197,11 +180,9 @@ class CleaningRepository {
             )
     }
 
-
     suspend fun cancelCleaning(
         cleaningRequestId: String
     ) {
-
         requireLoggedIn(
             "清掃担当をキャンセルするにはログインが必要です"
         )
@@ -220,16 +201,9 @@ class CleaningRepository {
             )
     }
 
-
-    /**
-     * 依頼者本人が、担当者決定前の清掃依頼を取り消す。
-     *
-     * 清掃担当者側の cancelCleaning とは別の RPC を使用する。
-     */
     suspend fun cancelCleaningRequest(
         cleaningRequestId: String
     ) {
-
         requireLoggedIn(
             "清掃依頼を取り消すにはログインが必要です"
         )
@@ -248,18 +222,17 @@ class CleaningRepository {
             )
     }
 
-
     private suspend fun requireLoggedIn(
         message: String
-    ) {
-
+    ): String {
         supabase
             .auth
             .awaitInitialization()
 
-        supabase
+        return supabase
             .auth
             .currentUserOrNull()
+            ?.id
             ?: throw IllegalStateException(
                 message
             )

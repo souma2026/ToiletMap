@@ -2215,7 +2215,7 @@ private fun ToiletDetailCard(
                         CleaningStatusNotice(
                             message =
                                 if (isLoggedIn) {
-                                    "清掃依頼ポイントを1pt・3pt・5ptから選べます。清掃報酬は選択ポイントより2pt多くなります。"
+                                    "清掃依頼ポイントを4pt・8pt・12ptから選べます。清掃報酬はそれぞれ5pt・10pt・15ptです。"
                                 } else {
                                     "清掃を依頼するにはログインが必要です。"
                                 },
@@ -2342,7 +2342,7 @@ private fun ToiletDetailCard(
                                 "使用した依頼ポイント",
 
                             value =
-                                "${cleaningRequest?.requestPointsUsed ?: 3} pt"
+                                "${cleaningRequest?.requestPointsUsed ?: 4} pt"
                         )
 
 
@@ -2692,7 +2692,12 @@ private data class CleaningRequestPointOption(
 
     val rewardPoints: Int
         get() =
-            requestPoints + 2
+            when (requestPoints) {
+                4 -> 5
+                8 -> 10
+                12 -> 15
+                else -> 0
+            }
 }
 
 
@@ -2703,7 +2708,7 @@ private val CleaningRequestPointOptions =
                 "通常依頼",
 
             requestPoints =
-                1
+                4
         ),
 
         CleaningRequestPointOption(
@@ -2711,7 +2716,7 @@ private val CleaningRequestPointOptions =
                 "優先依頼",
 
             requestPoints =
-                3
+                8
         ),
 
         CleaningRequestPointOption(
@@ -2719,7 +2724,7 @@ private val CleaningRequestPointOptions =
                 "高優先依頼",
 
             requestPoints =
-                5
+                12
         )
     )
 
@@ -2730,11 +2735,11 @@ private fun preferredCleaningRequestPoints(
 
     return when {
 
-        currentRequestPoints >= 3 ->
-            3
+        currentRequestPoints >= 8 ->
+            8
 
-        currentRequestPoints >= 1 ->
-            1
+        currentRequestPoints >= 4 ->
+            4
 
         else ->
             0
@@ -3082,7 +3087,7 @@ private fun CleaningRequestPointDialog(
 
                     Text(
                         text =
-                            "清掃依頼を出すためのポイントがありません。依頼ポイントは毎日10ptまで回復します。",
+                            "清掃依頼を出すには4pt以上必要です。依頼ポイントは毎日20ptずつ加算され、未使用分は繰り越されます。",
 
                         color =
                             FinderRed,
