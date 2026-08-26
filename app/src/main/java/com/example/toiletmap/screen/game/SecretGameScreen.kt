@@ -336,220 +336,218 @@ private fun GameTitleScreen(
                 .fillMaxSize()
                 .padding(
                     horizontal = 28.dp,
-                    vertical = 36.dp
+                    vertical = 22.dp
                 ),
-
         horizontalAlignment =
             Alignment.CenterHorizontally,
-
         verticalArrangement =
             Arrangement.Center
     ) {
+
         Text(
-            text =
-                "SECRET MODE",
-
-            color =
-                GameGreen,
-
-            fontSize =
-                14.sp,
-
-            fontWeight =
-                FontWeight.ExtraBold,
-
-            letterSpacing =
-                3.sp
+            text = "SECRET MODE",
+            color = GameGreen,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 3.sp
         )
 
         Spacer(
-            modifier =
-                Modifier.height(
-                    10.dp
-                )
+            modifier = Modifier.height(8.dp)
         )
 
         Text(
-            text =
-                "TOILET\nDODGE",
-
-            color =
-                Color.White,
-
-            fontSize =
-                42.sp,
-
-            lineHeight =
-                43.sp,
-
-            fontWeight =
-                FontWeight.Black,
-
-            textAlign =
-                TextAlign.Center
+            text = "TOILET\nDODGE",
+            color = Color.White,
+            fontSize = 38.sp,
+            lineHeight = 39.sp,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center
         )
 
         Spacer(
-            modifier =
-                Modifier.height(
-                    18.dp
-                )
+            modifier = Modifier.height(16.dp)
         )
 
-        Text(
-            text =
-                "落ちてくる障害物を\n左右に避け続けよう！",
-
-            color =
-                GameMint,
-
-            textAlign =
-                TextAlign.Center,
-
-            fontSize =
-                17.sp,
-
-            lineHeight =
-                25.sp
-        )
-
-        Spacer(
-            modifier =
-                Modifier.height(
-                    20.dp
-                )
-        )
-
+        /*
+         * =========================================
+         * 遊び方
+         * =========================================
+         */
         Surface(
+            modifier =
+                Modifier.fillMaxWidth(),
             color =
                 GamePanel,
-
             shape =
-                RoundedCornerShape(
-                    18.dp
-                )
+                RoundedCornerShape(18.dp)
         ) {
+
             Column(
                 modifier =
                     Modifier.padding(
-                        horizontal = 24.dp,
-                        vertical = 14.dp
+                        horizontal = 18.dp,
+                        vertical = 16.dp
                     ),
-
-                horizontalAlignment =
-                    Alignment.CenterHorizontally
+                verticalArrangement =
+                    Arrangement.spacedBy(7.dp)
             ) {
+
                 Text(
-                    text =
-                        "BEST SCORE",
+                    text = "遊び方",
+                    color = GameGreen,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
 
-                    color =
-                        Color.White.copy(
-                            alpha = 0.65f
-                        ),
-
-                    fontSize =
-                        11.sp,
-
-                    fontWeight =
-                        FontWeight.Bold
+                Spacer(
+                    modifier =
+                        Modifier.height(2.dp)
                 )
 
                 Text(
-                    text =
-                        bestScore.toString(),
+                    text = "← →  緑の「WC」を左右にドラッグ",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    fontWeight = FontWeight.Medium
+                )
 
-                    color =
-                        GameGold,
+                Text(
+                    text = "⚠  落ちてくる障害物を避けよう",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    fontWeight = FontWeight.Medium
+                )
 
-                    fontSize =
-                        28.sp,
+                Text(
+                    text = "❤  ライフは3。当たると1減る",
+                    color = GameMint,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    fontWeight = FontWeight.Medium
+                )
 
-                    fontWeight =
-                        FontWeight.ExtraBold
+                Text(
+                    text = "⏱  15秒ごとにLEVEL UP",
+                    color = GameGold,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    fontWeight = FontWeight.Medium
+                )
+
+                Text(
+                    text = "★  長く生き残るほど高得点",
+                    color = GameMint,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    fontWeight = FontWeight.Medium
                 )
             }
         }
 
         Spacer(
             modifier =
-                Modifier.height(
-                    30.dp
-                )
+                Modifier.height(14.dp)
         )
 
-        Button(
-            onClick =
-                onStart,
+        /*
+         * =========================================
+         * ベストスコア
+         * =========================================
+         */
+        Surface(
+            color = GamePanel,
+            shape = RoundedCornerShape(18.dp)
+        ) {
 
+            Column(
+                modifier =
+                    Modifier.padding(
+                        horizontal = 24.dp,
+                        vertical = 12.dp
+                    ),
+                horizontalAlignment =
+                    Alignment.CenterHorizontally
+            ) {
+
+                Text(
+                    text = "BEST SCORE",
+                    color =
+                        Color.White.copy(
+                            alpha = 0.65f
+                        ),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Text(
+                    text = bestScore.toString(),
+                    color = GameGold,
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+        }
+
+        Spacer(
+            modifier =
+                Modifier.height(18.dp)
+        )
+
+        /*
+         * =========================================
+         * START
+         * =========================================
+         */
+        Button(
+            onClick = onStart,
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(
-                        58.dp
-                    ),
-
+                    .height(58.dp),
             shape =
-                RoundedCornerShape(
-                    18.dp
-                ),
-
+                RoundedCornerShape(18.dp),
             colors =
                 ButtonDefaults.buttonColors(
-                    containerColor =
-                        GameGreen,
-
-                    contentColor =
-                        Color.White
+                    containerColor = GameGreen,
+                    contentColor = Color.White
                 )
         ) {
+
             Text(
-                text =
-                    "START",
-
-                fontSize =
-                    18.sp,
-
-                fontWeight =
-                    FontWeight.ExtraBold,
-
-                letterSpacing =
-                    1.4.sp
+                text = "START",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 1.4.sp
             )
         }
 
         Spacer(
             modifier =
-                Modifier.height(
-                    12.dp
-                )
+                Modifier.height(10.dp)
         )
 
+        /*
+         * =========================================
+         * ToiletMapへ戻る
+         * =========================================
+         */
         OutlinedButton(
-            onClick =
-                onExit,
-
+            onClick = onExit,
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(
-                        52.dp
-                    ),
-
+                    .height(52.dp),
             shape =
-                RoundedCornerShape(
-                    18.dp
-                )
+                RoundedCornerShape(18.dp)
         ) {
+
             Text(
-                text =
-                    "ToiletMapに戻る",
-
-                color =
-                    GameMint,
-
-                fontWeight =
-                    FontWeight.Bold
+                text = "ToiletMapに戻る",
+                color = GameMint,
+                fontWeight = FontWeight.Bold
             )
         }
     }
