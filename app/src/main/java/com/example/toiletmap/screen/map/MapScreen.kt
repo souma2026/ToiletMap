@@ -1,5 +1,6 @@
 package com.example.toiletmap.screen.map
 
+import android.location.Location
 import android.view.ViewGroup
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -77,8 +78,6 @@ import com.example.toiletmap.model.CleaningRequest
 import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.model.Toilet
 import com.example.toiletmap.screen.cleaning.formatCleaningDateTime
-import com.example.toiletmap.screen.listofuncleaned.rememberCurrentLocationState
-import com.example.toiletmap.screen.map.facilities.ToiletFacilityEditor
 import kotlinx.coroutines.delay
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -102,6 +101,162 @@ private val FinderBlue = Color(0xFF1976D2)
 private val FinderRed = Color(0xFFD94B4B)
 private val FinderSoftGreen = Color(0xFFE5F4F1)
 private val FinderBorder = Color(0xFFD7DEDC)
+
+
+/*
+ * =====================================
+ * 検索候補用の位置情報・表示名補正
+ * =====================================
+ */
+private fun isUsableCoordinate(
+    latitude: Double,
+    longitude: Double
+): Boolean {
+
+    if (
+        !latitude.isFinite() ||
+        !longitude.isFinite()
+    ) {
+        return false
+    }
+
+    if (
+        latitude !in -90.0..90.0 ||
+        longitude !in -180.0..180.0
+    ) {
+        return false
+    }
+
+    /*
+     * 0,0 は端末やエミュレータで
+     * 未取得時の仮値として入ることがある。
+     * これを現在地として使うと、日本のトイレまで
+     * 約8,300kmと表示されてしまうため除外する。
+     */
+    if (
+        abs(latitude) < 0.000001 &&
+        abs(longitude) < 0.000001
+    ) {
+        return false
+    }
+
+    return true
+}
+
+
+private fun isUsableFinderLocation(
+    location: Location?
+): Boolean {
+
+    val target =
+        location
+            ?: return false
+
+    return isUsableCoordinate(
+        latitude = target.latitude,
+        longitude = target.longitude
+    )
+}
+
+
+private fun finderDisplayName(
+    rawName: String
+): String {
+
+    val trimmed =
+        rawName.trim()
+
+    if (trimmed.isBlank()) {
+        return "名称未登録のトイレ"
+    }
+
+    val visibleCharacters =
+        trimmed.filterNot {
+            it.isWhitespace()
+        }
+
+    val brokenCharacterCount =
+        visibleCharacters.count { character ->
+            character == '?' ||
+                    character == '？' ||
+                    character == '�'
+        }
+
+    /*
+     * DB取り込み時の文字化けなどで
+     * 「??? ??????」になった名前をそのまま見せない。
+     * 元の文字列を復元することはできないため、
+     * UIでは安全な代替名を表示する。
+     */
+    if (
+        visibleCharacters.isEmpty() ||
+        brokenCharacterCount * 2 >= visibleCharacters.length
+    ) {
+        return "名称未登録のトイレ"
+    }
+
+    return trimmed
+}
+
+
+/*
+ * 地図本体で使っているMapLibreの位置情報を、
+ * 検索候補でもそのまま利用する。
+ *
+ * 以前は未清掃画面用の別位置情報Stateを使っていたため、
+ * 地図上では現在地が正しくても検索候補だけ0,0を参照し、
+ * 距離が約8,300kmになることがあった。
+ */
+@Composable
+private fun rememberFinderCurrentLocation(
+    mapView: MapView
+): Location? {
+
+    var currentLocation by
+    remember(
+        mapView
+    ) {
+        mutableStateOf<Location?>(
+            null
+        )
+    }
+
+    LaunchedEffect(
+        mapView
+    ) {
+
+        while (true) {
+
+            mapView.getMapAsync { map ->
+
+                val candidate =
+                    runCatching {
+                        map.locationComponent
+                            .lastKnownLocation
+                    }.getOrNull()
+
+                if (
+                    isUsableFinderLocation(
+                        candidate
+                    )
+                ) {
+                    currentLocation =
+                        candidate
+                }
+            }
+
+            /*
+             * 移動した場合も候補距離が更新されるよう、
+             * MapLibreの最新位置を定期的に確認する。
+             */
+            delay(
+                1_000L
+            )
+        }
+    }
+
+    return currentLocation
+}
 
 
 /*
@@ -666,13 +821,18 @@ private fun FinderHeader(
     /*
      * =====================================
      * 現在地付近検索用
-     *
-     * 未清掃画面と同じ現在地取得処理を再利用し、
-     * 端末の現在地を基準に近いトイレを表示する。
      * =====================================
+     *
+     * 地図本体と同じMapLibre LocationComponentの
+     * 現在地を使う。
+     *
+     * 0,0などの無効値はrememberFinderCurrentLocation側で
+     * 除外するため、約8,300kmという誤表示を防げる。
      */
-    val currentLocationState =
-        rememberCurrentLocationState()
+    val currentLocation =
+        rememberFinderCurrentLocation(
+            mapView = mapView
+        )
 
 
     fun distanceKm(
@@ -695,9 +855,15 @@ private fun FinderHeader(
                     sin(dLon / 2) *
                     sin(dLon / 2)
 
+        val safeA =
+            a.coerceIn(
+                0.0,
+                1.0
+            )
+
         return r * 2 * atan2(
-            sqrt(a),
-            sqrt(1 - a)
+            sqrt(safeA),
+            sqrt(1 - safeA)
         )
     }
 
@@ -730,16 +896,13 @@ private fun FinderHeader(
         remember(
             searchQuery,
             toilets,
-            currentLocationState.location
+            currentLocation
         ) {
 
             val query =
                 searchQuery.trim()
 
             if (query.isBlank()) {
-
-                val currentLocation =
-                    currentLocationState.location
 
                 if (currentLocation == null) {
 
@@ -748,6 +911,12 @@ private fun FinderHeader(
                 } else {
 
                     toilets
+                        .filter { toilet ->
+                            isUsableCoordinate(
+                                latitude = toilet.latitude,
+                                longitude = toilet.longitude
+                            )
+                        }
                         .sortedBy { toilet ->
 
                             distanceKm(
@@ -764,8 +933,16 @@ private fun FinderHeader(
 
                 toilets
                     .filter { toilet ->
+                        isUsableCoordinate(
+                            latitude = toilet.latitude,
+                            longitude = toilet.longitude
+                        )
+                    }
+                    .filter { toilet ->
 
-                        toilet.name.contains(
+                        finderDisplayName(
+                            toilet.name
+                        ).contains(
                             query,
                             ignoreCase = true
                         ) ||
@@ -789,13 +966,18 @@ private fun FinderHeader(
         toilet: Toilet
     ) {
 
+        val displayName =
+            finderDisplayName(
+                toilet.name
+            )
+
         searchValue =
             TextFieldValue(
-                text = toilet.name,
+                text = displayName,
 
                 selection =
                     TextRange(
-                        toilet.name.length
+                        displayName.length
                     )
             )
 
@@ -1043,59 +1225,60 @@ private fun FinderHeader(
                 /*
                  * =====================================
                  * ×
+                 *
+                 * 以前は
+                 * 「検索文字を削除する×」と
+                 * 「検索候補を閉じる×」の2個を
+                 * 同時に表示していたため、
+                 * ×ボタンが重複して見えていた。
+                 *
+                 * ここでは1個だけ表示し、
+                 * ・文字あり → 検索文字を削除
+                 * ・文字なし → 検索候補を閉じる
+                 * と動作を切り替える。
                  * =====================================
                  */
                 trailingIcon = {
 
-                    Row {
+                    IconButton(
+                        onClick = {
 
-                        if (searchQuery.isNotEmpty()) {
+                            if (searchQuery.isNotEmpty()) {
 
-                            IconButton(
-                                onClick = {
+                                searchValue =
+                                    TextFieldValue("")
 
-                                    searchValue =
-                                        TextFieldValue("")
-                                }
-                            ) {
+                                /*
+                                 * 入力欄のフォーカスは残し、
+                                 * 空欄時の近いトイレ候補を表示できるようにする。
+                                 */
+                                showSearchSuggestions = true
 
-                                Icon(
-                                    imageVector =
-                                        Icons
-                                            .Outlined
-                                            .Close,
-
-                                    contentDescription =
-                                        "検索文字を削除",
-
-                                    tint =
-                                        FinderMuted
-                                )
-                            }
-                        }
-
-                        IconButton(
-                            onClick = {
+                            } else {
 
                                 focusManager.clearFocus()
                                 searchFocused = false
                                 showSearchSuggestions = false
                             }
-                        ) {
-
-                            Icon(
-                                imageVector =
-                                    Icons
-                                        .Outlined
-                                        .Close,
-
-                                contentDescription =
-                                    "検索候補を閉じる",
-
-                                tint =
-                                    FinderMuted
-                            )
                         }
+                    ) {
+
+                        Icon(
+                            imageVector =
+                                Icons
+                                    .Outlined
+                                    .Close,
+
+                            contentDescription =
+                                if (searchQuery.isNotEmpty()) {
+                                    "検索文字を削除"
+                                } else {
+                                    "検索候補を閉じる"
+                                },
+
+                            tint =
+                                FinderMuted
+                        )
                     }
                 },
 
@@ -1225,23 +1408,30 @@ private fun FinderHeader(
                                         toilet,
 
                                     distanceText =
-                                        currentLocationState.location?.let { location ->
-
-                                            val meters =
-                                                distanceMeters(
-                                                    location.latitude,
-                                                    location.longitude,
-                                                    toilet.latitude,
-                                                    toilet.longitude
+                                        currentLocation
+                                            ?.takeIf {
+                                                isUsableCoordinate(
+                                                    latitude = toilet.latitude,
+                                                    longitude = toilet.longitude
                                                 )
-
-                                            if (meters >= 1000) {
-                                                "%.1fkm".format(meters / 1000.0)
-                                            } else {
-                                                "${meters}m"
                                             }
+                                            ?.let { location ->
 
-                                        },
+                                                val meters =
+                                                    distanceMeters(
+                                                        location.latitude,
+                                                        location.longitude,
+                                                        toilet.latitude,
+                                                        toilet.longitude
+                                                    )
+
+                                                if (meters >= 1000) {
+                                                    "%.1fkm".format(meters / 1000.0)
+                                                } else {
+                                                    "${meters}m"
+                                                }
+
+                                            },
 
                                     onClick = {
                                         selectToilet(
@@ -1329,7 +1519,9 @@ private fun SearchResultItem(
 
             Text(
                 text =
-                    toilet.name,
+                    finderDisplayName(
+                        toilet.name
+                    ),
 
                 color =
                     FinderDark,
@@ -2021,7 +2213,9 @@ private fun ToiletDetailCard(
 
                 Text(
                     text =
-                        toilet.name,
+                        finderDisplayName(
+                            toilet.name
+                        ),
 
                     color =
                         FinderDark,
@@ -2183,29 +2377,6 @@ private fun ToiletDetailCard(
                         )
                     }
                 }
-
-
-                /*
-                 * =====================================
-                 * 設備情報
-                 *
-                 * 閲覧
-                 * 編集
-                 * ログイン判定
-                 * Supabase保存
-                 * =====================================
-                 */
-                ToiletFacilityEditor(
-
-                    toilet =
-                        toilet,
-
-                    currentUserId =
-                        currentUserId,
-
-                    onOpenAccount =
-                        onOpenAccount
-                )
 
 
                 when (cleaningStatus) {
