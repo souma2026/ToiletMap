@@ -7,11 +7,20 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import com.example.toiletmap.model.CleaningRequest
@@ -240,6 +249,21 @@ class MainActivity : ComponentActivity() {
 
             ToiletMapTheme {
 
+                /*
+                 * =====================================
+                 * 清掃完了ダイアログ
+                 * =====================================
+                 *
+                 * 清掃完了時だけ、Toastではなく
+                 * 画面中央に大きく表示する。
+                 */
+                var cleaningCompleteMessage by
+                remember {
+                    mutableStateOf<String?>(
+                        null
+                    )
+                }
+
 
                 /*
                  * =====================================
@@ -263,14 +287,16 @@ class MainActivity : ComponentActivity() {
                 toiletViewModel
                     .supplementalToilets
                     .collectAsState()
+
+
                 /*
- * =====================================
- * 選択中トイレの完全な詳細データ
- * =====================================
- *
- * ピンや検索結果を選択した時だけ
- * Supabaseから1件取得される。
- */
+                 * =====================================
+                 * 選択中トイレの完全な詳細データ
+                 * =====================================
+                 *
+                 * ピンや検索結果を選択した時だけ
+                 * Supabaseから1件取得される。
+                 */
                 val selectedToilet by
 
                 toiletViewModel
@@ -407,53 +433,210 @@ class MainActivity : ComponentActivity() {
                     cleaningSuccessMessage
                 ) {
 
-                    val message =
+                    val error =
                         cleaningErrorMessage
-                            ?: cleaningSuccessMessage
-                            ?: return@LaunchedEffect
+
+                    val success =
+                        cleaningSuccessMessage
 
 
-                    Toast
-                        .makeText(
-                            this@MainActivity,
-                            message,
-                            Toast.LENGTH_LONG
-                        )
-                        .show()
+                    /*
+                     * エラーは従来どおりToast
+                     */
+                    if (
+                        error != null
+                    ) {
+
+                        Toast
+                            .makeText(
+                                this@MainActivity,
+                                error,
+                                Toast.LENGTH_LONG
+                            )
+                            .show()
+
+                        cleaningViewModel
+                            .clearMessages()
+
+                        return@LaunchedEffect
+                    }
 
 
-                    cleaningViewModel
-                        .clearMessages()
+                    /*
+                     * 清掃完了は大きなダイアログで表示
+                     */
+                    if (
+                        success != null &&
+                        (
+                                success.contains(
+                                    "清掃お疲れさまでした"
+                                ) ||
+                                        success.startsWith(
+                                            "清掃完了"
+                                        )
+                                )
+                    ) {
+
+                        cleaningCompleteMessage =
+                            success
+
+                        cleaningViewModel
+                            .clearMessages()
+
+                        return@LaunchedEffect
+                    }
+
+
+                    /*
+                     * 清掃依頼・引受・キャンセルなどは
+                     * 従来どおりToast
+                     */
+                    if (
+                        success != null
+                    ) {
+
+                        Toast
+                            .makeText(
+                                this@MainActivity,
+                                success,
+                                Toast.LENGTH_LONG
+                            )
+                            .show()
+
+                        cleaningViewModel
+                            .clearMessages()
+                    }
                 }
 
 
                 /*
                  * =====================================
-                 * UIで参照できるトイレ一覧
+                 * 清掃完了ダイアログ
+                 * =====================================
+                 */
+                if (
+                    cleaningCompleteMessage != null
+                ) {
+
+                    AlertDialog(
+
+                        onDismissRequest = {
+
+                            cleaningCompleteMessage =
+                                null
+                        },
+
+                        title = {
+
+                            Text(
+                                text =
+                                    "清掃お疲れさまでした！",
+                                modifier =
+                                    Modifier.fillMaxWidth(),
+                                fontSize =
+                                    28.sp,
+                                fontWeight =
+                                    FontWeight.Bold,
+                                textAlign =
+                                    TextAlign.Center
+                            )
+                        },
+
+                        text = {
+
+                            val originalMessage =
+                                cleaningCompleteMessage
+                                    .orEmpty()
+
+                            val earnedPoints =
+                                Regex(
+                                    "(\\d+)\\s*pt"
+                                )
+                                    .find(
+                                        originalMessage
+                                    )
+                                    ?.groupValues
+                                    ?.getOrNull(
+                                        1
+                                    )
+
+                            val rewardText =
+                                if (
+                                    earnedPoints != null
+                                ) {
+
+                                    "＋${earnedPoints}pt\n獲得しました"
+
+                                } else {
+
+                                    originalMessage
+                                        .replace(
+                                            "清掃お疲れさまでした！",
+                                            ""
+                                        )
+                                        .replace(
+                                            "清掃完了！",
+                                            ""
+                                        )
+                                        .trim()
+                                        .ifBlank {
+                                            "清掃が完了しました"
+                                        }
+                                }
+
+                            Text(
+                                text =
+                                    rewardText,
+                                modifier =
+                                    Modifier.fillMaxWidth(),
+                                fontSize =
+                                    30.sp,
+                                fontWeight =
+                                    FontWeight.Bold,
+                                textAlign =
+                                    TextAlign.Center,
+                                lineHeight =
+                                    40.sp
+                            )
+                        },
+
+                        confirmButton = {
+
+                            Button(
+                                onClick = {
+
+                                    cleaningCompleteMessage =
+                                        null
+                                }
+                            ) {
+
+                                Text(
+                                    text =
+                                        "閉じる",
+                                    fontSize =
+                                        18.sp
+                                )
+                            }
+                        }
+                    )
+                }
+
+
+                /*
+                 * =====================================
+                 * UIで使用できるトイレ一覧
                  * =====================================
                  *
-                 * ・現在の地図範囲
-                 * ・清掃依頼などでID指定取得した分
+                 * 優先順位
                  *
-                 * を重複なしでまとめる。
-                 * 地図描画そのものには toilets だけを使う。
+                 * 1. 選択中の完全な詳細データ
+                 * 2. 清掃用に取得した完全データ
+                 * 3. 地図表示用の軽量データ
+                 *
+                 * 同じIDがあった場合は
+                 * 上にある完全データを優先する。
                  */
-                /*
- * =====================================
- * UIで使用できるトイレ一覧
- * =====================================
- *
- * 優先順位
- *
- * 1. 選択中の完全な詳細データ
- * 2. 清掃用に取得した完全データ
- * 3. 地図表示用の軽量データ
- *
- * 同じIDがあった場合は
- * 上にある完全データを優先する。
- */
                 val knownToilets =
-
                     (
                             listOfNotNull(
                                 selectedToilet
@@ -532,15 +715,9 @@ class MainActivity : ComponentActivity() {
 
                 /*
                  * =====================================
-                 * 選択中トイレが変わったら
-                 * 以前の口コミ状態をリセット
+                 * 選択中トイレが変わった
                  * =====================================
                  */
-                /*
- * =====================================
- * 選択中トイレが変わった
- * =====================================
- */
                 LaunchedEffect(
                     selectedToiletId
                 ) {
@@ -623,7 +800,6 @@ class MainActivity : ComponentActivity() {
                                 }
                         )
 
-
                     /*
                      * =====================================
                      * 現在表示範囲の軽量データ更新
@@ -631,7 +807,6 @@ class MainActivity : ComponentActivity() {
                      */
                     toiletViewModel
                         .loadToilets()
-
 
                     /*
                      * =====================================
@@ -645,7 +820,6 @@ class MainActivity : ComponentActivity() {
 
                             toiletViewModel
                                 .loadToiletDetail(
-
                                     toiletId =
                                         toiletId,
 
@@ -885,7 +1059,6 @@ class MainActivity : ComponentActivity() {
                      */
                     onCancelCleaningRequest = {
                             request: CleaningRequest ->
-
 
                         cleaningViewModel
                             .cancelCleaningRequest(
