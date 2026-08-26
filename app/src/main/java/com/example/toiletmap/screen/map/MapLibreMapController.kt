@@ -154,11 +154,18 @@ class MapLibreMapController(
 
     companion object {
 
-        const val TOKYO_METROPOLITAN_GOVERNMENT_LATITUDE =
-            35.6896
+        /*
+         * =====================================
+         * 位置情報が取得できない場合の中心地点
+         *
+         * 東京駅
+         * =====================================
+         */
+        const val TOKYO_STATION_LATITUDE =
+            35.681236
 
-        const val TOKYO_METROPOLITAN_GOVERNMENT_LONGITUDE =
-            139.6917
+        const val TOKYO_STATION_LONGITUDE =
+            139.767125
 
         const val DEFAULT_ZOOM =
             15.0
@@ -462,7 +469,7 @@ class MapLibreMapController(
                  * 位置情報が使えない場合の基準地点として
                  * 東京都庁を表示する。
                  */
-                focusOnTokyoMetropolitanGovernment()
+                focusOnTokyoStation()
 
 
                 /*
@@ -548,11 +555,14 @@ class MapLibreMapController(
 
 
     /*
-     * =====================================
-     * 東京都庁へカメラ移動
-     * =====================================
-     */
-    fun focusOnTokyoMetropolitanGovernment() {
+ * =====================================
+ * 東京駅へカメラ移動
+ *
+ * 位置情報が取得できない場合の
+ * 初期表示地点として使用する。
+ * =====================================
+ */
+    fun focusOnTokyoStation() {
 
         val map =
             mapLibreMap
@@ -569,8 +579,8 @@ class MapLibreMapController(
                 .Builder()
                 .target(
                     LatLng(
-                        TOKYO_METROPOLITAN_GOVERNMENT_LATITUDE,
-                        TOKYO_METROPOLITAN_GOVERNMENT_LONGITUDE
+                        TOKYO_STATION_LATITUDE,
+                        TOKYO_STATION_LONGITUDE
                     )
                 )
                 .zoom(
