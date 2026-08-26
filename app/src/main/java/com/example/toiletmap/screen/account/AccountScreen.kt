@@ -12,95 +12,237 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.example.toiletmap.data.repository.AccountRepository
+import com.example.toiletmap.model.UserProfile
+
+
+/*
+ * アカウント画面内で
+ * どのページを表示しているか
+ */
+private enum class AccountPage {
+
+    PROFILE,
+
+    POINT_EXCHANGE,
+
+    POINT_EXCHANGE_HISTORY
+}
 
 
 @Composable
 fun AccountScreen() {
 
-    /*
-     * null  = Supabaseのログイン状態を確認中
-     * true  = ログイン済み
-     * false = 未ログイン
-     */
     var isLoggedIn by remember {
-        mutableStateOf<Boolean?>(
+
+        mutableStateOf(
+            AccountRepository
+                .isLoggedIn()
+        )
+    }
+
+
+    var page by remember {
+
+        mutableStateOf(
+            AccountPage.PROFILE
+        )
+    }
+
+
+    /*
+     * =========================================
+     * ログイン済み
+     * =========================================
+     */
+    if (isLoggedIn) {
+
+        when (page) {
+
+            /*
+             * =====================================
+             * アカウント
+             * =====================================
+             */
+            AccountPage.PROFILE -> {
+
+                ProfileScreen(
+
+                    onLogout = {
+
+                        isLoggedIn =
+                            false
+
+                        page =
+                            AccountPage.PROFILE
+                    },
+
+                    onOpenPointExchange = {
+
+                        page =
+                            AccountPage.POINT_EXCHANGE
+                    },
+
+                    onOpenPointExchangeHistory = {
+
+                        page =
+                            AccountPage.POINT_EXCHANGE_HISTORY
+                    }
+                )
+            }
+
+
+            /*
+             * =====================================
+             * ポイント交換
+             * =====================================
+             */
+            AccountPage.POINT_EXCHANGE -> {
+
+                PointExchangeAccountPage(
+
+                    onBack = {
+
+                        page =
+                            AccountPage.PROFILE
+                    }
+                )
+            }
+
+
+            /*
+             * =====================================
+             * ポイント交換履歴
+             * =====================================
+             */
+            AccountPage.POINT_EXCHANGE_HISTORY -> {
+
+                PointExchangeHistoryScreen(
+
+                    onBack = {
+
+                        page =
+                            AccountPage.PROFILE
+                    }
+                )
+            }
+        }
+
+    } else {
+
+        /*
+         * =========================================
+         * 未ログイン
+         * =========================================
+         */
+        LoginAndRegisterScreen(
+
+            onLoginSuccess = {
+
+                isLoggedIn =
+                    true
+
+                page =
+                    AccountPage.PROFILE
+            }
+        )
+    }
+}
+
+
+/*
+ * =============================================
+ * ポイント交換画面を開く前に
+ * 最新の清掃報酬ポイントを取得する
+ * =============================================
+ */
+@Composable
+private fun PointExchangeAccountPage(
+    onBack: () -> Unit
+) {
+
+    val user =
+        AccountRepository
+            .getCurrentUser()
+
+
+    var profile by remember(
+        user?.id
+    ) {
+
+        mutableStateOf<UserProfile?>(
             null
         )
     }
 
 
-    // =========================================
-    // アプリ起動後・画面生成時
-    //
-    // Supabaseが端末に保存している
-    // セッションの読み込み完了を待つ
-    // =========================================
+    var loading by remember(
+        user?.id
+    ) {
 
-    LaunchedEffect(Unit) {
-
-        isLoggedIn =
-            AccountRepository
-                .restoreLoginState()
+        mutableStateOf(
+            true
+        )
     }
 
 
-    // =========================================
-    // 状態によって画面を切り替える
-    // =========================================
+    LaunchedEffect(
+        user?.id
+    ) {
 
-    when (isLoggedIn) {
+        loading =
+            true
 
 
-        // -------------------------------------
-        // Supabase初期化中
-        // -------------------------------------
+        try {
 
-        null -> {
+            if (user != null) {
 
-            Box(
-                modifier =
-                    Modifier.fillMaxSize(),
-
-                contentAlignment =
-                    Alignment.Center
-            ) {
-
-                CircularProgressIndicator()
+                profile =
+                    AccountRepository
+                        .loadProfile(
+                            user.id
+                        )
             }
+
+        } catch (e: Exception) {
+
+            e.printStackTrace()
+
+        } finally {
+
+            loading =
+                false
+        }
+    }
+
+
+    if (loading) {
+
+        Box(
+            modifier =
+                Modifier.fillMaxSize(),
+            contentAlignment =
+                Alignment.Center
+        ) {
+
+            CircularProgressIndicator()
         }
 
+    } else {
 
-        // -------------------------------------
-        // ログイン済み
-        // -------------------------------------
+        PointExchangeScreen(
 
-        true -> {
+            /*
+             * 商品交換に使用するのは
+             * 清掃報酬ポイント
+             */
+            currentPoints =
+                profile
+                    ?.rewardPoints
+                    ?: 0,
 
-            ProfileScreen(
-
-                onLogout = {
-
-                    isLoggedIn =
-                        false
-                }
-            )
-        }
-
-
-        // -------------------------------------
-        // 未ログイン
-        // -------------------------------------
-
-        false -> {
-
-            LoginAndRegisterScreen(
-
-                onLoginSuccess = {
-
-                    isLoggedIn =
-                        true
-                }
-            )
-        }
+            onBack =
+                onBack
+        )
     }
 }

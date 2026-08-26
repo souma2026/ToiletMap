@@ -1,7 +1,6 @@
 package com.example.toiletmap.screen.account
 
 import android.net.Uri
-import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,38 +12,46 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.toiletmap.data.repository.AccountRepository
-import com.example.toiletmap.model.PointTransaction
-import com.example.toiletmap.model.ToiletEditHistory
-import com.example.toiletmap.model.UserProfile
 import com.example.toiletmap.screen.account.components.HistorySection
-import com.example.toiletmap.screen.account.components.PointCard
 import com.example.toiletmap.screen.account.components.PointHistorySection
+import com.example.toiletmap.screen.account.components.PointInfoDialog
 import com.example.toiletmap.screen.account.components.ProfileImageSection
 import com.example.toiletmap.screen.account.components.ProfileInfoCard
+import com.example.toiletmap.screen.account.components.ProfileLogoutButton
+import com.example.toiletmap.screen.account.components.ProfileMessage
+import com.example.toiletmap.screen.account.components.ProfilePointSection
 import kotlinx.coroutines.launch
 
 
 @Composable
 fun ProfileScreen(
-    onLogout: () -> Unit
+
+    onLogout: () -> Unit,
+
+    /*
+     * nakazono側
+     * ポイント交換画面へ移動
+     */
+    onOpenPointExchange: () -> Unit,
+
+    /*
+     * nakazono側
+     * ポイント交換履歴へ移動
+     */
+    onOpenPointExchangeHistory: () -> Unit
 ) {
 
     val context =
@@ -60,6 +67,11 @@ fun ProfileScreen(
             .getCurrentUser()
 
 
+    /*
+     * =========================================
+     * 未ログイン
+     * =========================================
+     */
     if (currentUser == null) {
 
         LaunchedEffect(Unit) {
@@ -75,204 +87,61 @@ fun ProfileScreen(
         currentUser.id
 
 
-    // =========================================
-    // State
-    // =========================================
-
-    var profile by remember {
-
-        mutableStateOf<UserProfile?>(
-            null
+    /*
+     * =========================================
+     * State
+     * =========================================
+     */
+    val state =
+        rememberProfileState(
+            userId
         )
-    }
+
+
+    val actions =
+        remember(
+            userId,
+            state
+        ) {
+
+            ProfileActions(
+                userId =
+                    userId,
+
+                state =
+                    state
+            )
+        }
 
 
     /*
-     * 写真を選択した直後に表示するURI。
+     * =========================================
+     * 初回読み込み
+     * =========================================
      *
-     * 画面移動後は消えてよい。
-     * 次回はSupabaseに保存されたavatarUrlから
-     * 復元する。
+     * ProfileActions側で
+     *
+     * ・毎日の清掃依頼ポイント更新
+     * ・プロフィール
+     * ・ポイント履歴
+     * ・トイレ編集履歴
+     *
+     * を取得する。
      */
-    var localAvatarUri by remember {
-
-        mutableStateOf<Uri?>(
-            null
-        )
-    }
-
-
-    /*
-     * Supabaseから取得した
-     * 実際に表示するプロフィール画像URL。
-     */
-    var avatarDisplayUrl by remember {
-
-        mutableStateOf<String?>(
-            null
-        )
-    }
-
-
-    var history by remember {
-
-        mutableStateOf<List<ToiletEditHistory>>(
-            emptyList()
-        )
-    }
-
-
-    var pointTransactions by remember {
-
-        mutableStateOf<List<PointTransaction>>(
-            emptyList()
-        )
-    }
-
-
-    var editingName by remember {
-
-        mutableStateOf("")
-    }
-
-
-    var editing by remember {
-
-        mutableStateOf(false)
-    }
-
-
-    var showHistory by remember {
-
-        mutableStateOf(false)
-    }
-
-
-    var showPointHistory by remember {
-
-        mutableStateOf(false)
-    }
-
-
-    var loading by remember {
-
-        mutableStateOf(true)
-    }
-
-
-    var uploading by remember {
-
-        mutableStateOf(false)
-    }
-
-
-    var message by remember {
-
-        mutableStateOf("")
-    }
-
-
-    // =========================================
-    // プロフィール取得
-    // =========================================
-
-    suspend fun reloadProfile() {
-
-        val loadedProfile =
-            AccountRepository
-                .loadProfile(
-                    userId
-                )
-
-
-        profile =
-            loadedProfile
-
-
-        editingName =
-            loadedProfile.username
-
-
-        /*
-         * ここが写真保持で重要。
-         *
-         * 画面移動して戻った場合でも、
-         * profiles.avatar_urlから再取得する。
-         */
-        avatarDisplayUrl =
-            AccountRepository
-                .getAvatarDisplayUrl(
-                    loadedProfile.avatarUrl
-                )
-    }
-
-
-    // =========================================
-    // 初回読み込み
-    // =========================================
-
     LaunchedEffect(
         userId
     ) {
 
-        try {
-
-            /*
-             * 第6段階:
-             * アカウント画面を開いた時点で、
-             * 本日の清掃依頼ポイントをSupabase側で更新する。
-             *
-             * 同じ日に何度呼んでも1回分しか処理されない。
-             */
-            AccountRepository
-                .refreshDailyRequestPoints()
-
-
-            /*
-             * 更新後の残高を取得する。
-             */
-            reloadProfile()
-
-
-            pointTransactions =
-                AccountRepository
-                    .loadPointTransactions(
-                        userId
-                    )
-
-
-            history =
-                AccountRepository
-                    .loadHistory(
-                        userId
-                    )
-
-
-        } catch (e: Exception) {
-
-            Log.e(
-                "AccountProfile",
-                "Profile load failed",
-                e
-            )
-
-
-            message =
-                "プロフィール取得に失敗しました"
-
-
-        } finally {
-
-            loading =
-                false
-        }
+        actions
+            .loadInitialData()
     }
 
 
-    // =========================================
-    // 写真選択
-    // =========================================
-
+    /*
+     * =========================================
+     * プロフィール写真選択
+     * =========================================
+     */
     val photoPicker =
         rememberLauncherForActivityResult(
 
@@ -283,140 +152,35 @@ fun ProfileScreen(
         ) { uri: Uri? ->
 
 
-            if (uri == null) {
+            if (uri != null) {
 
-                return@rememberLauncherForActivityResult
-            }
+                scope.launch {
 
+                    actions
+                        .changeAvatar(
+                            context =
+                                context,
 
-            /*
-             * 選択直後はローカル画像を表示
-             */
-            localAvatarUri =
-                uri
-
-
-            scope.launch {
-
-                uploading =
-                    true
-
-                message =
-                    ""
-
-
-                try {
-
-                    val bytes =
-                        context
-                            .contentResolver
-                            .openInputStream(
+                            uri =
                                 uri
-                            )
-                            ?.use {
-
-                                it.readBytes()
-                            }
-
-
-                    if (bytes == null) {
-
-                        localAvatarUri =
-                            null
-
-                        message =
-                            "写真を読み込めませんでした"
-
-                        return@launch
-                    }
-
-
-                    /*
-                     * Supabaseへアップロード
-                     */
-                    val newAvatarUrl =
-                        AccountRepository
-                            .uploadAvatar(
-                                userId =
-                                    userId,
-
-                                imageBytes =
-                                    bytes
-                            )
-
-
-                    /*
-                     * 現在のprofileも更新
-                     */
-                    profile =
-                        profile?.copy(
-                            avatarUrl =
-                                newAvatarUrl
                         )
-
-
-                    /*
-                     * Supabase側の表示URLも更新
-                     */
-                    avatarDisplayUrl =
-                        newAvatarUrl
-
-
-                    /*
-                     * localAvatarUri は消さない。
-                     *
-                     * 現在の画面では端末側の写真を
-                     * 確実に表示する。
-                     *
-                     * 一度別画面へ移動すると
-                     * localAvatarUriは破棄され、
-                     * avatarDisplayUrlが使われる。
-                     */
-                    message =
-                        "写真を変更しました"
-
-
-                    Log.d(
-                        "AccountPhoto",
-                        "Photo upload successful: $newAvatarUrl"
-                    )
-
-
-                } catch (e: Exception) {
-
-                    Log.e(
-                        "AccountPhoto",
-                        "Photo upload failed",
-                        e
-                    )
-
-
-                    localAvatarUri =
-                        null
-
-
-                    message =
-                        "写真の変更に失敗しました"
-
-
-                } finally {
-
-                    uploading =
-                        false
                 }
             }
         }
 
 
-    // =========================================
-    // UI
-    // =========================================
-
+    /*
+     * =========================================
+     * UI
+     * =========================================
+     */
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(
-                MaterialTheme.colorScheme.background
+                MaterialTheme
+                    .colorScheme
+                    .background
             )
             .verticalScroll(
                 rememberScrollState()
@@ -432,7 +196,9 @@ fun ProfileScreen(
                 "アカウント",
 
             style =
-                MaterialTheme.typography.headlineMedium,
+                MaterialTheme
+                    .typography
+                    .headlineMedium,
 
             modifier = Modifier
                 .fillMaxWidth()
@@ -446,28 +212,37 @@ fun ProfileScreen(
 
         Spacer(
             modifier =
-                Modifier.height(30.dp)
+                Modifier.height(
+                    30.dp
+                )
         )
 
 
-        if (loading) {
+        /*
+         * =====================================
+         * 読み込み
+         * =====================================
+         */
+        if (state.loading) {
 
             CircularProgressIndicator()
 
         } else {
 
 
-            // =====================================
-            // プロフィール写真
-            // =====================================
-
+            /*
+             * =====================================
+             * プロフィール画像
+             * =====================================
+             */
             ProfileImageSection(
+
                 avatarModel =
-                    localAvatarUri
-                        ?: avatarDisplayUrl,
+                    state.localAvatarUri
+                        ?: state.avatarDisplayUrl,
 
                 uploading =
-                    uploading,
+                    state.uploading,
 
                 onChangePhoto = {
 
@@ -489,17 +264,22 @@ fun ProfileScreen(
 
             Spacer(
                 modifier =
-                    Modifier.height(28.dp)
+                    Modifier.height(
+                        28.dp
+                    )
             )
 
 
-            // =====================================
-            // ユーザー情報
-            // =====================================
-
+            /*
+             * =====================================
+             * ユーザー情報
+             * =====================================
+             */
             ProfileInfoCard(
+
                 userName =
-                    profile?.username
+                    state.profile
+                        ?.username
                         ?: "",
 
                 email =
@@ -507,392 +287,240 @@ fun ProfileScreen(
                         ?: "",
 
                 editing =
-                    editing,
+                    state.editing,
 
                 editingName =
-                    editingName,
+                    state.editingName,
 
-                onEditingNameChange = {
+                onEditingNameChange =
+                    actions::changeEditingName,
 
-                    editingName =
-                        it
-                },
-
-                onStartEdit = {
-
-                    editingName =
-                        profile?.username
-                            ?: ""
-
-                    editing =
-                        true
-                },
+                onStartEdit =
+                    actions::startEditingName,
 
                 onSave = {
 
-                    if (editingName.isBlank()) {
+                    scope.launch {
 
-                        message =
-                            "ユーザー名を入力してください"
-
-                    } else {
-
-                        scope.launch {
-
-                            try {
-
-                                val newName =
-                                    editingName
-                                        .trim()
-
-
-                                AccountRepository
-                                    .updateUserName(
-                                        userId =
-                                            userId,
-
-                                        userName =
-                                            newName
-                                    )
-
-
-                                profile =
-                                    profile?.copy(
-                                        username =
-                                            newName
-                                    )
-
-
-                                editing =
-                                    false
-
-
-                                message =
-                                    "ユーザー名を変更しました"
-
-
-                            } catch (e: Exception) {
-
-                                Log.e(
-                                    "AccountProfile",
-                                    "Username update failed",
-                                    e
-                                )
-
-
-                                message =
-                                    "ユーザー名変更に失敗しました"
-                            }
-                        }
+                        actions
+                            .saveUserName()
                     }
                 },
 
-                onCancel = {
-
-                    editingName =
-                        profile?.username
-                            ?: ""
-
-                    editing =
-                        false
-                },
+                onCancel =
+                    actions::cancelEditingName,
 
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(
-                        horizontal = 24.dp
+                        horizontal =
+                            24.dp
                     )
             )
 
 
             Spacer(
                 modifier =
-                    Modifier.height(18.dp)
+                    Modifier.height(
+                        18.dp
+                    )
             )
 
 
             /*
              * =====================================
-             * 清掃依頼ポイント
+             * ポイント
              * =====================================
              *
-             * 第6段階で追加。
-             * 毎日、日本時間の0:00を基準に10ptまで回復し、
-             * 清掃依頼1件につき3pt消費する。
+             * main側の変更に合わせ、
+             * 清掃依頼ポイントは
+             * requestPointsを使用する。
+             *
+             * nakazono側の
+             * ポイント交換・交換履歴ボタンも残す。
              */
-            PointCard(
-                points =
-                    profile?.requestPoints
+            ProfilePointSection(
+
+                requestPoints =
+                    state.profile
+                        ?.requestPoints
                         ?: 0,
 
-                title =
-                    "清掃依頼ポイント",
+                rewardPoints =
+                    state.profile
+                        ?.rewardPoints
+                        ?: 0,
 
-                supportingText =
-                    "毎日10ptまで回復・清掃依頼1件につき3pt消費",
+                onInfoClick =
+                    actions::openPointInfo,
+
+                onOpenPointExchange =
+                    onOpenPointExchange,
+
+                onOpenPointExchangeHistory =
+                    onOpenPointExchangeHistory,
 
                 modifier =
                     Modifier.padding(
-                        horizontal = 24.dp
+                        horizontal =
+                            24.dp
                     )
             )
 
 
             Spacer(
                 modifier =
-                    Modifier.height(12.dp)
+                    Modifier.height(
+                        28.dp
+                    )
             )
 
 
             /*
              * =====================================
-             * 清掃報酬ポイント
+             * ポイント履歴
              * =====================================
              *
-             * 第5段階で追加。
-             * 清掃完了時にSupabase RPCから安全に加算される。
+             * origin/main側の機能。
              */
-            PointCard(
-                points =
-                    profile?.rewardPoints
-                        ?: 0,
-
-                title =
-                    "清掃報酬ポイント",
-
-                supportingText =
-                    "清掃を完了すると獲得できます",
-
-                modifier =
-                    Modifier.padding(
-                        horizontal = 24.dp
-                    )
-            )
-
-
-            Spacer(
-                modifier =
-                    Modifier.height(28.dp)
-            )
-
-
-            // =====================================
-            // ポイント履歴
-            // =====================================
-
             PointHistorySection(
+
                 transactions =
-                    pointTransactions,
+                    state.pointTransactions,
 
                 showHistory =
-                    showPointHistory,
+                    state.showPointHistory,
 
                 onToggleHistory = {
 
-                    val newShowPointHistory =
-                        !showPointHistory
+                    scope.launch {
 
-
-                    showPointHistory =
-                        newShowPointHistory
-
-
-                    if (newShowPointHistory) {
-
-                        scope.launch {
-
-                            try {
-
-                                pointTransactions =
-                                    AccountRepository
-                                        .loadPointTransactions(
-                                            userId
-                                        )
-
-                            } catch (e: Exception) {
-
-                                Log.e(
-                                    "AccountPointHistory",
-                                    "Point history load failed",
-                                    e
-                                )
-
-
-                                message =
-                                    "ポイント履歴の取得に失敗しました"
-                            }
-                        }
+                        actions
+                            .togglePointHistory()
                     }
                 },
 
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(
-                        horizontal = 24.dp
+                        horizontal =
+                            24.dp
                     )
             )
 
 
             Spacer(
                 modifier =
-                    Modifier.height(28.dp)
+                    Modifier.height(
+                        28.dp
+                    )
             )
 
 
-            // =====================================
-            // トイレ編集履歴
-            // =====================================
-
+            /*
+             * =====================================
+             * トイレ編集履歴
+             * =====================================
+             */
             HistorySection(
+
                 history =
-                    history,
+                    state.history,
 
                 showHistory =
-                    showHistory,
+                    state.showHistory,
 
                 onToggleHistory = {
 
-                    val newShowHistory =
-                        !showHistory
+                    scope.launch {
 
-
-                    showHistory =
-                        newShowHistory
-
-
-                    if (newShowHistory) {
-
-                        scope.launch {
-
-                            try {
-
-                                history =
-                                    AccountRepository
-                                        .loadHistory(
-                                            userId
-                                        )
-
-
-                            } catch (e: Exception) {
-
-                                Log.e(
-                                    "AccountHistory",
-                                    "History load failed",
-                                    e
-                                )
-
-
-                                message =
-                                    "履歴取得に失敗しました"
-                            }
-                        }
+                        actions
+                            .toggleHistory()
                     }
                 },
 
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(
-                        horizontal = 24.dp
+                        horizontal =
+                            24.dp
                     )
             )
 
 
-            // =====================================
-            // メッセージ
-            // =====================================
-
-            if (message.isNotBlank()) {
+            /*
+             * =====================================
+             * メッセージ
+             * =====================================
+             */
+            if (
+                state.message.isNotBlank()
+            ) {
 
                 Spacer(
                     modifier =
-                        Modifier.height(20.dp)
+                        Modifier.height(
+                            20.dp
+                        )
                 )
 
 
-                Text(
-                    text =
-                        message,
-
-                    modifier =
-                        Modifier.padding(
-                            horizontal = 24.dp
-                        ),
-
-                    color =
-                        if (
-                            "失敗" in message ||
-                            "できません" in message
-                        ) {
-
-                            MaterialTheme.colorScheme.error
-
-                        } else {
-
-                            MaterialTheme.colorScheme.primary
-                        }
+                ProfileMessage(
+                    message =
+                        state.message
                 )
             }
 
 
             Spacer(
                 modifier =
-                    Modifier.height(30.dp)
+                    Modifier.height(
+                        30.dp
+                    )
             )
 
 
-            // =====================================
-            // ログアウト
-            // =====================================
-
-            OutlinedButton(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = 24.dp
-                    ),
-
-                shape =
-                    RoundedCornerShape(14.dp),
+            /*
+             * =====================================
+             * ログアウト
+             * =====================================
+             */
+            ProfileLogoutButton(
 
                 onClick = {
 
                     scope.launch {
 
-                        try {
-
-                            AccountRepository
-                                .signOut()
-
-
-                            onLogout()
-
-
-                        } catch (e: Exception) {
-
-                            Log.e(
-                                "AccountAuth",
-                                "Logout failed",
-                                e
+                        actions
+                            .logout(
+                                onLogout
                             )
-
-
-                            message =
-                                "ログアウトに失敗しました"
-                        }
                     }
                 }
-            ) {
-
-                Text(
-                    "ログアウト"
-                )
-            }
+            )
 
 
             Spacer(
                 modifier =
-                    Modifier.height(50.dp)
+                    Modifier.height(
+                        50.dp
+                    )
             )
         }
     }
+
+
+    /*
+     * =========================================
+     * ポイント説明
+     * =========================================
+     */
+    PointInfoDialog(
+
+        visible =
+            state.showPointInfo,
+
+        onDismiss =
+            actions::closePointInfo
+    )
 }
