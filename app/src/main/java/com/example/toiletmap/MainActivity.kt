@@ -94,13 +94,13 @@ class MainActivity : ComponentActivity() {
             } else {
 
                 mapController
-                    .focusOnTokyoMetropolitanGovernment()
+                    .focusOnTokyoStation()
 
 
                 Toast
                     .makeText(
                         this,
-                        "位置情報を使用できないため東京都庁を表示します",
+                        "位置情報を使用できないため東京駅を表示します",
                         Toast.LENGTH_LONG
                     )
                     .show()
@@ -129,7 +129,7 @@ class MainActivity : ComponentActivity() {
      * 地図範囲取得開始済みか
      * =====================================
      *
-     * 初期位置が確定する前に東京都庁周辺を取得し、
+     * 初期位置が確定する前に東京駅周辺を取得し、
      * 直後に現在地周辺をもう一度取得する無駄を防ぐ。
      */
     private var viewportLoadingStarted =
@@ -204,7 +204,7 @@ class MainActivity : ComponentActivity() {
          * → 現在地取得を試す
          *
          * 権限なし / 位置取得失敗:
-         * → 東京都庁
+         * → 東京駅
          *
          * 初期位置が確定してから、
          * 表示範囲のトイレ取得を開始する。
@@ -1040,7 +1040,7 @@ class MainActivity : ComponentActivity() {
      * すでに権限がある場合だけ現在地取得を試す。
      *
      * 権限がない、位置情報OFF、取得できない場合は
-     * 東京都庁を使用する。
+     * 東京駅を使用する。
      */
     private fun focusInitialMapLocation() {
 
@@ -1073,7 +1073,7 @@ class MainActivity : ComponentActivity() {
                     onError = {
 
                         mapController
-                            .focusOnTokyoMetropolitanGovernment()
+                            .focusOnTokyoStation()
 
                         startViewportLoading()
                     }
@@ -1082,7 +1082,7 @@ class MainActivity : ComponentActivity() {
         } else {
 
             mapController
-                .focusOnTokyoMetropolitanGovernment()
+                .focusOnTokyoStation()
 
             startViewportLoading()
         }
