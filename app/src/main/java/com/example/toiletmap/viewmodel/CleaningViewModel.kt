@@ -11,20 +11,32 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.hours
 
 
 class CleaningViewModel : ViewModel() {
 
     companion object {
 
-        private const val AUTO_REFRESH_INTERVAL_MS =
-            60 * 60 * 1000L
+        /**
+         * 清掃依頼を自動更新する間隔。
+         */
+        private val AUTO_REFRESH_INTERVAL =
+            1.hours
     }
 
+
+    // =========================================================
+    // データ操作
+    // =========================================================
 
     private val repository =
         CleaningRepository()
 
+
+    // =========================================================
+    // 清掃依頼一覧
+    // =========================================================
 
     private val _requests =
         MutableStateFlow<List<CleaningRequest>>(
@@ -35,6 +47,10 @@ class CleaningViewModel : ViewModel() {
         _requests.asStateFlow()
 
 
+    // =========================================================
+    // 現在ログインしているユーザー
+    // =========================================================
+
     private val _currentUserId =
         MutableStateFlow<String?>(
             null
@@ -43,6 +59,10 @@ class CleaningViewModel : ViewModel() {
     val currentUserId: StateFlow<String?> =
         _currentUserId.asStateFlow()
 
+
+    // =========================================================
+    // 一覧読み込み中
+    // =========================================================
 
     private val _isLoading =
         MutableStateFlow(
@@ -53,6 +73,10 @@ class CleaningViewModel : ViewModel() {
         _isLoading.asStateFlow()
 
 
+    // =========================================================
+    // 現在処理している清掃操作
+    // =========================================================
+
     private val _actionRequestId =
         MutableStateFlow<String?>(
             null
@@ -61,6 +85,10 @@ class CleaningViewModel : ViewModel() {
     val actionRequestId: StateFlow<String?> =
         _actionRequestId.asStateFlow()
 
+
+    // =========================================================
+    // エラーメッセージ
+    // =========================================================
 
     private val _errorMessage =
         MutableStateFlow<String?>(
@@ -71,6 +99,10 @@ class CleaningViewModel : ViewModel() {
         _errorMessage.asStateFlow()
 
 
+    // =========================================================
+    // 成功メッセージ
+    // =========================================================
+
     private val _successMessage =
         MutableStateFlow<String?>(
             null
@@ -80,35 +112,48 @@ class CleaningViewModel : ViewModel() {
         _successMessage.asStateFlow()
 
 
+    // =========================================================
+    // 自動更新処理
+    // =========================================================
+
     private var autoRefreshJob: Job? =
         null
 
 
+    // =========================================================
+    // 初期処理
+    // =========================================================
+
     init {
 
         loadRequests()
+
         startAutoRefresh()
     }
 
 
+    // =========================================================
+    // 清掃依頼一覧を取得
+    // =========================================================
+
     fun loadRequests() {
 
-        /*
-         * init直後とMap画面表示時の再読込が重なっても、
-         * 同じ通信を二重に起動しない。
-         */
         if (_isLoading.value) {
             return
         }
 
+
         _isLoading.value =
             true
+
 
         viewModelScope.launch {
 
             try {
 
-                refresh()
+                refresh(
+                    showError = true
+                )
 
             } finally {
 
@@ -119,222 +164,208 @@ class CleaningViewModel : ViewModel() {
     }
 
 
+    // =========================================================
+    // 清掃を依頼する
+    // =========================================================
+
     fun requestCleaning(
         toiletId: String
     ) {
 
-        if (_actionRequestId.value != null) {
-            return
-        }
+        runCleaningAction(
+            actionId = toiletId,
+            failureMessage =
+                "清掃依頼に失敗しました",
+            successMessage = {
+                "清掃依頼を出しました"
+            },
+            refreshFailureMessage =
+                "清掃依頼は完了しました。表示を更新できなかったため、画面を更新してください"
+        ) {
 
-        viewModelScope.launch {
-
-            _actionRequestId.value =
+            repository.requestCleaning(
                 toiletId
-
-            try {
-
-                repository.requestCleaning(
-                    toiletId
-                )
-
-                val refreshed =
-                    refresh()
-
-                if (refreshed) {
-
-                    _errorMessage.value =
-                        null
-
-                    _successMessage.value =
-                        "清掃依頼を出しました"
-
-                } else {
-
-                    _successMessage.value =
-                        "操作は完了しました。表示を更新できなかったため、更新ボタンを押してください"
-                }
-
-            } catch (
-                e: Exception
-            ) {
-
-                e.printStackTrace()
-
-                _errorMessage.value =
-                    e.message
-                        ?: "清掃依頼に失敗しました"
-
-            } finally {
-
-                _actionRequestId.value =
-                    null
-            }
+            )
         }
     }
 
+
+    // =========================================================
+    // 清掃を引き受ける
+    // =========================================================
 
     fun acceptCleaning(
         requestId: String
     ) {
 
-        if (_actionRequestId.value != null) {
-            return
-        }
+        runCleaningAction(
+            actionId = requestId,
+            failureMessage =
+                "清掃の引き受けに失敗しました",
+            successMessage = {
+                "清掃を引き受けました"
+            },
+            refreshFailureMessage =
+                "清掃の引き受けは完了しました。表示を更新できなかったため、画面を更新してください"
+        ) {
 
-        viewModelScope.launch {
-
-            _actionRequestId.value =
+            repository.acceptCleaning(
                 requestId
-
-            try {
-
-                repository.acceptCleaning(
-                    requestId
-                )
-
-                val refreshed =
-                    refresh()
-
-                if (refreshed) {
-
-                    _errorMessage.value =
-                        null
-
-                    _successMessage.value =
-                        "清掃を引き受けました"
-
-                } else {
-
-                    _successMessage.value =
-                        "操作は完了しました。表示を更新できなかったため、更新ボタンを押してください"
-                }
-
-            } catch (
-                e: Exception
-            ) {
-
-                e.printStackTrace()
-
-                _errorMessage.value =
-                    e.message
-                        ?: "清掃の引き受けに失敗しました"
-
-            } finally {
-
-                _actionRequestId.value =
-                    null
-            }
+            )
         }
     }
 
+
+    // =========================================================
+    // 清掃完了
+    // =========================================================
 
     fun completeCleaning(
         requestId: String
     ) {
 
-        if (_actionRequestId.value != null) {
-            return
-        }
+        val earnedRewardPoints =
+            _requests.value
+                .firstOrNull { request ->
 
-        viewModelScope.launch {
+                    request.id ==
+                            requestId
 
-            _actionRequestId.value =
-                requestId
+                }
+                ?.rewardPoints
+                ?: 0
 
-            /*
-             * 完了前の依頼情報から、今回付与される報酬を保持する。
-             * RPC成功後はCOMPLETEDになり、active一覧から消えるため、
-             * 先に取得しておく。
-             */
-            val earnedRewardPoints =
-                _requests.value
-                    .firstOrNull { request ->
-                        request.id == requestId
-                    }
-                    ?.rewardPoints
-                    ?: 0
 
-            try {
+        runCleaningAction(
+            actionId = requestId,
+            failureMessage =
+                "清掃完了の記録に失敗しました",
+            successMessage = {
 
-                repository.completeCleaning(
-                    requestId
-                )
+                if (earnedRewardPoints > 0) {
 
-                val refreshed =
-                    refresh()
-
-                if (refreshed) {
-
-                    _errorMessage.value =
-                        null
-
-                    _successMessage.value =
-                        if (earnedRewardPoints > 0) {
-                            "清掃完了！${earnedRewardPoints}ptを獲得しました"
-                        } else {
-                            "清掃完了を記録しました"
-                        }
+                    "清掃完了！${earnedRewardPoints}ptを獲得しました"
 
                 } else {
 
-                    _successMessage.value =
-                        "清掃完了は記録されました。表示を更新できなかったため、更新ボタンを押してください"
+                    "清掃完了を記録しました"
                 }
+            },
+            refreshFailureMessage =
+                "清掃完了は記録されました。表示を更新できなかったため、画面を更新してください"
+        ) {
 
-            } catch (
-                e: Exception
-            ) {
-
-                e.printStackTrace()
-
-                _errorMessage.value =
-                    e.message
-                        ?: "清掃完了の記録に失敗しました"
-
-            } finally {
-
-                _actionRequestId.value =
-                    null
-            }
+            repository.completeCleaning(
+                requestId
+            )
         }
     }
 
+
+    // =========================================================
+    // 清掃担当をキャンセル
+    // =========================================================
 
     fun cancelCleaning(
         requestId: String
     ) {
 
+        runCleaningAction(
+            actionId = requestId,
+            failureMessage =
+                "清掃担当のキャンセルに失敗しました",
+            successMessage = {
+                "清掃担当をキャンセルしました"
+            },
+            refreshFailureMessage =
+                "キャンセルは完了しました。表示を更新できなかったため、画面を更新してください"
+        ) {
+
+            repository.cancelCleaning(
+                requestId
+            )
+        }
+    }
+
+
+    // =========================================================
+    // 清掃操作共通処理
+    // =========================================================
+
+    private fun runCleaningAction(
+        actionId: String,
+        failureMessage: String,
+        successMessage: () -> String,
+        refreshFailureMessage: String,
+        action: suspend () -> Unit
+    ) {
+
+        /*
+         * すでに別の清掃操作を実行中の場合、
+         * 無反応にせず理由を表示する。
+         */
         if (_actionRequestId.value != null) {
+
+            _successMessage.value =
+                null
+
+            _errorMessage.value =
+                "別の清掃操作を処理中です"
+
             return
         }
 
-        viewModelScope.launch {
 
-            _actionRequestId.value =
-                requestId
+        /*
+         * 非同期処理開始前に処理中状態にすることで、
+         * ボタン連打による二重実行を防止する。
+         */
+        _actionRequestId.value =
+            actionId
+
+
+        _errorMessage.value =
+            null
+
+        _successMessage.value =
+            null
+
+
+        viewModelScope.launch {
 
             try {
 
-                repository.cancelCleaning(
-                    requestId
-                )
+                // サーバー側の処理を実行
+                action()
 
+
+                /*
+                 * 操作自体が成功した後に
+                 * 最新状態を再取得する。
+                 */
                 val refreshed =
-                    refresh()
+                    refresh(
+                        showError = false
+                    )
+
+
+                _errorMessage.value =
+                    null
+
 
                 if (refreshed) {
 
-                    _errorMessage.value =
-                        null
-
                     _successMessage.value =
-                        "清掃担当をキャンセルしました"
+                        successMessage()
 
                 } else {
 
+                    /*
+                     * 操作自体は成功しているため、
+                     * 再取得だけ失敗したことを伝える。
+                     */
                     _successMessage.value =
-                        "操作は完了しました。表示を更新できなかったため、更新ボタンを押してください"
+                        refreshFailureMessage
                 }
 
             } catch (
@@ -343,18 +374,36 @@ class CleaningViewModel : ViewModel() {
 
                 e.printStackTrace()
 
+
+                _successMessage.value =
+                    null
+
+
                 _errorMessage.value =
                     e.message
-                        ?: "清掃担当のキャンセルに失敗しました"
+                        ?.takeIf {
+                            it.isNotBlank()
+                        }
+                        ?: failureMessage
 
             } finally {
 
-                _actionRequestId.value =
-                    null
+                if (
+                    _actionRequestId.value ==
+                    actionId
+                ) {
+
+                    _actionRequestId.value =
+                        null
+                }
             }
         }
     }
 
+
+    // =========================================================
+    // メッセージを消す
+    // =========================================================
 
     fun clearMessages() {
 
@@ -366,20 +415,28 @@ class CleaningViewModel : ViewModel() {
     }
 
 
-    private suspend fun refresh(): Boolean {
+    // =========================================================
+    // 最新状態を取得
+    // =========================================================
 
-        try {
+    private suspend fun refresh(
+        showError: Boolean = true
+    ): Boolean {
 
+        return try {
+
+            // ログインユーザーを取得
             val userId =
                 repository.getCurrentUserId()
+
 
             _currentUserId.value =
                 userId
 
+
             /*
-             * cleaning_requests は認証済みユーザーだけが参照できる。
-             * 未ログイン時は通信せず空一覧にすることで、
-             * 起動直後に不要なRLSエラーを表示しない。
+             * ログイン済みの場合のみ
+             * 清掃依頼一覧を取得する。
              */
             _requests.value =
                 if (userId == null) {
@@ -391,10 +448,15 @@ class CleaningViewModel : ViewModel() {
                     repository.loadActiveRequests()
                 }
 
-            _errorMessage.value =
-                null
 
-            return true
+            if (showError) {
+
+                _errorMessage.value =
+                    null
+            }
+
+
+            true
 
         } catch (
             e: Exception
@@ -402,19 +464,37 @@ class CleaningViewModel : ViewModel() {
 
             e.printStackTrace()
 
-            _errorMessage.value =
-                "清掃依頼の取得に失敗しました"
 
-            return false
+            if (showError) {
+
+                _errorMessage.value =
+                    e.message
+                        ?.takeIf {
+                            it.isNotBlank()
+                        }
+                        ?: "清掃依頼の取得に失敗しました"
+            }
+
+
+            false
         }
     }
 
 
+    // =========================================================
+    // 自動更新開始
+    // =========================================================
+
     private fun startAutoRefresh() {
 
-        if (autoRefreshJob?.isActive == true) {
+        if (
+            autoRefreshJob?.isActive ==
+            true
+        ) {
+
             return
         }
+
 
         autoRefreshJob =
             viewModelScope.launch {
@@ -422,22 +502,35 @@ class CleaningViewModel : ViewModel() {
                 while (isActive) {
 
                     delay(
-                        AUTO_REFRESH_INTERVAL_MS
+                        AUTO_REFRESH_INTERVAL
                     )
 
-                    refresh()
+
+                    /*
+                     * 自動更新では、
+                     * 更新失敗時に突然エラー表示を出さない。
+                     */
+                    refresh(
+                        showError = false
+                    )
                 }
             }
     }
 
+
+    // =========================================================
+    // ViewModel破棄
+    // =========================================================
 
     override fun onCleared() {
 
         autoRefreshJob
             ?.cancel()
 
+
         autoRefreshJob =
             null
+
 
         super.onCleared()
     }

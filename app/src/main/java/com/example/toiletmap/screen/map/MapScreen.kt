@@ -74,7 +74,6 @@ import androidx.compose.ui.zIndex
 import com.example.toiletmap.model.CleaningRequest
 import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.model.Toilet
-import com.example.toiletmap.data.repository.ToiletRepository
 import com.example.toiletmap.screen.cleaning.formatCleaningDateTime
 import kotlinx.coroutines.delay
 import org.maplibre.android.camera.CameraPosition
@@ -336,6 +335,7 @@ fun MapScreen(
          * =====================================
          */
         FinderHeader(
+            toilets = toilets,
 
             onToiletSelected =
                 onSearchToiletSelected,
@@ -344,7 +344,6 @@ fun MapScreen(
                 onSecretLogoTap,
 
             onNotificationClick = {
-
                 showNotificationDialog =
                     true
             },
@@ -480,8 +479,11 @@ fun MapScreen(
                         currentUserId,
 
                     isActionInProgress =
-                        cleaningActionRequestId == selectedToilet.id ||
-                                cleaningActionRequestId == cleaningRequest?.id,
+                        cleaningActionRequestId != null &&
+                                (
+                                        cleaningActionRequestId == selectedToilet.id ||
+                                                cleaningActionRequestId == cleaningRequest?.id
+                                        ),
 
                     onDismiss =
                         onDismissSelectedToilet,
@@ -589,19 +591,11 @@ fun MapScreen(
  */
 @Composable
 private fun FinderHeader(
-
-    onToiletSelected:
-        (Toilet) -> Unit,
-
-    onSecretLogoTap:
-        () -> Unit,
-
-    onNotificationClick:
-        () -> Unit,
-
-    modifier:
-    Modifier = Modifier
-
+    toilets: List<Toilet>,
+    onToiletSelected: (Toilet) -> Unit,
+    onSecretLogoTap: () -> Unit,
+    onNotificationClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
 
     /*
@@ -646,94 +640,37 @@ private fun FinderHeader(
      * 検索
      * =====================================
      */
-    /*
- * =====================================
- * Supabase検索用Repository
- * =====================================
- */
-    val searchRepository =
-        remember {
-
-            ToiletRepository()
-        }
-
-
-    /*
-     * =====================================
-     * Supabase検索結果
-     * =====================================
-     */
-    var searchResults by
-    remember {
-
-        mutableStateOf<List<Toilet>>(
-            emptyList()
-        )
-    }
-
-
-    /*
-     * =====================================
-     * Supabase名前検索
-     * =====================================
-     *
-     * 1文字入力するたびに即通信せず、
-     * 入力停止後300ms待ってから検索する。
-     *
-     * LaunchedEffectなので、
-     * 続けて文字が入力された場合は
-     * 古い検索処理がキャンセルされる。
-     */
-    LaunchedEffect(
-        searchQuery
-    ) {
-
-        val query =
-            searchQuery.trim()
-
-
-        /*
-         * 空なら通信しない
-         */
-        if (
-            query.isBlank()
+    val searchResults =
+        remember(
+            searchQuery,
+            toilets
         ) {
 
-            searchResults =
+            val query =
+                searchQuery.trim()
+
+            if (query.isBlank()) {
+
                 emptyList()
 
-            return@LaunchedEffect
+            } else {
+
+                toilets
+                    .filter { toilet ->
+
+                        toilet.name.contains(
+                            query,
+                            ignoreCase = true
+                        ) ||
+
+                                toilet.comment.contains(
+                                    query,
+                                    ignoreCase = true
+                                )
+                    }
+                    .take(10)
+            }
         }
-
-
-        /*
-         * 入力中の連続通信を防止
-         */
-        delay(
-            300L
-        )
-
-
-        try {
-
-            searchResults =
-
-                searchRepository
-                    .searchToiletsByName(
-                        query
-                    )
-
-        } catch (
-            e: Exception
-        ) {
-
-            e.printStackTrace()
-
-
-            searchResults =
-                emptyList()
-        }
-    }
 
 
     /*
@@ -1601,42 +1538,6 @@ private fun ToiletDetailCard(
     onOpenReviews: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-/*
- * =====================================
- * ユーザーに表示するコメント
- * =====================================
- *
- * OSMインポート用の内部情報は
- * 詳細画面には表示しない。
- */
-    val displayComment =
-
-        toilet.comment
-            .trim()
-            .let { comment ->
-
-                if (
-                    comment.contains(
-                        "OpenStreetMap",
-                        ignoreCase = true
-                    ) ||
-                    comment.contains(
-                        "OSM:",
-                        ignoreCase = true
-                    ) ||
-                    comment.contains(
-                        "OSM：",
-                        ignoreCase = true
-                    )
-                ) {
-
-                    ""
-
-                } else {
-
-                    comment
-                }
-            }
 
     var nowMillis by remember(
         toilet.id,
@@ -1750,7 +1651,7 @@ private fun ToiletDetailCard(
         modifier =
             modifier
                 .heightIn(
-                    max = 300.dp
+                    max = 380.dp
                 )
                 .shadow(
                     14.dp,
@@ -1975,7 +1876,7 @@ private fun ToiletDetailCard(
             }
 
 
-            if (displayComment.isNotBlank()) {
+            if (toilet.comment.isNotBlank()) {
 
                 Surface(
                     modifier =
@@ -1994,7 +1895,7 @@ private fun ToiletDetailCard(
 
                     Text(
                         text =
-                            displayComment,
+                            toilet.comment,
 
                         modifier =
                             Modifier.padding(
