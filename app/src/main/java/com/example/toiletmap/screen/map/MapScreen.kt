@@ -74,14 +74,15 @@ import androidx.compose.ui.zIndex
 import com.example.toiletmap.model.CleaningRequest
 import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.model.Toilet
-import com.example.toiletmap.data.repository.ToiletRepository
 import com.example.toiletmap.screen.cleaning.formatCleaningDateTime
+import com.example.toiletmap.screen.listofuncleaned.rememberCurrentLocationState
 import kotlinx.coroutines.delay
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
+import kotlin.math.*
 
 
 /*
@@ -336,6 +337,9 @@ fun MapScreen(
          * =====================================
          */
         FinderHeader(
+            mapView = mapView,
+
+            toilets = toilets,
 
             onToiletSelected =
                 onSearchToiletSelected,
@@ -344,7 +348,6 @@ fun MapScreen(
                 onSecretLogoTap,
 
             onNotificationClick = {
-
                 showNotificationDialog =
                     true
             },
@@ -480,8 +483,11 @@ fun MapScreen(
                         currentUserId,
 
                     isActionInProgress =
-                        cleaningActionRequestId == selectedToilet.id ||
-                                cleaningActionRequestId == cleaningRequest?.id,
+                        cleaningActionRequestId != null &&
+                                (
+                                        cleaningActionRequestId == selectedToilet.id ||
+                                                cleaningActionRequestId == cleaningRequest?.id
+                                        ),
 
                     onDismiss =
                         onDismissSelectedToilet,
@@ -589,19 +595,12 @@ fun MapScreen(
  */
 @Composable
 private fun FinderHeader(
-
-    onToiletSelected:
-        (Toilet) -> Unit,
-
-    onSecretLogoTap:
-        () -> Unit,
-
-    onNotificationClick:
-        () -> Unit,
-
-    modifier:
-    Modifier = Modifier
-
+    mapView: MapView,
+    toilets: List<Toilet>,
+    onToiletSelected: (Toilet) -> Unit,
+    onSecretLogoTap: () -> Unit,
+    onNotificationClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
 
     /*
@@ -632,6 +631,14 @@ private fun FinderHeader(
         )
     }
 
+    /*
+     * 検索候補表示状態
+     * フォーカスだけに依存すると候補が残るため分離管理する。
+     */
+    var showSearchSuggestions by remember {
+        mutableStateOf(false)
+    }
+
 
     val focusManager =
         LocalFocusManager.current
@@ -643,97 +650,119 @@ private fun FinderHeader(
 
     /*
      * =====================================
+     * 現在地付近検索用
+     *
+     * 未清掃画面と同じ現在地取得処理を再利用し、
+     * 端末の現在地を基準に近いトイレを表示する。
+     * =====================================
+     */
+    val currentLocationState =
+        rememberCurrentLocationState()
+
+
+    fun distanceKm(
+        lat1: Double,
+        lon1: Double,
+        lat2: Double,
+        lon2: Double
+    ): Double {
+
+        val r = 6371.0
+
+        val dLat = Math.toRadians(lat2 - lat1)
+
+        val dLon = Math.toRadians(lon2 - lon1)
+
+        val a =
+            sin(dLat / 2) * sin(dLat / 2) +
+                    cos(Math.toRadians(lat1)) *
+                    cos(Math.toRadians(lat2)) *
+                    sin(dLon / 2) *
+                    sin(dLon / 2)
+
+        return r * 2 * atan2(
+            sqrt(a),
+            sqrt(1 - a)
+        )
+    }
+
+
+    /*
+     * 距離表示用(m)
+     */
+    fun distanceMeters(
+        lat1: Double,
+        lon1: Double,
+        lat2: Double,
+        lon2: Double
+    ): Int {
+
+        return (distanceKm(
+            lat1,
+            lon1,
+            lat2,
+            lon2
+        ) * 1000).toInt()
+    }
+
+
+    /*
+     * =====================================
      * 検索
      * =====================================
      */
-    /*
- * =====================================
- * Supabase検索用Repository
- * =====================================
- */
-    val searchRepository =
-        remember {
-
-            ToiletRepository()
-        }
-
-
-    /*
-     * =====================================
-     * Supabase検索結果
-     * =====================================
-     */
-    var searchResults by
-    remember {
-
-        mutableStateOf<List<Toilet>>(
-            emptyList()
-        )
-    }
-
-
-    /*
-     * =====================================
-     * Supabase名前検索
-     * =====================================
-     *
-     * 1文字入力するたびに即通信せず、
-     * 入力停止後300ms待ってから検索する。
-     *
-     * LaunchedEffectなので、
-     * 続けて文字が入力された場合は
-     * 古い検索処理がキャンセルされる。
-     */
-    LaunchedEffect(
-        searchQuery
-    ) {
-
-        val query =
-            searchQuery.trim()
-
-
-        /*
-         * 空なら通信しない
-         */
-        if (
-            query.isBlank()
+    val searchResults =
+        remember(
+            searchQuery,
+            toilets,
+            currentLocationState.location
         ) {
 
-            searchResults =
-                emptyList()
+            val query =
+                searchQuery.trim()
 
-            return@LaunchedEffect
+            if (query.isBlank()) {
+
+                val currentLocation =
+                    currentLocationState.location
+
+                if (currentLocation == null) {
+
+                    emptyList()
+
+                } else {
+
+                    toilets
+                        .sortedBy { toilet ->
+
+                            distanceKm(
+                                currentLocation.latitude,
+                                currentLocation.longitude,
+                                toilet.latitude,
+                                toilet.longitude
+                            )
+                        }
+                        .take(5)
+                }
+
+            } else {
+
+                toilets
+                    .filter { toilet ->
+
+                        toilet.name.contains(
+                            query,
+                            ignoreCase = true
+                        ) ||
+
+                                toilet.comment.contains(
+                                    query,
+                                    ignoreCase = true
+                                )
+                    }
+                    .take(10)
+            }
         }
-
-
-        /*
-         * 入力中の連続通信を防止
-         */
-        delay(
-            300L
-        )
-
-
-        try {
-
-            searchResults =
-
-                searchRepository
-                    .searchToiletsByName(
-                        query
-                    )
-
-        } catch (
-            e: Exception
-        ) {
-
-            e.printStackTrace()
-
-
-            searchResults =
-                emptyList()
-        }
-    }
 
 
     /*
@@ -763,6 +792,9 @@ private fun FinderHeader(
 
 
         searchFocused =
+            false
+
+        showSearchSuggestions =
             false
 
 
@@ -948,6 +980,8 @@ private fun FinderHeader(
 
                     searchValue =
                         newValue
+
+                    showSearchSuggestions = true
                 },
 
                 modifier =
@@ -958,6 +992,12 @@ private fun FinderHeader(
 
                             searchFocused =
                                 focusState.isFocused
+
+                            if (focusState.isFocused) {
+                                showSearchSuggestions = true
+                            } else {
+                                showSearchSuggestions = false
+                            }
                         },
 
                 singleLine =
@@ -992,13 +1032,39 @@ private fun FinderHeader(
                  */
                 trailingIcon = {
 
-                    if (searchQuery.isNotEmpty()) {
+                    Row {
+
+                        if (searchQuery.isNotEmpty()) {
+
+                            IconButton(
+                                onClick = {
+
+                                    searchValue =
+                                        TextFieldValue("")
+                                }
+                            ) {
+
+                                Icon(
+                                    imageVector =
+                                        Icons
+                                            .Outlined
+                                            .Close,
+
+                                    contentDescription =
+                                        "検索文字を削除",
+
+                                    tint =
+                                        FinderMuted
+                                )
+                            }
+                        }
 
                         IconButton(
                             onClick = {
 
-                                searchValue =
-                                    TextFieldValue("")
+                                focusManager.clearFocus()
+                                searchFocused = false
+                                showSearchSuggestions = false
                             }
                         ) {
 
@@ -1009,7 +1075,7 @@ private fun FinderHeader(
                                         .Close,
 
                                 contentDescription =
-                                    "検索文字を削除",
+                                    "検索候補を閉じる",
 
                                 tint =
                                     FinderMuted
@@ -1072,8 +1138,7 @@ private fun FinderHeader(
              * =====================================
              */
             if (
-                searchFocused &&
-                searchQuery.isNotBlank()
+                showSearchSuggestions
             ) {
 
                 Card(
@@ -1102,7 +1167,7 @@ private fun FinderHeader(
 
                         Text(
                             text =
-                                "該当するトイレがありません",
+                                "表示できるトイレがありません",
 
                             modifier =
                                 Modifier.padding(
@@ -1144,6 +1209,25 @@ private fun FinderHeader(
                                     toilet =
                                         toilet,
 
+                                    distanceText =
+                                        currentLocationState.location?.let { location ->
+
+                                            val meters =
+                                                distanceMeters(
+                                                    location.latitude,
+                                                    location.longitude,
+                                                    toilet.latitude,
+                                                    toilet.longitude
+                                                )
+
+                                            if (meters >= 1000) {
+                                                "%.1fkm".format(meters / 1000.0)
+                                            } else {
+                                                "${meters}m"
+                                            }
+
+                                        },
+
                                     onClick = {
                                         selectToilet(
                                             toilet
@@ -1168,6 +1252,7 @@ private fun FinderHeader(
 @Composable
 private fun SearchResultItem(
     toilet: Toilet,
+    distanceText: String? = null,
     onClick: () -> Unit
 ) {
 
@@ -1263,14 +1348,13 @@ private fun SearchResultItem(
                         TextOverflow.Ellipsis
                 )
 
-            } else {
+            } 
+
+            if (distanceText != null) {
 
                 Text(
                     text =
-                        "緯度 %.4f / 経度 %.4f".format(
-                            toilet.latitude,
-                            toilet.longitude
-                        ),
+                        "現在地から $distanceText",
 
                     color =
                         FinderMuted,
@@ -1601,42 +1685,6 @@ private fun ToiletDetailCard(
     onOpenReviews: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-/*
- * =====================================
- * ユーザーに表示するコメント
- * =====================================
- *
- * OSMインポート用の内部情報は
- * 詳細画面には表示しない。
- */
-    val displayComment =
-
-        toilet.comment
-            .trim()
-            .let { comment ->
-
-                if (
-                    comment.contains(
-                        "OpenStreetMap",
-                        ignoreCase = true
-                    ) ||
-                    comment.contains(
-                        "OSM:",
-                        ignoreCase = true
-                    ) ||
-                    comment.contains(
-                        "OSM：",
-                        ignoreCase = true
-                    )
-                ) {
-
-                    ""
-
-                } else {
-
-                    comment
-                }
-            }
 
     var nowMillis by remember(
         toilet.id,
@@ -1750,7 +1798,7 @@ private fun ToiletDetailCard(
         modifier =
             modifier
                 .heightIn(
-                    max = 300.dp
+                    max = 380.dp
                 )
                 .shadow(
                     14.dp,
@@ -1777,112 +1825,745 @@ private fun ToiletDetailCard(
             )
     ) {
 
-        Column(
+        Box(
             modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(
-                        rememberScrollState()
-                    )
-                    .padding(
-                        18.dp
-                    ),
-
-            verticalArrangement =
-                Arrangement.spacedBy(
-                    12.dp
-                )
+                Modifier.fillMaxWidth()
         ) {
 
-            Box(
+            /*
+             * =====================================
+             * スクロールする詳細内容
+             * =====================================
+             */
+            Column(
                 modifier =
                     Modifier
-                        .align(
-                            Alignment.CenterHorizontally
+                        .fillMaxWidth()
+                        .verticalScroll(
+                            rememberScrollState()
                         )
-                        .width(
-                            38.dp
-                        )
-                        .height(
-                            4.dp
-                        )
-                        .clip(
-                            CircleShape
-                        )
-                        .background(
-                            Color(
-                                0xFFD8DEDC
-                            )
-                        )
-            )
+                        .padding(
+                            18.dp
+                        ),
 
-
-            Row(
-                modifier =
-                    Modifier.fillMaxWidth(),
-
-                verticalAlignment =
-                    Alignment.CenterVertically
+                verticalArrangement =
+                    Arrangement.spacedBy(
+                        12.dp
+                    )
             ) {
 
-                Surface(
+                Box(
+                    modifier =
+                        Modifier
+                            .align(
+                                Alignment.CenterHorizontally
+                            )
+                            .width(
+                                38.dp
+                            )
+                            .height(
+                                4.dp
+                            )
+                            .clip(
+                                CircleShape
+                            )
+                            .background(
+                                Color(
+                                    0xFFD8DEDC
+                                )
+                            )
+                )
+
+
+                Row(
+                    modifier =
+                        Modifier.fillMaxWidth(),
+
+                    verticalAlignment =
+                        Alignment.CenterVertically
+                ) {
+
+                    Surface(
+                        color =
+                            statusColor.copy(
+                                alpha = 0.13f
+                            ),
+
+                        shape =
+                            RoundedCornerShape(
+                                8.dp
+                            )
+                    ) {
+
+                        Text(
+                            text =
+                                statusText,
+
+                            modifier =
+                                Modifier.padding(
+                                    horizontal = 10.dp,
+                                    vertical = 6.dp
+                                ),
+
+                            color =
+                                statusColor,
+
+                            fontSize =
+                                12.sp,
+
+                            fontWeight =
+                                FontWeight.Bold
+                        )
+                    }
+
+
+                    Text(
+                        text =
+                            "トイレ情報",
+
+                        modifier =
+                            Modifier.padding(
+                                start = 8.dp
+                            ),
+
+                        color =
+                            FinderMuted,
+
+                        fontSize =
+                            13.sp
+                    )
+
+
+                    Spacer(
+                        modifier =
+                            Modifier.weight(
+                                1f
+                            )
+                    )
+
+                }
+
+
+                Text(
+                    text =
+                        toilet.name,
+
                     color =
-                        statusColor.copy(
-                            alpha = 0.13f
+                        FinderDark,
+
+                    style =
+                        MaterialTheme.typography.titleLarge,
+
+                    fontWeight =
+                        FontWeight.Bold,
+
+                    maxLines =
+                        1,
+
+                    overflow =
+                        TextOverflow.Ellipsis
+                )
+
+
+                Row(
+                    verticalAlignment =
+                        Alignment.CenterVertically
+                ) {
+
+                    Icon(
+                        imageVector =
+                            Icons.Outlined.LocationOn,
+
+                        contentDescription =
+                            null,
+
+                        tint =
+                            FinderMuted,
+
+                        modifier =
+                            Modifier.size(
+                                18.dp
+                            )
+                    )
+
+
+                    Spacer(
+                        modifier =
+                            Modifier.width(
+                                5.dp
+                            )
+                    )
+
+
+                    Text(
+                        text =
+                            "緯度 %.5f / 経度 %.5f".format(
+                                toilet.latitude,
+                                toilet.longitude
+                            ),
+
+                        color =
+                            FinderMuted,
+
+                        fontSize =
+                            12.sp
+                    )
+                }
+
+
+                if (toilet.comment.isNotBlank()) {
+
+                    Surface(
+                        modifier =
+                            Modifier.fillMaxWidth(),
+
+                        color =
+                            Color(
+                                0xFFF3F5F4
+                            ),
+
+                        shape =
+                            RoundedCornerShape(
+                                11.dp
+                            )
+                    ) {
+
+                        Text(
+                            text =
+                                toilet.comment,
+
+                            modifier =
+                                Modifier.padding(
+                                    horizontal = 11.dp,
+                                    vertical = 8.dp
+                                ),
+
+                            color =
+                                FinderDark,
+
+                            style =
+                                MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+
+
+                Surface(
+                    modifier =
+                        Modifier.fillMaxWidth(),
+
+                    color =
+                        Color(
+                            0xFFF8FAF9
                         ),
 
                     shape =
                         RoundedCornerShape(
-                            8.dp
+                            16.dp
                         )
                 ) {
 
-                    Text(
-                        text =
-                            statusText,
-
+                    Column(
                         modifier =
                             Modifier.padding(
-                                horizontal = 10.dp,
-                                vertical = 6.dp
+                                14.dp
                             ),
 
-                        color =
-                            statusColor,
+                        verticalArrangement =
+                            Arrangement.spacedBy(
+                                9.dp
+                            )
+                    ) {
 
-                        fontSize =
-                            12.sp,
+                        Text(
+                            text =
+                                "きれいさ",
+
+                            color =
+                                FinderMuted,
+
+                            fontSize =
+                                12.sp
+                        )
+
+
+                        Row(
+                            verticalAlignment =
+                                Alignment.CenterVertically
+                        ) {
+
+                            repeat(5) { index ->
+
+                                Icon(
+                                    imageVector =
+                                        Icons.Filled.Star,
+
+                                    contentDescription =
+                                        null,
+
+                                    tint =
+                                        if (index < cleanliness) {
+
+                                            FinderGreen
+
+                                        } else {
+
+                                            Color(
+                                                0xFFD7DEDC
+                                            )
+                                        },
+
+                                    modifier =
+                                        Modifier.size(
+                                            20.dp
+                                        )
+                                )
+                            }
+
+
+                            Spacer(
+                                modifier =
+                                    Modifier.width(
+                                        7.dp
+                                    )
+                            )
+
+
+                            Text(
+                                text =
+                                    "$cleanliness.0",
+
+                                color =
+                                    FinderDark,
+
+                                fontWeight =
+                                    FontWeight.SemiBold
+                            )
+                        }
+
+
+                        Text(
+                            text =
+                                "前回の清掃完了：$elapsed",
+
+                            color =
+                                FinderMuted,
+
+                            fontSize =
+                                12.sp
+                        )
+                    }
+                }
+
+
+                when (cleaningStatus) {
+
+                    CleaningStatus.NORMAL -> {
+
+                        CleaningStatusNotice(
+                            message =
+                                if (isLoggedIn) {
+                                    "清掃が必要な場合は、清掃依頼を出せます。予定報酬は5ptです。"
+                                } else {
+                                    "清掃を依頼するにはログインが必要です。"
+                                },
+
+                            backgroundColor =
+                                if (isLoggedIn) {
+                                    FinderSoftGreen
+                                } else {
+                                    Color(0xFFF3F5F4)
+                                },
+
+                            textColor =
+                                if (isLoggedIn) {
+                                    FinderGreen
+                                } else {
+                                    FinderMuted
+                                }
+                        )
+                    }
+
+
+                    CleaningStatus.REQUESTED -> {
+
+                        CleaningStatusNotice(
+                            message =
+                                when {
+                                    !isLoggedIn ->
+                                        "このトイレは清掃担当者を募集しています。引き受けるにはログインが必要です。"
+
+                                    isRequester ->
+                                        "自分が出した清掃依頼です。別のユーザーが引き受けるまでお待ちください。"
+
+                                    else ->
+                                        "このトイレは清掃担当者を募集しています。"
+                                },
+
+                            backgroundColor =
+                                Color(
+                                    0xFFFFF8E6
+                                ),
+
+                            textColor =
+                                Color(
+                                    0xFF7A6200
+                                )
+                        )
+
+
+                        if (cleaningRequest != null) {
+
+                            CleaningRequestInfo(
+                                label =
+                                    "依頼日時",
+
+                                value =
+                                    formatCleaningDateTime(
+                                        cleaningRequest.requestedAt
+                                    )
+                            )
+
+
+                            CleaningRequestInfo(
+                                label =
+                                    "予定報酬",
+
+                                value =
+                                    "${cleaningRequest.rewardPoints} pt"
+                            )
+                        } else {
+
+                            CleaningRequestInfo(
+                                label =
+                                    "予定報酬",
+
+                                value =
+                                    "5 pt"
+                            )
+                        }
+                    }
+
+
+                    CleaningStatus.IN_PROGRESS -> {
+
+                        CleaningStatusNotice(
+                            message =
+                                if (isCleaner) {
+                                    "あなたがこの清掃を担当しています。清掃画面から担当状況を確認できます。"
+                                } else {
+                                    "現在、ほかのユーザーが清掃中です。"
+                                },
+
+                            backgroundColor =
+                                Color(
+                                    0xFFEAF2FD
+                                ),
+
+                            textColor =
+                                FinderBlue
+                        )
+
+
+                        CleaningRequestInfo(
+                            label =
+                                "引受日時",
+
+                            value =
+                                formatCleaningDateTime(
+                                    cleaningRequest?.acceptedAt
+                                )
+                        )
+
+
+                        CleaningRequestInfo(
+                            label =
+                                "予定報酬",
+
+                            value =
+                                "${cleaningRequest?.rewardPoints ?: 5} pt"
+                        )
+                    }
+
+
+                    CleaningStatus.COMPLETED -> {
+
+                        CleaningStatusNotice(
+                            message =
+                                "清掃が完了しました。トイレの状態を更新しています。",
+
+                            backgroundColor =
+                                FinderSoftGreen,
+
+                            textColor =
+                                FinderGreen
+                        )
+                    }
+                }
+
+
+                when (cleaningStatus) {
+
+                    CleaningStatus.NORMAL -> {
+
+                        CleaningActionButton(
+                            text =
+                                when {
+                                    !isLoggedIn ->
+                                        "ログインして清掃を依頼"
+
+                                    isActionInProgress ->
+                                        "清掃依頼を送信中"
+
+                                    else ->
+                                        "清掃を依頼する"
+                                },
+
+                            icon =
+                                Icons.Outlined.NotificationsNone,
+
+                            containerColor =
+                                FinderGreen,
+
+                            contentColor =
+                                Color.White,
+
+                            isLoading =
+                                isLoggedIn && isActionInProgress,
+
+                            enabled =
+                                !isLoggedIn || !isActionInProgress,
+
+                            onClick = {
+
+                                if (isLoggedIn) {
+                                    onRequestCleaning()
+                                } else {
+                                    onOpenAccount()
+                                }
+                            }
+                        )
+                    }
+
+
+                    CleaningStatus.REQUESTED -> {
+
+                        val request =
+                            cleaningRequest
+
+
+                        CleaningActionButton(
+                            text =
+                                when {
+
+                                    !isLoggedIn ->
+                                        "ログインして清掃を引き受ける"
+
+                                    request == null ->
+                                        "清掃依頼を読み込み中"
+
+                                    isRequester ->
+                                        "自分の清掃依頼です"
+
+                                    isActionInProgress ->
+                                        "清掃を引受中"
+
+                                    else ->
+                                        "清掃を引き受ける"
+                                },
+
+                            icon =
+                                Icons.Outlined.CleaningServices,
+
+                            containerColor =
+                                FinderAmber,
+
+                            contentColor =
+                                FinderDark,
+
+                            isLoading =
+                                isLoggedIn && isActionInProgress,
+
+                            enabled =
+                                if (!isLoggedIn) {
+                                    true
+                                } else {
+                                    request != null &&
+                                            !isRequester &&
+                                            !isActionInProgress
+                                },
+
+                            onClick = {
+
+                                if (!isLoggedIn) {
+
+                                    onOpenAccount()
+
+                                } else if (request != null) {
+
+                                    onAcceptCleaning(
+                                        request
+                                    )
+                                }
+                            }
+                        )
+                    }
+
+
+                    CleaningStatus.IN_PROGRESS -> {
+
+                        CleaningActionButton(
+                            text =
+                                if (isCleaner) {
+                                    "清掃画面を開く"
+                                } else {
+                                    "ほかのユーザーが清掃中"
+                                },
+
+                            icon =
+                                Icons.Outlined.CheckCircle,
+
+                            containerColor =
+                                FinderBlue,
+
+                            contentColor =
+                                Color.White,
+
+                            isLoading =
+                                false,
+
+                            enabled =
+                                isCleaner,
+
+                            onClick =
+                                onOpenCleaningScreen
+                        )
+                    }
+
+
+                    CleaningStatus.COMPLETED -> {
+
+                        CleaningActionButton(
+                            text =
+                                "清掃完了",
+
+                            icon =
+                                Icons.Outlined.CheckCircle,
+
+                            containerColor =
+                                FinderGreen,
+
+                            contentColor =
+                                Color.White,
+
+                            isLoading =
+                                false,
+
+                            enabled =
+                                false,
+
+                            onClick = {}
+                        )
+                    }
+                }
+
+
+                Button(
+                    onClick =
+                        onOpenReviews,
+
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(
+                                50.dp
+                            ),
+
+                    shape =
+                        RoundedCornerShape(
+                            14.dp
+                        ),
+
+                    colors =
+                        ButtonDefaults.buttonColors(
+                            containerColor =
+                                FinderSoftGreen,
+
+                            contentColor =
+                                FinderGreen
+                        )
+                ) {
+
+                    Icon(
+                        imageVector =
+                            Icons.Filled.Star,
+
+                        contentDescription =
+                            null,
+
+                        modifier =
+                            Modifier.size(
+                                20.dp
+                            )
+                    )
+
+
+                    Spacer(
+                        modifier =
+                            Modifier.width(
+                                8.dp
+                            )
+                    )
+
+
+                    Text(
+                        text =
+                            "口コミを投稿",
 
                         fontWeight =
                             FontWeight.Bold
                     )
                 }
 
+                /*
+                 * スクロールする詳細内容はここまで。
+                 */
+            }
 
-                Text(
-                    text =
-                        "トイレ情報",
-
-                    modifier =
-                        Modifier.padding(
-                            start = 8.dp
+            /*
+             * =====================================
+             * 固定の閉じるボタン
+             * =====================================
+             *
+             * スクロール領域の外に置くことで、
+             * 詳細を下までスクロールしても
+             * 右上から動かず、いつでも閉じられる。
+             */
+            Surface(
+                modifier =
+                    Modifier
+                        .align(
+                            Alignment.TopEnd
+                        )
+                        .padding(
+                            top = 8.dp,
+                            end = 8.dp
+                        )
+                        .zIndex(
+                            5f
                         ),
 
-                    color =
-                        FinderMuted,
+                shape =
+                    CircleShape,
 
-                    fontSize =
-                        13.sp
-                )
+                color =
+                    Color.White.copy(
+                        alpha = 0.96f
+                    ),
 
-
-                Spacer(
-                    modifier =
-                        Modifier.weight(
-                            1f
-                        )
-                )
-
+                shadowElevation =
+                    4.dp
+            ) {
 
                 IconButton(
                     onClick =
@@ -1890,7 +2571,7 @@ private fun ToiletDetailCard(
 
                     modifier =
                         Modifier.size(
-                            34.dp
+                            40.dp
                         )
                 ) {
 
@@ -1905,588 +2586,6 @@ private fun ToiletDetailCard(
                             FinderDark
                     )
                 }
-            }
-
-
-            Text(
-                text =
-                    toilet.name,
-
-                color =
-                    FinderDark,
-
-                style =
-                    MaterialTheme.typography.titleLarge,
-
-                fontWeight =
-                    FontWeight.Bold,
-
-                maxLines =
-                    1,
-
-                overflow =
-                    TextOverflow.Ellipsis
-            )
-
-
-            Row(
-                verticalAlignment =
-                    Alignment.CenterVertically
-            ) {
-
-                Icon(
-                    imageVector =
-                        Icons.Outlined.LocationOn,
-
-                    contentDescription =
-                        null,
-
-                    tint =
-                        FinderMuted,
-
-                    modifier =
-                        Modifier.size(
-                            18.dp
-                        )
-                )
-
-
-                Spacer(
-                    modifier =
-                        Modifier.width(
-                            5.dp
-                        )
-                )
-
-
-                Text(
-                    text =
-                        "緯度 %.5f / 経度 %.5f".format(
-                            toilet.latitude,
-                            toilet.longitude
-                        ),
-
-                    color =
-                        FinderMuted,
-
-                    fontSize =
-                        12.sp
-                )
-            }
-
-
-            if (displayComment.isNotBlank()) {
-
-                Surface(
-                    modifier =
-                        Modifier.fillMaxWidth(),
-
-                    color =
-                        Color(
-                            0xFFF3F5F4
-                        ),
-
-                    shape =
-                        RoundedCornerShape(
-                            11.dp
-                        )
-                ) {
-
-                    Text(
-                        text =
-                            displayComment,
-
-                        modifier =
-                            Modifier.padding(
-                                horizontal = 11.dp,
-                                vertical = 8.dp
-                            ),
-
-                        color =
-                            FinderDark,
-
-                        style =
-                            MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-
-
-            Surface(
-                modifier =
-                    Modifier.fillMaxWidth(),
-
-                color =
-                    Color(
-                        0xFFF8FAF9
-                    ),
-
-                shape =
-                    RoundedCornerShape(
-                        16.dp
-                    )
-            ) {
-
-                Column(
-                    modifier =
-                        Modifier.padding(
-                            14.dp
-                        ),
-
-                    verticalArrangement =
-                        Arrangement.spacedBy(
-                            9.dp
-                        )
-                ) {
-
-                    Text(
-                        text =
-                            "きれいさ",
-
-                        color =
-                            FinderMuted,
-
-                        fontSize =
-                            12.sp
-                    )
-
-
-                    Row(
-                        verticalAlignment =
-                            Alignment.CenterVertically
-                    ) {
-
-                        repeat(5) { index ->
-
-                            Icon(
-                                imageVector =
-                                    Icons.Filled.Star,
-
-                                contentDescription =
-                                    null,
-
-                                tint =
-                                    if (index < cleanliness) {
-
-                                        FinderGreen
-
-                                    } else {
-
-                                        Color(
-                                            0xFFD7DEDC
-                                        )
-                                    },
-
-                                modifier =
-                                    Modifier.size(
-                                        20.dp
-                                    )
-                            )
-                        }
-
-
-                        Spacer(
-                            modifier =
-                                Modifier.width(
-                                    7.dp
-                                )
-                        )
-
-
-                        Text(
-                            text =
-                                "$cleanliness.0",
-
-                            color =
-                                FinderDark,
-
-                            fontWeight =
-                                FontWeight.SemiBold
-                        )
-                    }
-
-
-                    Text(
-                        text =
-                            "前回の清掃完了：$elapsed",
-
-                        color =
-                            FinderMuted,
-
-                        fontSize =
-                            12.sp
-                    )
-                }
-            }
-
-
-            when (cleaningStatus) {
-
-                CleaningStatus.NORMAL -> {
-
-                    CleaningStatusNotice(
-                        message =
-                            if (isLoggedIn) {
-                                "清掃が必要な場合は、清掃依頼を出せます。予定報酬は5ptです。"
-                            } else {
-                                "清掃を依頼するにはログインが必要です。"
-                            },
-
-                        backgroundColor =
-                            if (isLoggedIn) {
-                                FinderSoftGreen
-                            } else {
-                                Color(0xFFF3F5F4)
-                            },
-
-                        textColor =
-                            if (isLoggedIn) {
-                                FinderGreen
-                            } else {
-                                FinderMuted
-                            }
-                    )
-                }
-
-
-                CleaningStatus.REQUESTED -> {
-
-                    CleaningStatusNotice(
-                        message =
-                            when {
-                                !isLoggedIn ->
-                                    "このトイレは清掃担当者を募集しています。引き受けるにはログインが必要です。"
-
-                                isRequester ->
-                                    "自分が出した清掃依頼です。別のユーザーが引き受けるまでお待ちください。"
-
-                                else ->
-                                    "このトイレは清掃担当者を募集しています。"
-                            },
-
-                        backgroundColor =
-                            Color(
-                                0xFFFFF8E6
-                            ),
-
-                        textColor =
-                            Color(
-                                0xFF7A6200
-                            )
-                    )
-
-
-                    if (cleaningRequest != null) {
-
-                        CleaningRequestInfo(
-                            label =
-                                "依頼日時",
-
-                            value =
-                                formatCleaningDateTime(
-                                    cleaningRequest.requestedAt
-                                )
-                        )
-
-
-                        CleaningRequestInfo(
-                            label =
-                                "予定報酬",
-
-                            value =
-                                "${cleaningRequest.rewardPoints} pt"
-                        )
-                    } else {
-
-                        CleaningRequestInfo(
-                            label =
-                                "予定報酬",
-
-                            value =
-                                "5 pt"
-                        )
-                    }
-                }
-
-
-                CleaningStatus.IN_PROGRESS -> {
-
-                    CleaningStatusNotice(
-                        message =
-                            if (isCleaner) {
-                                "あなたがこの清掃を担当しています。清掃画面から担当状況を確認できます。"
-                            } else {
-                                "現在、ほかのユーザーが清掃中です。"
-                            },
-
-                        backgroundColor =
-                            Color(
-                                0xFFEAF2FD
-                            ),
-
-                        textColor =
-                            FinderBlue
-                    )
-
-
-                    CleaningRequestInfo(
-                        label =
-                            "引受日時",
-
-                        value =
-                            formatCleaningDateTime(
-                                cleaningRequest?.acceptedAt
-                            )
-                    )
-
-
-                    CleaningRequestInfo(
-                        label =
-                            "予定報酬",
-
-                        value =
-                            "${cleaningRequest?.rewardPoints ?: 5} pt"
-                    )
-                }
-
-
-                CleaningStatus.COMPLETED -> {
-
-                    CleaningStatusNotice(
-                        message =
-                            "清掃が完了しました。トイレの状態を更新しています。",
-
-                        backgroundColor =
-                            FinderSoftGreen,
-
-                        textColor =
-                            FinderGreen
-                    )
-                }
-            }
-
-
-            when (cleaningStatus) {
-
-                CleaningStatus.NORMAL -> {
-
-                    CleaningActionButton(
-                        text =
-                            when {
-                                !isLoggedIn ->
-                                    "ログインして清掃を依頼"
-
-                                isActionInProgress ->
-                                    "清掃依頼を送信中"
-
-                                else ->
-                                    "清掃を依頼する"
-                            },
-
-                        icon =
-                            Icons.Outlined.NotificationsNone,
-
-                        containerColor =
-                            FinderGreen,
-
-                        contentColor =
-                            Color.White,
-
-                        isLoading =
-                            isLoggedIn && isActionInProgress,
-
-                        enabled =
-                            !isLoggedIn || !isActionInProgress,
-
-                        onClick = {
-
-                            if (isLoggedIn) {
-                                onRequestCleaning()
-                            } else {
-                                onOpenAccount()
-                            }
-                        }
-                    )
-                }
-
-
-                CleaningStatus.REQUESTED -> {
-
-                    val request =
-                        cleaningRequest
-
-
-                    CleaningActionButton(
-                        text =
-                            when {
-
-                                !isLoggedIn ->
-                                    "ログインして清掃を引き受ける"
-
-                                request == null ->
-                                    "清掃依頼を読み込み中"
-
-                                isRequester ->
-                                    "自分の清掃依頼です"
-
-                                isActionInProgress ->
-                                    "清掃を引受中"
-
-                                else ->
-                                    "清掃を引き受ける"
-                            },
-
-                        icon =
-                            Icons.Outlined.CleaningServices,
-
-                        containerColor =
-                            FinderAmber,
-
-                        contentColor =
-                            FinderDark,
-
-                        isLoading =
-                            isLoggedIn && isActionInProgress,
-
-                        enabled =
-                            if (!isLoggedIn) {
-                                true
-                            } else {
-                                request != null &&
-                                        !isRequester &&
-                                        !isActionInProgress
-                            },
-
-                        onClick = {
-
-                            if (!isLoggedIn) {
-
-                                onOpenAccount()
-
-                            } else if (request != null) {
-
-                                onAcceptCleaning(
-                                    request
-                                )
-                            }
-                        }
-                    )
-                }
-
-
-                CleaningStatus.IN_PROGRESS -> {
-
-                    CleaningActionButton(
-                        text =
-                            if (isCleaner) {
-                                "清掃画面を開く"
-                            } else {
-                                "ほかのユーザーが清掃中"
-                            },
-
-                        icon =
-                            Icons.Outlined.CheckCircle,
-
-                        containerColor =
-                            FinderBlue,
-
-                        contentColor =
-                            Color.White,
-
-                        isLoading =
-                            false,
-
-                        enabled =
-                            isCleaner,
-
-                        onClick =
-                            onOpenCleaningScreen
-                    )
-                }
-
-
-                CleaningStatus.COMPLETED -> {
-
-                    CleaningActionButton(
-                        text =
-                            "清掃完了",
-
-                        icon =
-                            Icons.Outlined.CheckCircle,
-
-                        containerColor =
-                            FinderGreen,
-
-                        contentColor =
-                            Color.White,
-
-                        isLoading =
-                            false,
-
-                        enabled =
-                            false,
-
-                        onClick = {}
-                    )
-                }
-            }
-
-
-            Button(
-                onClick =
-                    onOpenReviews,
-
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(
-                            50.dp
-                        ),
-
-                shape =
-                    RoundedCornerShape(
-                        14.dp
-                    ),
-
-                colors =
-                    ButtonDefaults.buttonColors(
-                        containerColor =
-                            FinderSoftGreen,
-
-                        contentColor =
-                            FinderGreen
-                    )
-            ) {
-
-                Icon(
-                    imageVector =
-                        Icons.Filled.Star,
-
-                    contentDescription =
-                        null,
-
-                    modifier =
-                        Modifier.size(
-                            20.dp
-                        )
-                )
-
-
-                Spacer(
-                    modifier =
-                        Modifier.width(
-                            8.dp
-                        )
-                )
-
-
-                Text(
-                    text =
-                        "口コミを投稿",
-
-                    fontWeight =
-                        FontWeight.Bold
-                )
             }
         }
     }

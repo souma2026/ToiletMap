@@ -6,32 +6,27 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.example.toiletmap.model.PointTransaction
 import com.example.toiletmap.model.ToiletEditHistory
 import com.example.toiletmap.model.UserProfile
 
 
 class ProfileState {
 
-    /*
-     * Supabaseから取得したプロフィール
-     */
-    var profile by mutableStateOf<UserProfile?>(
+    var profile by
+    mutableStateOf<UserProfile?>(
         null
     )
 
 
-    /*
-     * 写真選択直後に使う端末側URI
-     */
-    var localAvatarUri by mutableStateOf<Uri?>(
+    var localAvatarUri by
+    mutableStateOf<Uri?>(
         null
     )
 
 
-    /*
-     * Supabaseに保存された画像URL
-     */
-    var avatarDisplayUrl by mutableStateOf<String?>(
+    var avatarDisplayUrl by
+    mutableStateOf<String?>(
         null
     )
 
@@ -39,57 +34,61 @@ class ProfileState {
     /*
      * トイレ編集履歴
      */
-    var history by mutableStateOf<List<ToiletEditHistory>>(
+    var history by
+    mutableStateOf<List<ToiletEditHistory>>(
         emptyList()
     )
 
 
     /*
-     * 編集中のユーザー名
+     * =========================================
+     * ポイント履歴
+     * =========================================
+     *
+     * origin/main側の変更を保持する。
      */
-    var editingName by mutableStateOf("")
+    var pointTransactions by
+    mutableStateOf<List<PointTransaction>>(
+        emptyList()
+    )
+
+
+    var editingName by
+    mutableStateOf("")
+
+
+    var editing by
+    mutableStateOf(false)
+
+
+    var showHistory by
+    mutableStateOf(false)
 
 
     /*
-     * ユーザー名編集状態
+     * ポイント履歴を表示しているか
      */
-    var editing by mutableStateOf(false)
+    var showPointHistory by
+    mutableStateOf(false)
 
 
-    /*
-     * 履歴表示状態
-     */
-    var showHistory by mutableStateOf(false)
+    var loading by
+    mutableStateOf(true)
 
 
-    /*
-     * プロフィール読み込み中
-     */
-    var loading by mutableStateOf(true)
+    var uploading by
+    mutableStateOf(false)
 
 
-    /*
-     * プロフィール画像アップロード中
-     */
-    var uploading by mutableStateOf(false)
+    var message by
+    mutableStateOf("")
 
 
-    /*
-     * 成功・エラーメッセージ
-     */
-    var message by mutableStateOf("")
-
-
-    /*
-     * ポイント説明ダイアログ
-     */
-    var showPointInfo by mutableStateOf(false)
+    var showPointInfo by
+    mutableStateOf(false)
 }
 
 
-/*
- * ユーザーごとにProfileStateを保持する
- */
 @Composable
 fun rememberProfileState(
     userId: String

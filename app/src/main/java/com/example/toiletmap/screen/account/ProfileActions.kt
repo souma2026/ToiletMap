@@ -13,6 +13,7 @@ class ProfileActions(
     private val state: ProfileState
 ) {
 
+
     /*
      * =========================================
      * 初回読み込み
@@ -26,9 +27,39 @@ class ProfileActions(
 
         try {
 
+            /*
+             * =====================================
+             * origin/main側の変更
+             * =====================================
+             *
+             * 毎日の清掃依頼ポイントを更新する。
+             *
+             * Supabase側で同日重複実行を
+             * 防止する想定。
+             */
+            AccountRepository
+                .refreshDailyRequestPoints()
+
+
+            /*
+             * 更新後のプロフィールを取得
+             */
             reloadProfile()
 
 
+            /*
+             * ポイント履歴
+             */
+            state.pointTransactions =
+                AccountRepository
+                    .loadPointTransactions(
+                        userId
+                    )
+
+
+            /*
+             * トイレ編集履歴
+             */
             state.history =
                 AccountRepository
                     .loadHistory(
@@ -36,9 +67,7 @@ class ProfileActions(
                     )
 
 
-        } catch (
-            e: Exception
-        ) {
+        } catch (e: Exception) {
 
             Log.e(
                 "AccountProfile",
@@ -81,10 +110,6 @@ class ProfileActions(
             loadedProfile.username
 
 
-        /*
-         * 現在の実装と同じ方法で
-         * プロフィール画像URLを取得
-         */
         state.avatarDisplayUrl =
             AccountRepository
                 .getAvatarDisplayUrl(
@@ -95,7 +120,7 @@ class ProfileActions(
 
     /*
      * =========================================
-     * ユーザー名入力
+     * ユーザー名
      * =========================================
      */
     fun changeEditingName(
@@ -107,11 +132,6 @@ class ProfileActions(
     }
 
 
-    /*
-     * =========================================
-     * ユーザー名編集開始
-     * =========================================
-     */
     fun startEditingName() {
 
         state.editingName =
@@ -125,11 +145,6 @@ class ProfileActions(
     }
 
 
-    /*
-     * =========================================
-     * ユーザー名編集キャンセル
-     * =========================================
-     */
     fun cancelEditingName() {
 
         state.editingName =
@@ -143,11 +158,6 @@ class ProfileActions(
     }
 
 
-    /*
-     * =========================================
-     * ユーザー名保存
-     * =========================================
-     */
     suspend fun saveUserName() {
 
         val newName =
@@ -155,9 +165,7 @@ class ProfileActions(
                 .trim()
 
 
-        if (
-            newName.isBlank()
-        ) {
+        if (newName.isBlank()) {
 
             state.message =
                 "ユーザー名を入力してください"
@@ -170,15 +178,19 @@ class ProfileActions(
 
             AccountRepository
                 .updateUserName(
-                    userId = userId,
-                    userName = newName
+                    userId =
+                        userId,
+
+                    userName =
+                        newName
                 )
 
 
             state.profile =
                 state.profile
                     ?.copy(
-                        username = newName
+                        username =
+                            newName
                     )
 
 
@@ -190,9 +202,7 @@ class ProfileActions(
                 "ユーザー名を変更しました"
 
 
-        } catch (
-            e: Exception
-        ) {
+        } catch (e: Exception) {
 
             Log.e(
                 "AccountProfile",
@@ -209,7 +219,54 @@ class ProfileActions(
 
     /*
      * =========================================
-     * 履歴表示切り替え
+     * ポイント履歴
+     * =========================================
+     *
+     * origin/main側の機能。
+     */
+    suspend fun togglePointHistory() {
+
+        val newShowPointHistory =
+            !state.showPointHistory
+
+
+        state.showPointHistory =
+            newShowPointHistory
+
+
+        if (!newShowPointHistory) {
+
+            return
+        }
+
+
+        try {
+
+            state.pointTransactions =
+                AccountRepository
+                    .loadPointTransactions(
+                        userId
+                    )
+
+
+        } catch (e: Exception) {
+
+            Log.e(
+                "AccountPointHistory",
+                "Point history load failed",
+                e
+            )
+
+
+            state.message =
+                "ポイント履歴の取得に失敗しました"
+        }
+    }
+
+
+    /*
+     * =========================================
+     * トイレ編集履歴
      * =========================================
      */
     suspend fun toggleHistory() {
@@ -222,21 +279,12 @@ class ProfileActions(
             newShowHistory
 
 
-        /*
-         * 閉じるだけなら
-         * Supabaseへ問い合わせない
-         */
-        if (
-            !newShowHistory
-        ) {
+        if (!newShowHistory) {
 
             return
         }
 
 
-        /*
-         * 開くときは最新履歴を取得
-         */
         try {
 
             state.history =
@@ -246,9 +294,7 @@ class ProfileActions(
                     )
 
 
-        } catch (
-            e: Exception
-        ) {
+        } catch (e: Exception) {
 
             Log.e(
                 "AccountHistory",
@@ -265,17 +311,16 @@ class ProfileActions(
 
     /*
      * =========================================
-     * プロフィール画像変更
+     * プロフィール画像
      * =========================================
      */
     suspend fun changeAvatar(
+
         context: Context,
+
         uri: Uri
     ) {
 
-        /*
-         * 選んだ瞬間に画面へ表示
-         */
         state.localAvatarUri =
             uri
 
@@ -293,15 +338,17 @@ class ProfileActions(
             val newAvatarUrl =
                 ProfileAvatarHandler
                     .uploadAvatar(
-                        context = context,
-                        userId = userId,
-                        uri = uri
+                        context =
+                            context,
+
+                        userId =
+                            userId,
+
+                        uri =
+                            uri
                     )
 
 
-            /*
-             * ProfileStateも更新
-             */
             state.profile =
                 state.profile
                     ?.copy(
@@ -318,15 +365,7 @@ class ProfileActions(
                 "写真を変更しました"
 
 
-            Log.d(
-                "AccountPhoto",
-                "Photo upload successful: $newAvatarUrl"
-            )
-
-
-        } catch (
-            e: ProfileAvatarReadException
-        ) {
+        } catch (e: ProfileAvatarReadException) {
 
             state.localAvatarUri =
                 null
@@ -336,9 +375,7 @@ class ProfileActions(
                 "写真を読み込めませんでした"
 
 
-        } catch (
-            e: Exception
-        ) {
+        } catch (e: Exception) {
 
             Log.e(
                 "AccountPhoto",
@@ -365,7 +402,7 @@ class ProfileActions(
 
     /*
      * =========================================
-     * ポイント説明を開く
+     * ポイント説明
      * =========================================
      */
     fun openPointInfo() {
@@ -375,11 +412,6 @@ class ProfileActions(
     }
 
 
-    /*
-     * =========================================
-     * ポイント説明を閉じる
-     * =========================================
-     */
     fun closePointInfo() {
 
         state.showPointInfo =
@@ -405,9 +437,7 @@ class ProfileActions(
             onLogout()
 
 
-        } catch (
-            e: Exception
-        ) {
+        } catch (e: Exception) {
 
             Log.e(
                 "AccountAuth",
