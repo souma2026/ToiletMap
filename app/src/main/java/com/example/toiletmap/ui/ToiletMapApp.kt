@@ -156,6 +156,13 @@ fun ToiletMapApp(
 
 
     /*
+     * 自分が出した清掃依頼を取り消す
+     */
+    onCancelCleaningRequest:
+        (CleaningRequest) -> Unit,
+
+
+    /*
      * 清掃依頼を再読込
      */
     onReloadCleaning:
@@ -605,10 +612,19 @@ fun ToiletMapApp(
                         onCancelCleaning =
                             onCancelCleaning,
 
+                        onCancelCleaningRequest =
+                            onCancelCleaningRequest,
+
                         onOpenUncleaned = {
 
                             selectedScreen =
                                 0
+                        },
+
+                        onOpenMap = {
+
+                            selectedScreen =
+                                2
                         },
 
                         onOpenAccount = {
