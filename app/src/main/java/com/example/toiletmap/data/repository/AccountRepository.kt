@@ -2,6 +2,7 @@ package com.example.toiletmap.data.repository
 
 import com.example.toiletmap.data.supabase.SupabaseClientProvider
 import com.example.toiletmap.model.NewToiletEditHistory
+import com.example.toiletmap.model.PointTransaction
 import com.example.toiletmap.model.ToiletEditHistory
 import com.example.toiletmap.model.UserProfile
 import io.github.jan.supabase.auth.auth
@@ -348,6 +349,34 @@ object AccountRepository {
 
 
         return "$publicUrl?v=${System.currentTimeMillis()}"
+    }
+
+
+    // =========================================
+    // ポイント履歴取得
+    // =========================================
+
+    suspend fun loadPointTransactions(
+        userId: String
+    ): List<PointTransaction> {
+
+        return supabase
+            .from("point_transactions")
+            .select {
+
+                filter {
+
+                    eq(
+                        "user_id",
+                        userId
+                    )
+                }
+            }
+            .decodeList<PointTransaction>()
+            .sortedByDescending {
+
+                it.createdAt
+            }
     }
 
 

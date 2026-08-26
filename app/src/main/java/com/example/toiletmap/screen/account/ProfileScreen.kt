@@ -31,10 +31,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.toiletmap.data.repository.AccountRepository
+import com.example.toiletmap.model.PointTransaction
 import com.example.toiletmap.model.ToiletEditHistory
 import com.example.toiletmap.model.UserProfile
 import com.example.toiletmap.screen.account.components.HistorySection
 import com.example.toiletmap.screen.account.components.PointCard
+import com.example.toiletmap.screen.account.components.PointHistorySection
 import com.example.toiletmap.screen.account.components.ProfileImageSection
 import com.example.toiletmap.screen.account.components.ProfileInfoCard
 import kotlinx.coroutines.launch
@@ -120,6 +122,14 @@ fun ProfileScreen(
     }
 
 
+    var pointTransactions by remember {
+
+        mutableStateOf<List<PointTransaction>>(
+            emptyList()
+        )
+    }
+
+
     var editingName by remember {
 
         mutableStateOf("")
@@ -133,6 +143,12 @@ fun ProfileScreen(
 
 
     var showHistory by remember {
+
+        mutableStateOf(false)
+    }
+
+
+    var showPointHistory by remember {
 
         mutableStateOf(false)
     }
@@ -216,6 +232,13 @@ fun ProfileScreen(
              * 更新後の残高を取得する。
              */
             reloadProfile()
+
+
+            pointTransactions =
+                AccountRepository
+                    .loadPointTransactions(
+                        userId
+                    )
 
 
             history =
@@ -654,7 +677,70 @@ fun ProfileScreen(
 
 
             // =====================================
-            // 履歴
+            // ポイント履歴
+            // =====================================
+
+            PointHistorySection(
+                transactions =
+                    pointTransactions,
+
+                showHistory =
+                    showPointHistory,
+
+                onToggleHistory = {
+
+                    val newShowPointHistory =
+                        !showPointHistory
+
+
+                    showPointHistory =
+                        newShowPointHistory
+
+
+                    if (newShowPointHistory) {
+
+                        scope.launch {
+
+                            try {
+
+                                pointTransactions =
+                                    AccountRepository
+                                        .loadPointTransactions(
+                                            userId
+                                        )
+
+                            } catch (e: Exception) {
+
+                                Log.e(
+                                    "AccountPointHistory",
+                                    "Point history load failed",
+                                    e
+                                )
+
+
+                                message =
+                                    "ポイント履歴の取得に失敗しました"
+                            }
+                        }
+                    }
+                },
+
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = 24.dp
+                    )
+            )
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(28.dp)
+            )
+
+
+            // =====================================
+            // トイレ編集履歴
             // =====================================
 
             HistorySection(
