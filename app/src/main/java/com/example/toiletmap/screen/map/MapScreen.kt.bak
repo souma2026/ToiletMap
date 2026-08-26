@@ -1798,7 +1798,7 @@ private fun ToiletDetailCard(
         modifier =
             modifier
                 .heightIn(
-                    max = 300.dp
+                    max = 380.dp
                 )
                 .shadow(
                     14.dp,
@@ -1965,7 +1965,53 @@ private fun ToiletDetailCard(
                 )
 
 
-if (toilet.sourceType == "USER" && toilet.comment.isNotBlank()) {
+                Row(
+                    verticalAlignment =
+                        Alignment.CenterVertically
+                ) {
+
+                    Icon(
+                        imageVector =
+                            Icons.Outlined.LocationOn,
+
+                        contentDescription =
+                            null,
+
+                        tint =
+                            FinderMuted,
+
+                        modifier =
+                            Modifier.size(
+                                18.dp
+                            )
+                    )
+
+
+                    Spacer(
+                        modifier =
+                            Modifier.width(
+                                5.dp
+                            )
+                    )
+
+
+                    Text(
+                        text =
+                            "緯度 %.5f / 経度 %.5f".format(
+                                toilet.latitude,
+                                toilet.longitude
+                            ),
+
+                        color =
+                            FinderMuted,
+
+                        fontSize =
+                            12.sp
+                    )
+                }
+
+
+                if (toilet.comment.isNotBlank()) {
 
                     Surface(
                         modifier =
