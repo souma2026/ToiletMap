@@ -78,6 +78,7 @@ import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.model.Toilet
 import com.example.toiletmap.screen.cleaning.formatCleaningDateTime
 import com.example.toiletmap.screen.listofuncleaned.rememberCurrentLocationState
+import com.example.toiletmap.screen.map.facilities.ToiletFacilityEditor
 import kotlinx.coroutines.delay
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -2182,6 +2183,29 @@ private fun ToiletDetailCard(
                         )
                     }
                 }
+
+
+                /*
+                 * =====================================
+                 * 設備情報
+                 *
+                 * 閲覧
+                 * 編集
+                 * ログイン判定
+                 * Supabase保存
+                 * =====================================
+                 */
+                ToiletFacilityEditor(
+
+                    toilet =
+                        toilet,
+
+                    currentUserId =
+                        currentUserId,
+
+                    onOpenAccount =
+                        onOpenAccount
+                )
 
 
                 when (cleaningStatus) {
