@@ -75,12 +75,14 @@ import com.example.toiletmap.model.CleaningRequest
 import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.model.Toilet
 import com.example.toiletmap.screen.cleaning.formatCleaningDateTime
+import com.example.toiletmap.screen.listofuncleaned.rememberCurrentLocationState
 import kotlinx.coroutines.delay
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
+import kotlin.math.*
 
 
 /*
@@ -335,6 +337,8 @@ fun MapScreen(
          * =====================================
          */
         FinderHeader(
+            mapView = mapView,
+
             toilets = toilets,
 
             onToiletSelected =
@@ -591,6 +595,7 @@ fun MapScreen(
  */
 @Composable
 private fun FinderHeader(
+    mapView: MapView,
     toilets: List<Toilet>,
     onToiletSelected: (Toilet) -> Unit,
     onSecretLogoTap: () -> Unit,
@@ -626,6 +631,14 @@ private fun FinderHeader(
         )
     }
 
+    /*
+     * 検索候補表示状態
+     * フォーカスだけに依存すると候補が残るため分離管理する。
+     */
+    var showSearchSuggestions by remember {
+        mutableStateOf(false)
+    }
+
 
     val focusManager =
         LocalFocusManager.current
@@ -637,13 +650,72 @@ private fun FinderHeader(
 
     /*
      * =====================================
+     * 現在地付近検索用
+     *
+     * 未清掃画面と同じ現在地取得処理を再利用し、
+     * 端末の現在地を基準に近いトイレを表示する。
+     * =====================================
+     */
+    val currentLocationState =
+        rememberCurrentLocationState()
+
+
+    fun distanceKm(
+        lat1: Double,
+        lon1: Double,
+        lat2: Double,
+        lon2: Double
+    ): Double {
+
+        val r = 6371.0
+
+        val dLat = Math.toRadians(lat2 - lat1)
+
+        val dLon = Math.toRadians(lon2 - lon1)
+
+        val a =
+            sin(dLat / 2) * sin(dLat / 2) +
+                    cos(Math.toRadians(lat1)) *
+                    cos(Math.toRadians(lat2)) *
+                    sin(dLon / 2) *
+                    sin(dLon / 2)
+
+        return r * 2 * atan2(
+            sqrt(a),
+            sqrt(1 - a)
+        )
+    }
+
+
+    /*
+     * 距離表示用(m)
+     */
+    fun distanceMeters(
+        lat1: Double,
+        lon1: Double,
+        lat2: Double,
+        lon2: Double
+    ): Int {
+
+        return (distanceKm(
+            lat1,
+            lon1,
+            lat2,
+            lon2
+        ) * 1000).toInt()
+    }
+
+
+    /*
+     * =====================================
      * 検索
      * =====================================
      */
     val searchResults =
         remember(
             searchQuery,
-            toilets
+            toilets,
+            currentLocationState.location
         ) {
 
             val query =
@@ -651,7 +723,27 @@ private fun FinderHeader(
 
             if (query.isBlank()) {
 
-                emptyList()
+                val currentLocation =
+                    currentLocationState.location
+
+                if (currentLocation == null) {
+
+                    emptyList()
+
+                } else {
+
+                    toilets
+                        .sortedBy { toilet ->
+
+                            distanceKm(
+                                currentLocation.latitude,
+                                currentLocation.longitude,
+                                toilet.latitude,
+                                toilet.longitude
+                            )
+                        }
+                        .take(5)
+                }
 
             } else {
 
@@ -700,6 +792,9 @@ private fun FinderHeader(
 
 
         searchFocused =
+            false
+
+        showSearchSuggestions =
             false
 
 
@@ -885,6 +980,8 @@ private fun FinderHeader(
 
                     searchValue =
                         newValue
+
+                    showSearchSuggestions = true
                 },
 
                 modifier =
@@ -895,6 +992,12 @@ private fun FinderHeader(
 
                             searchFocused =
                                 focusState.isFocused
+
+                            if (focusState.isFocused) {
+                                showSearchSuggestions = true
+                            } else {
+                                showSearchSuggestions = false
+                            }
                         },
 
                 singleLine =
@@ -929,13 +1032,39 @@ private fun FinderHeader(
                  */
                 trailingIcon = {
 
-                    if (searchQuery.isNotEmpty()) {
+                    Row {
+
+                        if (searchQuery.isNotEmpty()) {
+
+                            IconButton(
+                                onClick = {
+
+                                    searchValue =
+                                        TextFieldValue("")
+                                }
+                            ) {
+
+                                Icon(
+                                    imageVector =
+                                        Icons
+                                            .Outlined
+                                            .Close,
+
+                                    contentDescription =
+                                        "検索文字を削除",
+
+                                    tint =
+                                        FinderMuted
+                                )
+                            }
+                        }
 
                         IconButton(
                             onClick = {
 
-                                searchValue =
-                                    TextFieldValue("")
+                                focusManager.clearFocus()
+                                searchFocused = false
+                                showSearchSuggestions = false
                             }
                         ) {
 
@@ -946,7 +1075,7 @@ private fun FinderHeader(
                                         .Close,
 
                                 contentDescription =
-                                    "検索文字を削除",
+                                    "検索候補を閉じる",
 
                                 tint =
                                     FinderMuted
@@ -1009,8 +1138,7 @@ private fun FinderHeader(
              * =====================================
              */
             if (
-                searchFocused &&
-                searchQuery.isNotBlank()
+                showSearchSuggestions
             ) {
 
                 Card(
@@ -1039,7 +1167,7 @@ private fun FinderHeader(
 
                         Text(
                             text =
-                                "該当するトイレがありません",
+                                "表示できるトイレがありません",
 
                             modifier =
                                 Modifier.padding(
@@ -1081,6 +1209,25 @@ private fun FinderHeader(
                                     toilet =
                                         toilet,
 
+                                    distanceText =
+                                        currentLocationState.location?.let { location ->
+
+                                            val meters =
+                                                distanceMeters(
+                                                    location.latitude,
+                                                    location.longitude,
+                                                    toilet.latitude,
+                                                    toilet.longitude
+                                                )
+
+                                            if (meters >= 1000) {
+                                                "%.1fkm".format(meters / 1000.0)
+                                            } else {
+                                                "${meters}m"
+                                            }
+
+                                        },
+
                                     onClick = {
                                         selectToilet(
                                             toilet
@@ -1105,6 +1252,7 @@ private fun FinderHeader(
 @Composable
 private fun SearchResultItem(
     toilet: Toilet,
+    distanceText: String? = null,
     onClick: () -> Unit
 ) {
 
@@ -1200,14 +1348,13 @@ private fun SearchResultItem(
                         TextOverflow.Ellipsis
                 )
 
-            } else {
+            } 
+
+            if (distanceText != null) {
 
                 Text(
                     text =
-                        "緯度 %.4f / 経度 %.4f".format(
-                            toilet.latitude,
-                            toilet.longitude
-                        ),
+                        "現在地から $distanceText",
 
                     color =
                         FinderMuted,
