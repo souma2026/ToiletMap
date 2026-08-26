@@ -395,12 +395,22 @@ class GameViewModel(
 
 
     private fun checkCollision() {
+
         if (
             isInvincible ||
             fallingObjects.isEmpty()
         ) {
             return
         }
+
+        /*
+         * =========================================
+         * プレイヤーの当たり判定
+         * =========================================
+         *
+         * 画面に表示されている緑色の
+         * WCの枠と同じサイズ。
+         */
 
         val playerLeft =
             playerX -
@@ -419,41 +429,109 @@ class GameViewModel(
             GamePlayer.PLAYER_Y +
                     GamePlayer.PLAYER_HEIGHT
 
+
+        /*
+         * =========================================
+         * 障害物との当たり判定
+         * =========================================
+         */
+
         val collided =
             fallingObjects
                 .firstOrNull { obstacle ->
 
+                    /*
+                     * 障害物を表示しているBoxには、
+                     * 絵文字の周囲に空白がある。
+                     *
+                     * その空白まで当たり判定にならないように
+                     * 判定範囲を少し内側へ縮める。
+                     */
+
+                    val horizontalInset =
+                        obstacle.width *
+                                0.10f
+
+                    val verticalInset =
+                        obstacle.height *
+                                0.22f
+
+
+                    /*
+                     * 実際に使用する障害物の判定枠
+                     */
+
+                    val obstacleLeft =
+                        obstacle.x +
+                                horizontalInset
+
                     val obstacleRight =
                         obstacle.x +
-                                obstacle.width
+                                obstacle.width -
+                                horizontalInset
+
+                    val obstacleTop =
+                        obstacle.y +
+                                verticalInset
 
                     val obstacleBottom =
                         obstacle.y +
-                                obstacle.height
+                                obstacle.height -
+                                verticalInset
+
+
+                    /*
+                     * プレイヤーと障害物の枠が
+                     * 重なっているか確認
+                     */
 
                     playerLeft < obstacleRight &&
-                            playerRight > obstacle.x &&
+                            playerRight > obstacleLeft &&
                             playerTop < obstacleBottom &&
-                            playerBottom > obstacle.y
+                            playerBottom > obstacleTop
                 }
                 ?: return
+
+
+        /*
+         * =========================================
+         * 当たった障害物を削除
+         * =========================================
+         */
 
         fallingObjects =
             fallingObjects
                 .filterNot {
-                    it.id == collided.id
+                    it.id ==
+                            collided.id
                 }
+
+
+        /*
+         * =========================================
+         * ライフを1減らす
+         * =========================================
+         */
 
         life =
             (life - 1)
                 .coerceAtLeast(0)
 
+
+        /*
+         * =========================================
+         * GAME OVER または 無敵時間
+         * =========================================
+         */
+
         if (
             life <= 0
         ) {
+
             finishGame()
 
         } else {
+
             isInvincible =
                 true
 
