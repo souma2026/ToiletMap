@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
+import com.example.toiletmap.model.CleaningRequest
 import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.screen.listofuncleaned.UncleanedToilet
 import com.example.toiletmap.screen.map.MapLibreMapController
@@ -857,6 +858,22 @@ class MainActivity : ComponentActivity() {
 
                         cleaningViewModel
                             .cancelCleaning(
+                                request.id
+                            )
+                    },
+
+
+                    /*
+                     * =====================================
+                     * 自分が出した清掃依頼を取り消す
+                     * =====================================
+                     */
+                    onCancelCleaningRequest = {
+                            request: CleaningRequest ->
+
+
+                        cleaningViewModel
+                            .cancelCleaningRequest(
                                 request.id
                             )
                     },

@@ -145,6 +145,34 @@ class CleaningRepository {
     }
 
 
+    /**
+     * 依頼者本人が、担当者決定前の清掃依頼を取り消す。
+     *
+     * 清掃担当者側の cancelCleaning とは別の RPC を使用する。
+     */
+    suspend fun cancelCleaningRequest(
+        cleaningRequestId: String
+    ) {
+
+        requireLoggedIn(
+            "清掃依頼を取り消すにはログインが必要です"
+        )
+
+        supabase
+            .postgrest
+            .rpc(
+                function = "cancel_cleaning_request",
+                parameters =
+                    buildJsonObject {
+                        put(
+                            "p_cleaning_request_id",
+                            cleaningRequestId
+                        )
+                    }
+            )
+    }
+
+
     private suspend fun requireLoggedIn(
         message: String
     ) {

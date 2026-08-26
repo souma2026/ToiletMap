@@ -289,6 +289,32 @@ class CleaningViewModel : ViewModel() {
 
 
     // =========================================================
+    // 自分が出した清掃依頼を取り消す
+    // =========================================================
+
+    fun cancelCleaningRequest(
+        requestId: String
+    ) {
+
+        runCleaningAction(
+            actionId = requestId,
+            failureMessage =
+                "清掃依頼の取り消しに失敗しました",
+            successMessage = {
+                "清掃依頼を取り消しました"
+            },
+            refreshFailureMessage =
+                "清掃依頼は取り消されました。表示を更新できなかったため、画面を更新してください"
+        ) {
+
+            repository.cancelCleaningRequest(
+                requestId
+            )
+        }
+    }
+
+
+    // =========================================================
     // 清掃操作共通処理
     // =========================================================
 
