@@ -61,6 +61,19 @@ class CleaningViewModel : ViewModel() {
 
 
     // =========================================================
+    // 現在の清掃依頼ポイント
+    // =========================================================
+
+    private val _requestPoints =
+        MutableStateFlow(
+            0
+        )
+
+    val requestPoints: StateFlow<Int> =
+        _requestPoints.asStateFlow()
+
+
+    // =========================================================
     // 一覧読み込み中
     // =========================================================
 
@@ -169,22 +182,31 @@ class CleaningViewModel : ViewModel() {
     // =========================================================
 
     fun requestCleaning(
-        toiletId: String
+        toiletId: String,
+        requestPoints: Int
     ) {
+
+        val rewardPoints =
+            requestPoints + 2
+
 
         runCleaningAction(
             actionId = toiletId,
             failureMessage =
                 "清掃依頼に失敗しました",
             successMessage = {
-                "清掃依頼を出しました"
+                "${requestPoints}ptを使って清掃依頼を出しました（報酬${rewardPoints}pt）"
             },
             refreshFailureMessage =
                 "清掃依頼は完了しました。表示を更新できなかったため、画面を更新してください"
         ) {
 
             repository.requestCleaning(
-                toiletId
+                toiletId =
+                    toiletId,
+
+                requestPoints =
+                    requestPoints
             )
         }
     }
@@ -464,15 +486,28 @@ class CleaningViewModel : ViewModel() {
              * ログイン済みの場合のみ
              * 清掃依頼一覧を取得する。
              */
-            _requests.value =
-                if (userId == null) {
+            if (userId == null) {
 
+                _requestPoints.value =
+                    0
+
+                _requests.value =
                     emptyList()
 
-                } else {
+            } else {
 
+                /*
+                 * 日付が変わっていれば、Supabase側でデイリー回復を適用してから
+                 * 最新の依頼ポイントを取得する。
+                 */
+                _requestPoints.value =
+                    repository.loadCurrentRequestPoints(
+                        userId
+                    )
+
+                _requests.value =
                     repository.loadActiveRequests()
-                }
+            }
 
 
             if (showError) {

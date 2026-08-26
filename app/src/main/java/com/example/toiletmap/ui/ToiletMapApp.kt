@@ -80,6 +80,9 @@ fun ToiletMapApp(
     currentUserId:
     String?,
 
+    requestPoints:
+    Int,
+
     isLoadingCleaning:
     Boolean,
 
@@ -131,7 +134,7 @@ fun ToiletMapApp(
      * 清掃依頼
      */
     onRequestCleaning:
-        (Toilet) -> Unit,
+        (Toilet, Int) -> Unit,
 
 
     /*
@@ -188,10 +191,10 @@ fun ToiletMapApp(
      */
     onSubmitReview:
         (
-            String,
-            Int,
-            String
-        ) -> Unit,
+        String,
+        Int,
+        String
+    ) -> Unit,
 
 
     /*
@@ -712,6 +715,12 @@ fun ToiletMapApp(
 
                         currentUserId =
                             currentUserId,
+
+                        currentRequestPoints =
+                            requestPoints,
+
+                        isLoadingCleaning =
+                            isLoadingCleaning,
 
                         cleaningActionRequestId =
                             cleaningActionRequestId,

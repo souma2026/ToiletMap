@@ -367,6 +367,13 @@ class MainActivity : ComponentActivity() {
                     .collectAsState()
 
 
+                val requestPoints by
+
+                cleaningViewModel
+                    .requestPoints
+                    .collectAsState()
+
+
                 val isLoadingCleaning by
 
                 cleaningViewModel
@@ -702,6 +709,9 @@ class MainActivity : ComponentActivity() {
                     currentUserId =
                         currentUserId,
 
+                    requestPoints =
+                        requestPoints,
+
                     isLoadingCleaning =
                         isLoadingCleaning,
 
@@ -805,12 +815,17 @@ class MainActivity : ComponentActivity() {
                      * =====================================
                      */
                     onRequestCleaning = {
-                            toilet ->
+                            toilet,
+                            selectedRequestPoints ->
 
 
                         cleaningViewModel
                             .requestCleaning(
-                                toilet.id
+                                toiletId =
+                                    toilet.id,
+
+                                requestPoints =
+                                    selectedRequestPoints
                             )
                     },
 

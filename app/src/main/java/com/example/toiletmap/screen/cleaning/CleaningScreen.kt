@@ -116,6 +116,13 @@ fun CleaningScreen(
         )
     }
 
+    var requestPendingCompletion by
+    remember {
+        mutableStateOf<CleaningRequest?>(
+            null
+        )
+    }
+
 
     val myAssignments =
         requests
@@ -359,8 +366,12 @@ fun CleaningScreen(
                             actionRequestId,
                         onShowOnMap =
                             onShowOnMap,
-                        onCompleteCleaning =
-                            onCompleteCleaning,
+                        onCompleteCleaning = {
+                                request ->
+
+                            requestPendingCompletion =
+                                request
+                        },
                         onCancelCleaning =
                             onCancelCleaning,
                         onOpenUncleaned =
@@ -393,6 +404,90 @@ fun CleaningScreen(
                 }
             }
         }
+    }
+
+
+    val completionTarget =
+        requestPendingCompletion
+
+    if (completionTarget != null) {
+
+        val toiletName =
+            toiletsById[
+                completionTarget.toiletId
+            ]
+                ?.name
+                ?: "このトイレ"
+
+
+        AlertDialog(
+            onDismissRequest = {
+
+                if (actionRequestId == null) {
+
+                    requestPendingCompletion =
+                        null
+                }
+            },
+            title = {
+
+                Text(
+                    text =
+                        "清掃を完了しますか？",
+                    fontWeight =
+                        FontWeight.Bold
+                )
+            },
+            text = {
+
+                Text(
+                    text =
+                        "${toiletName}の清掃完了を記録します。完了すると清掃報酬として${completionTarget.rewardPoints}ptを獲得します。"
+                )
+            },
+            confirmButton = {
+
+                TextButton(
+                    onClick = {
+
+                        requestPendingCompletion =
+                            null
+
+                        onCompleteCleaning(
+                            completionTarget
+                        )
+                    },
+                    enabled =
+                        actionRequestId == null
+                ) {
+
+                    Text(
+                        text =
+                            "清掃完了",
+                        color =
+                            CleaningGreen
+                    )
+                }
+            },
+            dismissButton = {
+
+                TextButton(
+                    onClick = {
+
+                        requestPendingCompletion =
+                            null
+                    },
+                    enabled =
+                        actionRequestId == null
+                ) {
+
+                    Text(
+                        text =
+                            "戻る"
+                    )
+                }
+            }
+        )
     }
 
 
@@ -431,7 +526,7 @@ fun CleaningScreen(
 
                 Text(
                     text =
-                        "${toiletName}の清掃依頼を取り消します。担当者が決まった後は取り消せません。"
+                        "${toiletName}の清掃依頼を取り消します。使用した${cancellationTarget.requestPointsUsed}ptは、所持上限10ptの範囲で返却されます。担当者が決まった後は取り消せません。"
                 )
             },
             confirmButton = {
@@ -1092,6 +1187,13 @@ private fun CleaningOwnRequestCard(
                         )
                 )
             }
+
+            CleaningInfoRow(
+                label =
+                    "使用した依頼ポイント",
+                value =
+                    "${request.requestPointsUsed} pt"
+            )
 
             CleaningInfoRow(
                 label =

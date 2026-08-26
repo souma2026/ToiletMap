@@ -1,6 +1,7 @@
 package com.example.toiletmap.screen.map
 
 import android.view.ViewGroup
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +43,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -147,11 +149,15 @@ fun MapScreen(
 
     currentUserId: String? = null,
 
+    currentRequestPoints: Int = 0,
+
+    isLoadingCleaning: Boolean = false,
+
     cleaningActionRequestId: String? = null,
 
     onDismissSelectedToilet: () -> Unit = {},
 
-    onRequestCleaning: (Toilet) -> Unit = {},
+    onRequestCleaning: (Toilet, Int) -> Unit = { _, _ -> },
 
     onAcceptCleaning: (CleaningRequest) -> Unit = {},
 
@@ -482,6 +488,12 @@ fun MapScreen(
                     currentUserId =
                         currentUserId,
 
+                    currentRequestPoints =
+                        currentRequestPoints,
+
+                    isLoadingCleaning =
+                        isLoadingCleaning,
+
                     isActionInProgress =
                         cleaningActionRequestId != null &&
                                 (
@@ -493,9 +505,11 @@ fun MapScreen(
                         onDismissSelectedToilet,
 
                     onRequestCleaning = {
+                            selectedRequestPoints ->
 
                         onRequestCleaning(
-                            selectedToilet
+                            selectedToilet,
+                            selectedRequestPoints
                         )
                     },
 
@@ -1348,7 +1362,7 @@ private fun SearchResultItem(
                         TextOverflow.Ellipsis
                 )
 
-            } 
+            }
 
             if (distanceText != null) {
 
@@ -1676,15 +1690,75 @@ private fun ToiletDetailCard(
     toilet: Toilet,
     cleaningRequest: CleaningRequest?,
     currentUserId: String?,
+    currentRequestPoints: Int,
+    isLoadingCleaning: Boolean,
     isActionInProgress: Boolean,
     onDismiss: () -> Unit,
-    onRequestCleaning: () -> Unit,
+    onRequestCleaning: (Int) -> Unit,
     onAcceptCleaning: (CleaningRequest) -> Unit,
     onOpenCleaningScreen: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenReviews: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+
+    var showRequestPointDialog by
+    remember(
+        toilet.id
+    ) {
+        mutableStateOf(
+            false
+        )
+    }
+
+
+    var selectedRequestPoints by
+    remember(
+        toilet.id,
+        currentRequestPoints
+    ) {
+        mutableIntStateOf(
+            preferredCleaningRequestPoints(
+                currentRequestPoints
+            )
+        )
+    }
+
+
+    if (showRequestPointDialog) {
+
+        CleaningRequestPointDialog(
+            currentRequestPoints =
+                currentRequestPoints,
+
+            selectedRequestPoints =
+                selectedRequestPoints,
+
+            onRequestPointsSelected = {
+                    points ->
+
+                selectedRequestPoints =
+                    points
+            },
+
+            onDismiss = {
+
+                showRequestPointDialog =
+                    false
+            },
+
+            onConfirm = {
+
+                showRequestPointDialog =
+                    false
+
+                onRequestCleaning(
+                    selectedRequestPoints
+                )
+            }
+        )
+    }
+
 
     var nowMillis by remember(
         toilet.id,
@@ -1965,7 +2039,7 @@ private fun ToiletDetailCard(
                 )
 
 
-if (toilet.sourceType == "USER" && toilet.comment.isNotBlank()) {
+                if (toilet.sourceType == "USER" && toilet.comment.isNotBlank()) {
 
                     Surface(
                         modifier =
@@ -2117,7 +2191,7 @@ if (toilet.sourceType == "USER" && toilet.comment.isNotBlank()) {
                         CleaningStatusNotice(
                             message =
                                 if (isLoggedIn) {
-                                    "清掃が必要な場合は、清掃依頼を出せます。予定報酬は5ptです。"
+                                    "清掃依頼ポイントを1pt・3pt・5ptから選べます。清掃報酬は選択ポイントより2pt多くなります。"
                                 } else {
                                     "清掃を依頼するにはログインが必要です。"
                                 },
@@ -2181,6 +2255,15 @@ if (toilet.sourceType == "USER" && toilet.comment.isNotBlank()) {
 
                             CleaningRequestInfo(
                                 label =
+                                    "使用した依頼ポイント",
+
+                                value =
+                                    "${cleaningRequest.requestPointsUsed} pt"
+                            )
+
+
+                            CleaningRequestInfo(
+                                label =
                                     "予定報酬",
 
                                 value =
@@ -2232,6 +2315,15 @@ if (toilet.sourceType == "USER" && toilet.comment.isNotBlank()) {
 
                         CleaningRequestInfo(
                             label =
+                                "使用した依頼ポイント",
+
+                            value =
+                                "${cleaningRequest?.requestPointsUsed ?: 3} pt"
+                        )
+
+
+                        CleaningRequestInfo(
+                            label =
                                 "予定報酬",
 
                             value =
@@ -2266,6 +2358,9 @@ if (toilet.sourceType == "USER" && toilet.comment.isNotBlank()) {
                                     !isLoggedIn ->
                                         "ログインして清掃を依頼"
 
+                                    isLoadingCleaning ->
+                                        "依頼ポイントを確認中"
+
                                     isActionInProgress ->
                                         "清掃依頼を送信中"
 
@@ -2286,12 +2381,27 @@ if (toilet.sourceType == "USER" && toilet.comment.isNotBlank()) {
                                 isLoggedIn && isActionInProgress,
 
                             enabled =
-                                !isLoggedIn || !isActionInProgress,
+                                !isLoggedIn ||
+                                        (
+                                                !isLoadingCleaning &&
+                                                        !isActionInProgress
+                                                ),
 
                             onClick = {
 
-                                if (isLoggedIn) {
-                                    onRequestCleaning()
+                                if (
+                                    isLoggedIn &&
+                                    !isLoadingCleaning
+                                ) {
+
+                                    selectedRequestPoints =
+                                        preferredCleaningRequestPoints(
+                                            currentRequestPoints
+                                        )
+
+                                    showRequestPointDialog =
+                                        true
+
                                 } else {
                                     onOpenAccount()
                                 }
@@ -2542,6 +2652,515 @@ if (toilet.sourceType == "USER" && toilet.comment.isNotBlank()) {
                 }
             }
         }
+    }
+}
+
+
+/*
+ * =====================================
+ * 清掃依頼ポイント選択
+ * =====================================
+ */
+private data class CleaningRequestPointOption(
+    val label: String,
+    val requestPoints: Int
+) {
+
+    val rewardPoints: Int
+        get() =
+            requestPoints + 2
+}
+
+
+private val CleaningRequestPointOptions =
+    listOf(
+        CleaningRequestPointOption(
+            label =
+                "通常依頼",
+
+            requestPoints =
+                1
+        ),
+
+        CleaningRequestPointOption(
+            label =
+                "優先依頼",
+
+            requestPoints =
+                3
+        ),
+
+        CleaningRequestPointOption(
+            label =
+                "高優先依頼",
+
+            requestPoints =
+                5
+        )
+    )
+
+
+private fun preferredCleaningRequestPoints(
+    currentRequestPoints: Int
+): Int {
+
+    return when {
+
+        currentRequestPoints >= 3 ->
+            3
+
+        currentRequestPoints >= 1 ->
+            1
+
+        else ->
+            0
+    }
+}
+
+
+@Composable
+private fun CleaningRequestPointDialog(
+    currentRequestPoints: Int,
+    selectedRequestPoints: Int,
+    onRequestPointsSelected: (Int) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+
+    val selectedOption =
+        CleaningRequestPointOptions
+            .firstOrNull {
+                it.requestPoints ==
+                        selectedRequestPoints
+            }
+
+
+    val canConfirm =
+        selectedOption != null &&
+                currentRequestPoints >=
+                selectedRequestPoints
+
+
+    AlertDialog(
+        onDismissRequest =
+            onDismiss,
+
+        title = {
+
+            Text(
+                text =
+                    "清掃依頼を出す",
+
+                color =
+                    FinderDark,
+
+                fontWeight =
+                    FontWeight.Bold
+            )
+        },
+
+        text = {
+
+            Column(
+                modifier =
+                    Modifier
+                        .heightIn(
+                            max = 520.dp
+                        )
+                        .verticalScroll(
+                            rememberScrollState()
+                        ),
+
+                verticalArrangement =
+                    Arrangement.spacedBy(
+                        12.dp
+                    )
+            ) {
+
+                Surface(
+                    modifier =
+                        Modifier.fillMaxWidth(),
+
+                    color =
+                        FinderSoftGreen,
+
+                    shape =
+                        RoundedCornerShape(
+                            12.dp
+                        )
+                ) {
+
+                    Row(
+                        modifier =
+                            Modifier.padding(
+                                horizontal = 14.dp,
+                                vertical = 12.dp
+                            ),
+
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+
+                        Text(
+                            text =
+                                "現在の依頼ポイント",
+
+                            modifier =
+                                Modifier.weight(
+                                    1f
+                                ),
+
+                            color =
+                                FinderDark,
+
+                            fontSize =
+                                13.sp
+                        )
+
+
+                        Text(
+                            text =
+                                "${currentRequestPoints} pt",
+
+                            color =
+                                FinderGreen,
+
+                            fontWeight =
+                                FontWeight.Bold
+                        )
+                    }
+                }
+
+
+                Text(
+                    text =
+                        "使用する依頼ポイントを選んでください。使用ポイントが多いほど、清掃する人の報酬も増えます。",
+
+                    color =
+                        FinderMuted,
+
+                    fontSize =
+                        13.sp
+                )
+
+
+                CleaningRequestPointOptions
+                    .forEach {
+                            option ->
+
+                        val isEnabled =
+                            currentRequestPoints >=
+                                    option.requestPoints
+
+                        val isSelected =
+                            selectedRequestPoints ==
+                                    option.requestPoints
+
+
+                        Surface(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable(
+                                        enabled =
+                                            isEnabled,
+
+                                        onClick = {
+
+                                            onRequestPointsSelected(
+                                                option.requestPoints
+                                            )
+                                        }
+                                    ),
+
+                            color =
+                                when {
+
+                                    isSelected ->
+                                        FinderSoftGreen
+
+                                    isEnabled ->
+                                        Color.White
+
+                                    else ->
+                                        Color(
+                                            0xFFF3F5F4
+                                        )
+                                },
+
+                            shape =
+                                RoundedCornerShape(
+                                    12.dp
+                                ),
+
+                            border =
+                                BorderStroke(
+                                    width =
+                                        1.dp,
+
+                                    color =
+                                        if (isSelected) {
+                                            FinderGreen
+                                        } else {
+                                            FinderBorder
+                                        }
+                                )
+                        ) {
+
+                            Row(
+                                modifier =
+                                    Modifier.padding(
+                                        horizontal = 8.dp,
+                                        vertical = 7.dp
+                                    ),
+
+                                verticalAlignment =
+                                    Alignment.CenterVertically
+                            ) {
+
+                                RadioButton(
+                                    selected =
+                                        isSelected,
+
+                                    onClick =
+                                        if (isEnabled) {
+
+                                            {
+                                                onRequestPointsSelected(
+                                                    option.requestPoints
+                                                )
+                                            }
+
+                                        } else {
+                                            null
+                                        },
+
+                                    enabled =
+                                        isEnabled
+                                )
+
+
+                                Column(
+                                    modifier =
+                                        Modifier.weight(
+                                            1f
+                                        )
+                                ) {
+
+                                    Text(
+                                        text =
+                                            option.label,
+
+                                        color =
+                                            if (isEnabled) {
+                                                FinderDark
+                                            } else {
+                                                FinderMuted
+                                            },
+
+                                        fontWeight =
+                                            FontWeight.Bold
+                                    )
+
+
+                                    Text(
+                                        text =
+                                            "依頼 ${option.requestPoints}pt  →  清掃報酬 ${option.rewardPoints}pt",
+
+                                        color =
+                                            FinderMuted,
+
+                                        fontSize =
+                                            12.sp
+                                    )
+                                }
+
+
+                                if (!isEnabled) {
+
+                                    Text(
+                                        text =
+                                            "ポイント不足",
+
+                                        color =
+                                            FinderRed,
+
+                                        fontSize =
+                                            11.sp,
+
+                                        fontWeight =
+                                            FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+
+                if (selectedOption != null) {
+
+                    Surface(
+                        modifier =
+                            Modifier.fillMaxWidth(),
+
+                        color =
+                            Color(
+                                0xFFF8FAF9
+                            ),
+
+                        shape =
+                            RoundedCornerShape(
+                                12.dp
+                            )
+                    ) {
+
+                        Column(
+                            modifier =
+                                Modifier.padding(
+                                    12.dp
+                                ),
+
+                            verticalArrangement =
+                                Arrangement.spacedBy(
+                                    4.dp
+                                )
+                        ) {
+
+                            CleaningRequestDialogSummaryRow(
+                                label =
+                                    "使用する依頼ポイント",
+
+                                value =
+                                    "${selectedOption.requestPoints} pt"
+                            )
+
+
+                            CleaningRequestDialogSummaryRow(
+                                label =
+                                    "清掃する人の報酬",
+
+                                value =
+                                    "${selectedOption.rewardPoints} pt"
+                            )
+
+
+                            CleaningRequestDialogSummaryRow(
+                                label =
+                                    "依頼後の残りポイント",
+
+                                value =
+                                    "${(currentRequestPoints - selectedOption.requestPoints).coerceAtLeast(0)} pt"
+                            )
+                        }
+                    }
+
+                } else {
+
+                    Text(
+                        text =
+                            "清掃依頼を出すためのポイントがありません。依頼ポイントは毎日10ptまで回復します。",
+
+                        color =
+                            FinderRed,
+
+                        fontSize =
+                            12.sp
+                    )
+                }
+            }
+        },
+
+        confirmButton = {
+
+            TextButton(
+                onClick =
+                    onConfirm,
+
+                enabled =
+                    canConfirm
+            ) {
+
+                Text(
+                    text =
+                        "この内容で依頼する",
+
+                    color =
+                        if (canConfirm) {
+                            FinderGreen
+                        } else {
+                            FinderMuted
+                        },
+
+                    fontWeight =
+                        FontWeight.Bold
+                )
+            }
+        },
+
+        dismissButton = {
+
+            TextButton(
+                onClick =
+                    onDismiss
+            ) {
+
+                Text(
+                    text =
+                        "キャンセル",
+
+                    color =
+                        FinderMuted
+                )
+            }
+        }
+    )
+}
+
+
+@Composable
+private fun CleaningRequestDialogSummaryRow(
+    label: String,
+    value: String
+) {
+
+    Row(
+        modifier =
+            Modifier.fillMaxWidth(),
+
+        verticalAlignment =
+            Alignment.CenterVertically
+    ) {
+
+        Text(
+            text =
+                label,
+
+            modifier =
+                Modifier.weight(
+                    1f
+                ),
+
+            color =
+                FinderMuted,
+
+            fontSize =
+                12.sp
+        )
+
+
+        Text(
+            text =
+                value,
+
+            color =
+                FinderDark,
+
+            fontSize =
+                12.sp,
+
+            fontWeight =
+                FontWeight.Bold
+        )
     }
 }
 
