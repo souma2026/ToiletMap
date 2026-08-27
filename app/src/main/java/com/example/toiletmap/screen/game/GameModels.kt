@@ -1,13 +1,11 @@
 package com.example.toiletmap.screen.game
 
-
 enum class GameState {
     TITLE,
     COUNTDOWN,
     PLAYING,
     GAME_OVER
 }
-
 
 enum class ObstacleType(
     val symbol: String,
@@ -19,53 +17,52 @@ enum class ObstacleType(
 ) {
     TOILET_PAPER(
         symbol = "🧻",
-        baseSpeed = 0.18f,
+        baseSpeed = 0.22f,
         widthFraction = 0.10f,
         heightFraction = 0.075f
     ),
     PLUNGER(
         symbol = "🪠",
-        baseSpeed = 0.19f,
+        baseSpeed = 0.23f,
         widthFraction = 0.10f,
         heightFraction = 0.08f
     ),
     MOP(
         symbol = "🧹",
-        baseSpeed = 0.16f,
+        baseSpeed = 0.20f,
         widthFraction = 0.13f,
         heightFraction = 0.10f,
         isLarge = true
     ),
     CLEANER(
         symbol = "🧴",
-        baseSpeed = 0.27f,
+        baseSpeed = 0.33f,
         widthFraction = 0.09f,
         heightFraction = 0.075f,
         isFast = true
     ),
     BUCKET(
         symbol = "🪣",
-        baseSpeed = 0.17f,
+        baseSpeed = 0.21f,
         widthFraction = 0.12f,
         heightFraction = 0.09f,
         isLarge = true
     ),
     DIRT(
         symbol = "💩",
-        baseSpeed = 0.30f,
+        baseSpeed = 0.36f,
         widthFraction = 0.085f,
         heightFraction = 0.07f,
         isFast = true
     ),
     TOILET(
         symbol = "🚽",
-        baseSpeed = 0.145f,
+        baseSpeed = 0.18f,
         widthFraction = 0.17f,
         heightFraction = 0.12f,
         isLarge = true
     )
 }
-
 
 data class FallingObject(
     val id: Long,
@@ -77,6 +74,24 @@ data class FallingObject(
     val type: ObstacleType
 )
 
+/*
+ * 回復アイテム。
+ * LIFEが減っているときだけ低頻度で出現する。
+ */
+data class RecoveryItem(
+    val id: Long,
+    val x: Float,
+    val y: Float,
+    val width: Float = WIDTH,
+    val height: Float = HEIGHT,
+    val speed: Float = BASE_SPEED
+) {
+    companion object {
+        const val WIDTH = 0.09f
+        const val HEIGHT = 0.07f
+        const val BASE_SPEED = 0.17f
+    }
+}
 
 data class GamePlayer(
     val x: Float = 0.5f,
@@ -94,7 +109,6 @@ data class GamePlayer(
     }
 }
 
-
 data class LevelConfig(
     val level: Int,
     val speedMultiplier: Float,
@@ -105,14 +119,17 @@ data class LevelConfig(
     val allowedTypes: List<ObstacleType>
 )
 
-
+/*
+ * 全体的に以前より速め。
+ * さらにLEVEL 5ではGameViewModel側で時間経過加速する。
+ */
 val TOILET_DODGE_LEVELS: List<LevelConfig> =
     listOf(
         LevelConfig(
             level = 1,
             speedMultiplier = 1.0f,
             maxObjects = 2,
-            spawnIntervalMillis = 1_150L,
+            spawnIntervalMillis = 1_050L,
             fastObstacleRate = 0.0f,
             largeObstacleRate = 0.10f,
             allowedTypes = listOf(
@@ -124,7 +141,7 @@ val TOILET_DODGE_LEVELS: List<LevelConfig> =
             level = 2,
             speedMultiplier = 1.2f,
             maxObjects = 3,
-            spawnIntervalMillis = 900L,
+            spawnIntervalMillis = 820L,
             fastObstacleRate = 0.12f,
             largeObstacleRate = 0.15f,
             allowedTypes = listOf(
@@ -138,7 +155,7 @@ val TOILET_DODGE_LEVELS: List<LevelConfig> =
             level = 3,
             speedMultiplier = 1.5f,
             maxObjects = 4,
-            spawnIntervalMillis = 700L,
+            spawnIntervalMillis = 630L,
             fastObstacleRate = 0.35f,
             largeObstacleRate = 0.15f,
             allowedTypes = listOf(
@@ -153,7 +170,7 @@ val TOILET_DODGE_LEVELS: List<LevelConfig> =
             level = 4,
             speedMultiplier = 1.8f,
             maxObjects = 5,
-            spawnIntervalMillis = 540L,
+            spawnIntervalMillis = 480L,
             fastObstacleRate = 0.35f,
             largeObstacleRate = 0.35f,
             allowedTypes = listOf(
@@ -169,23 +186,20 @@ val TOILET_DODGE_LEVELS: List<LevelConfig> =
             level = 5,
             speedMultiplier = 2.2f,
             maxObjects = 7,
-            spawnIntervalMillis = 390L,
+            spawnIntervalMillis = 350L,
             fastObstacleRate = 0.48f,
             largeObstacleRate = 0.42f,
             allowedTypes = ObstacleType.entries
         )
     )
 
-
 fun levelConfigFor(level: Int): LevelConfig =
     TOILET_DODGE_LEVELS[
-        (level - 1)
-            .coerceIn(
-                minimumValue = 0,
-                maximumValue = TOILET_DODGE_LEVELS.lastIndex
-            )
+        (level - 1).coerceIn(
+            minimumValue = 0,
+            maximumValue = TOILET_DODGE_LEVELS.lastIndex
+        )
     ]
-
 
 fun levelTitle(level: Int): String =
     when (level) {
@@ -196,7 +210,6 @@ fun levelTitle(level: Int): String =
         else -> "TOILET HELL"
     }
 
-
 fun scoreRank(score: Int): String =
     when {
         score >= 1_200 -> "S"
@@ -204,7 +217,6 @@ fun scoreRank(score: Int): String =
         score >= 300 -> "B"
         else -> "C"
     }
-
 
 fun rankMessage(rank: String): String =
     when (rank) {
