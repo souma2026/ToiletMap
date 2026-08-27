@@ -1,7 +1,14 @@
 package com.example.toiletmap.screen.map
 
-import android.view.ViewGroup
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Build
+import android.os.Looper
+import android.view.ViewGroup
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -64,6 +71,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
@@ -74,17 +82,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+import androidx.core.content.ContextCompat
 import com.example.toiletmap.model.CleaningRequest
 import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.model.Toilet
 import com.example.toiletmap.screen.cleaning.formatCleaningDateTime
-import com.example.toiletmap.screen.map.facilities.ToiletFacilityEditor
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
+import kotlin.coroutines.resume
 import kotlin.math.*
 
 
@@ -131,10 +142,12 @@ private fun isUsableCoordinate(
     /*
      * 0,0 は端末やエミュレータで
      * 未取得時の仮値として入ることがある。
+     * これを現在地として使うと、日本のトイレまで
+     * 約8,300kmと表示されてしまうため除外する。
      */
     if (
-        kotlin.math.abs(latitude) < 0.000001 &&
-        kotlin.math.abs(longitude) < 0.000001
+        abs(latitude) < 0.000001 &&
+        abs(longitude) < 0.000001
     ) {
         return false
     }
@@ -165,9 +178,7 @@ private fun finderDisplayName(
     val trimmed =
         rawName.trim()
 
-    if (
-        trimmed.isBlank()
-    ) {
+    if (trimmed.isBlank()) {
         return "名称未登録のトイレ"
     }
 
@@ -178,14 +189,16 @@ private fun finderDisplayName(
 
     val brokenCharacterCount =
         visibleCharacters.count { character ->
-
             character == '?' ||
                     character == '？' ||
                     character == '�'
         }
 
     /*
-     * 文字化けした名称をそのまま表示しない。
+     * DB取り込み時の文字化けなどで
+     * 「??? ??????」になった名前をそのまま見せない。
+     * 元の文字列を復元することはできないため、
+     * UIでは安全な代替名を表示する。
      */
     if (
         visibleCharacters.isEmpty() ||
@@ -199,69 +212,298 @@ private fun finderDisplayName(
 
 
 /*
- * =====================================
- * 検索候補用現在地
- * =====================================
+ * 地図本体で使っているMapLibreの位置情報を、
+ * 検索候補でもそのまま利用する。
  *
- * 地図本体で使っているMapLibreの位置情報を
- * 検索候補でも使用する。
+ * 以前は未清掃画面用の別位置情報Stateを使っていたため、
+ * 地図上では現在地が正しくても検索候補だけ0,0を参照し、
+ * 距離が約8,300kmになることがあった。
+ */
+private fun hasFinderLocationPermission(
+    context: Context
+): Boolean {
+
+    val fineGranted =
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+    val coarseGranted =
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+    return fineGranted || coarseGranted
+}
+
+
+/*
+ * Android本体のLocationManagerから現在地を取得する。
+ *
+ * MapLibreのLocationComponentに位置が入っていない端末でも
+ * 検索候補を現在地順に並べられるようにする。
+ */
+private suspend fun loadFinderSystemLocation(
+    context: Context
+): Location? {
+
+    if (!hasFinderLocationPermission(context)) {
+        return null
+    }
+
+    val locationManager =
+        context.getSystemService(
+            Context.LOCATION_SERVICE
+        ) as LocationManager
+
+    val enabledProviders =
+        runCatching {
+            locationManager.getProviders(true)
+        }.getOrDefault(
+            emptyList()
+        )
+
+    /*
+     * まず端末がすでに持っている最新位置を使う。
+     * これが最速で、検索欄を押した直後に候補を出しやすい。
+     */
+    val lastKnownLocation =
+        enabledProviders
+            .mapNotNull { provider ->
+
+                runCatching {
+                    locationManager.getLastKnownLocation(
+                        provider
+                    )
+                }.getOrNull()
+            }
+            .filter {
+                isUsableFinderLocation(it)
+            }
+            .maxByOrNull {
+                it.time
+            }
+
+    if (lastKnownLocation != null) {
+        return lastKnownLocation
+    }
+
+    /*
+     * 保存済み位置がない場合は、現在位置を1回取得する。
+     */
+    val fineGranted =
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+    val provider =
+        when {
+            fineGranted &&
+                    runCatching {
+                        locationManager.isProviderEnabled(
+                            LocationManager.GPS_PROVIDER
+                        )
+                    }.getOrDefault(false) ->
+                LocationManager.GPS_PROVIDER
+
+            runCatching {
+                locationManager.isProviderEnabled(
+                    LocationManager.NETWORK_PROVIDER
+                )
+            }.getOrDefault(false) ->
+                LocationManager.NETWORK_PROVIDER
+
+            else ->
+                enabledProviders.firstOrNull()
+        }
+
+    if (provider == null) {
+        return null
+    }
+
+    return suspendCancellableCoroutine { continuation ->
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+
+                locationManager.getCurrentLocation(
+                    provider,
+                    null,
+                    context.mainExecutor
+                ) { location ->
+
+                    if (continuation.isActive) {
+                        continuation.resume(
+                            location
+                        )
+                    }
+                }
+
+            } else {
+
+                val listener =
+                    object : LocationListener {
+
+                        override fun onLocationChanged(
+                            location: Location
+                        ) {
+
+                            runCatching {
+                                locationManager.removeUpdates(
+                                    this
+                                )
+                            }
+
+                            if (continuation.isActive) {
+                                continuation.resume(
+                                    location
+                                )
+                            }
+                        }
+
+                        override fun onProviderDisabled(
+                            provider: String
+                        ) {
+
+                            runCatching {
+                                locationManager.removeUpdates(
+                                    this
+                                )
+                            }
+
+                            if (continuation.isActive) {
+                                continuation.resume(
+                                    null
+                                )
+                            }
+                        }
+                    }
+
+                @Suppress("DEPRECATION")
+                locationManager.requestSingleUpdate(
+                    provider,
+                    listener,
+                    Looper.getMainLooper()
+                )
+
+                continuation.invokeOnCancellation {
+                    runCatching {
+                        locationManager.removeUpdates(
+                            listener
+                        )
+                    }
+                }
+            }
+
+        } catch (_: SecurityException) {
+
+            if (continuation.isActive) {
+                continuation.resume(
+                    null
+                )
+            }
+
+        } catch (_: Exception) {
+
+            if (continuation.isActive) {
+                continuation.resume(
+                    null
+                )
+            }
+        }
+    }
+}
+
+
+/*
+ * 検索候補用の現在地。
+ *
+ * 1. MapLibre LocationComponent
+ * 2. Android LocationManager
+ *
+ * の両方を確認し、取得できた位置を使う。
  */
 @Composable
 private fun rememberFinderCurrentLocation(
     mapView: MapView
 ): Location? {
 
+    val context =
+        LocalContext.current
+
     var currentLocation by
     remember(
-        mapView
+        mapView,
+        context
     ) {
-
         mutableStateOf<Location?>(
             null
         )
     }
 
-
     LaunchedEffect(
-        mapView
+        mapView,
+        context
     ) {
 
-        while (
-            true
-        ) {
+        while (true) {
+
+            var mapLibreLocation: Location? = null
 
             mapView.getMapAsync { map ->
 
-                val candidate =
+                mapLibreLocation =
                     runCatching {
-
                         map.locationComponent
                             .lastKnownLocation
-
                     }.getOrNull()
-
 
                 if (
                     isUsableFinderLocation(
-                        candidate
+                        mapLibreLocation
                     )
                 ) {
-
                     currentLocation =
-                        candidate
+                        mapLibreLocation
                 }
             }
 
+            /*
+             * MapLibre側が空でもAndroid本体から直接取得する。
+             */
+            val systemLocation =
+                withTimeoutOrNull(
+                    5_000L
+                ) {
+                    loadFinderSystemLocation(
+                        context
+                    )
+                }
+
+            if (
+                isUsableFinderLocation(
+                    systemLocation
+                )
+            ) {
+                currentLocation =
+                    systemLocation
+            }
 
             /*
-             * 移動した場合も検索候補の距離を更新する。
+             * 位置が取れるまでは短め、取得後は少し間隔を空ける。
              */
             delay(
-                1_000L
+                if (currentLocation == null) {
+                    1_000L
+                } else {
+                    3_000L
+                }
             )
         }
     }
-
 
     return currentLocation
 }
@@ -535,6 +777,9 @@ fun MapScreen(
             onSecretLogoTap =
                 onSecretLogoTap,
 
+            onCurrentLocationRequest =
+                onCurrentLocationClick,
+
             onNotificationClick = {
                 showNotificationDialog =
                     true
@@ -798,6 +1043,7 @@ private fun FinderHeader(
     onSearchQueryChanged: (String) -> Unit,
     onToiletSelected: (Toilet) -> Unit,
     onSecretLogoTap: () -> Unit,
+    onCurrentLocationRequest: () -> Unit,
     onNotificationClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -949,6 +1195,12 @@ private fun FinderHeader(
                 } else {
 
                     toilets
+                        .filter { toilet ->
+                            isUsableCoordinate(
+                                latitude = toilet.latitude,
+                                longitude = toilet.longitude
+                            )
+                        }
                         .sortedBy { toilet ->
 
                             distanceKm(
@@ -984,13 +1236,18 @@ private fun FinderHeader(
         toilet: Toilet
     ) {
 
+        val displayName =
+            finderDisplayName(
+                toilet.name
+            )
+
         searchValue =
             TextFieldValue(
-                text = toilet.name,
+                text = displayName,
 
                 selection =
                     TextRange(
-                        toilet.name.length
+                        displayName.length
                     )
             )
 
@@ -1211,6 +1468,18 @@ private fun FinderHeader(
                                 showSearchSuggestions = true
 
                                 /*
+                                 * 空欄で検索欄を押した場合に現在地がまだ無ければ、
+                                 * MainActivity側の既存の権限確認・現在地取得処理も呼ぶ。
+                                 * 権限未許可ならここでAndroidの権限ダイアログが出る。
+                                 */
+                                if (
+                                    searchValue.text.isBlank() &&
+                                    currentLocation == null
+                                ) {
+                                    onCurrentLocationRequest()
+                                }
+
+                                /*
                                  * 候補を閉じた後に再度検索欄を押した場合も、
                                  * 現在の文字列で検索結果を最新化する。
                                  */
@@ -1248,27 +1517,28 @@ private fun FinderHeader(
                 },
 
                 /*
- * =====================================
- * ×
- * =====================================
- *
- * 検索文字削除とフォーカス解除を
- * 1つのボタンに統合する。
- */
+                 * =====================================
+                 * ×
+                 *
+                 * 以前は
+                 * 「検索文字を削除する×」と
+                 * 「検索候補を閉じる×」の2個を
+                 * 同時に表示していたため、
+                 * ×ボタンが重複して見えていた。
+                 *
+                 * ここでは1個だけ表示し、
+                 * ・文字あり → 検索文字を削除
+                 * ・文字なし → 検索候補を閉じる
+                 * と動作を切り替える。
+                 * =====================================
+                 */
                 trailingIcon = {
 
-                    if (
-                        searchQuery.isNotEmpty() ||
-                        searchFocused ||
-                        showSearchSuggestions
-                    ) {
+                    IconButton(
+                        onClick = {
 
-                        IconButton(
-                            onClick = {
+                            if (searchQuery.isNotEmpty()) {
 
-                                /*
-                                 * 検索文字を削除
-                                 */
                                 searchValue =
                                     TextFieldValue("")
 
@@ -1277,34 +1547,36 @@ private fun FinderHeader(
                                 )
 
                                 /*
-                                 * キーボードを閉じる
+                                 * 入力欄のフォーカスは残し、
+                                 * 空欄時の近いトイレ候補を表示できるようにする。
                                  */
+                                showSearchSuggestions = true
+
+                            } else {
+
                                 focusManager.clearFocus()
-
-                                /*
-                                 * 検索候補を閉じる
-                                 */
-                                searchFocused =
-                                    false
-
-                                showSearchSuggestions =
-                                    false
+                                searchFocused = false
+                                showSearchSuggestions = false
                             }
-                        ) {
-
-                            Icon(
-                                imageVector =
-                                    Icons
-                                        .Outlined
-                                        .Close,
-
-                                contentDescription =
-                                    "検索をクリアして閉じる",
-
-                                tint =
-                                    FinderMuted
-                            )
                         }
+                    ) {
+
+                        Icon(
+                            imageVector =
+                                Icons
+                                    .Outlined
+                                    .Close,
+
+                            contentDescription =
+                                if (searchQuery.isNotEmpty()) {
+                                    "検索文字を削除"
+                                } else {
+                                    "検索候補を閉じる"
+                                },
+
+                            tint =
+                                FinderMuted
+                        )
                     }
                 },
 
@@ -1440,7 +1712,16 @@ private fun FinderHeader(
 
                         Text(
                             text =
-                                "表示できるトイレがありません",
+                                if (
+                                    searchQuery.isBlank() &&
+                                    currentLocation == null
+                                ) {
+                                    "現在地を取得中です。位置情報の許可を確認してください。"
+                                } else if (searchQuery.isBlank()) {
+                                    "現在地付近に表示できるトイレがありません"
+                                } else {
+                                    "一致するトイレがありません"
+                                },
 
                             modifier =
                                 Modifier.padding(
@@ -1479,54 +1760,36 @@ private fun FinderHeader(
                                     toilet ->
 
                                 SearchResultItem(
-
                                     toilet =
                                         toilet,
 
                                     distanceText =
                                         currentLocation
                                             ?.takeIf {
-
                                                 isUsableCoordinate(
-                                                    latitude =
-                                                        toilet.latitude,
-
-                                                    longitude =
-                                                        toilet.longitude
+                                                    latitude = toilet.latitude,
+                                                    longitude = toilet.longitude
                                                 )
                                             }
-                                            ?.let {
-                                                    location ->
+                                            ?.let { location ->
 
                                                 val meters =
                                                     distanceMeters(
-
                                                         location.latitude,
-
                                                         location.longitude,
-
                                                         toilet.latitude,
-
                                                         toilet.longitude
                                                     )
 
-
-                                                if (
-                                                    meters >= 1000
-                                                ) {
-
-                                                    "%.1fkm".format(
-                                                        meters / 1000.0
-                                                    )
-
+                                                if (meters >= 1000) {
+                                                    "%.1fkm".format(meters / 1000.0)
                                                 } else {
-
                                                     "${meters}m"
                                                 }
+
                                             },
 
                                     onClick = {
-
                                         selectToilet(
                                             toilet
                                         )
@@ -1612,7 +1875,9 @@ private fun SearchResultItem(
 
             Text(
                 text =
-                    toilet.name,
+                    finderDisplayName(
+                        toilet.name
+                    ),
 
                 color =
                     FinderDark,
@@ -2304,7 +2569,9 @@ private fun ToiletDetailCard(
 
                 Text(
                     text =
-                        toilet.name,
+                        finderDisplayName(
+                            toilet.name
+                        ),
 
                     color =
                         FinderDark,
@@ -2467,23 +2734,6 @@ private fun ToiletDetailCard(
                     }
                 }
 
-
-                /*
-                 * =====================================
-                 * 設備情報
-                 * =====================================
-                 */
-                ToiletFacilityEditor(
-
-                    toilet =
-                        toilet,
-
-                    currentUserId =
-                        currentUserId,
-
-                    onOpenAccount =
-                        onOpenAccount
-                )
 
                 when (cleaningStatus) {
 
