@@ -4,9 +4,11 @@ import com.example.toiletmap.data.supabase.SupabaseClientProvider
 import com.example.toiletmap.model.ToiletReview
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.query.Order
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import java.util.UUID
+
 
 /*
  * Supabaseへ新しい口コミを登録するときに使うデータ
@@ -29,6 +31,7 @@ private data class NewToiletReview(
 
     val comment: String
 )
+
 
 class ReviewRepository {
 
@@ -59,13 +62,39 @@ class ReviewRepository {
      * =====================================
      * 口コミ一覧取得
      * =====================================
+     *
+     * 監査 #13 対応
+     *
+     * 修正前:
+     *
+     * 対象トイレの口コミを全件取得
+     * ↓
+     * Android側で createdAt 降順
+     *
+     *
+     * 修正後:
+     *
+     * Supabase側で
+     *
+     * 1. toilet_id で絞り込み
+     * 2. created_at DESC
+     * 3. 最新100件に制限
+     *
+     * を行う。
+     *
+     * 口コミ件数が増えても、
+     * 毎回全履歴をAndroidへ送らない。
      */
     suspend fun loadReviews(
         toiletId: String
     ): List<ToiletReview> {
 
+        val normalizedToiletId =
+            toiletId.trim()
+
+
         if (
-            toiletId.isBlank()
+            normalizedToiletId.isBlank()
         ) {
 
             return emptyList()
@@ -78,20 +107,38 @@ class ReviewRepository {
             )
             .select {
 
+                /*
+                 * 最新口コミから取得する。
+                 */
+                order(
+                    column =
+                        "created_at",
+
+                    order =
+                        Order.DESCENDING,
+
+                    nullsFirst =
+                        false
+                )
+
+
+                /*
+                 * 無制限取得を防止。
+                 */
+                limit(
+                    100
+                )
+
+
                 filter {
 
                     eq(
                         "toilet_id",
-                        toiletId
+                        normalizedToiletId
                     )
                 }
             }
             .decodeList<ToiletReview>()
-            .sortedByDescending {
-                    review ->
-
-                review.createdAt
-            }
     }
 
 
@@ -124,6 +171,7 @@ class ReviewRepository {
                         toiletId
                     )
 
+
                     eq(
                         "user_id",
                         userId
@@ -142,6 +190,10 @@ class ReviewRepository {
      *
      * 1ユーザーにつき
      * 1トイレ1件まで。
+     *
+     * Android側でも事前確認し、
+     * Supabase側のUNIQUE制約でも
+     * 最終的に二重登録を防ぐ。
      */
     suspend fun addReview(
         toiletId: String,
@@ -149,11 +201,18 @@ class ReviewRepository {
         comment: String
     ) {
 
+        /*
+         * 端末に保存されているログイン状態の
+         * 復元完了を待つ。
+         */
         supabase
             .auth
             .awaitInitialization()
 
 
+        /*
+         * ログインしているか確認
+         */
         val currentUser =
             supabase
                 .auth
@@ -167,6 +226,9 @@ class ReviewRepository {
             toiletId.trim()
 
 
+        /*
+         * トイレID確認
+         */
         if (
             normalizedToiletId.isBlank()
         ) {
@@ -177,6 +239,9 @@ class ReviewRepository {
         }
 
 
+        /*
+         * 評価確認
+         */
         if (
             rating !in 1..5
         ) {
@@ -191,6 +256,9 @@ class ReviewRepository {
             comment.trim()
 
 
+        /*
+         * 空コメント防止
+         */
         if (
             trimmedComment.isBlank()
         ) {
@@ -201,6 +269,9 @@ class ReviewRepository {
         }
 
 
+        /*
+         * 最大文字数
+         */
         if (
             trimmedComment.length > 500
         ) {
@@ -212,7 +283,9 @@ class ReviewRepository {
 
 
         /*
+         * =====================================
          * すでに投稿済みなら拒否
+         * =====================================
          */
         if (
             hasCurrentUserReview(
@@ -230,6 +303,9 @@ class ReviewRepository {
         }
 
 
+        /*
+         * Supabaseへ送るデータ
+         */
         val newReview =
             NewToiletReview(
 
@@ -250,7 +326,12 @@ class ReviewRepository {
 
 
         /*
-         * DBのUNIQUE制約でも二重投稿を防ぐ。
+         * =====================================
+         * Supabaseへ登録
+         * =====================================
+         *
+         * 事前確認後に別端末などから同時投稿されても、
+         * DBのUNIQUE制約が最後の防波堤になる。
          */
         try {
 
@@ -299,6 +380,10 @@ class ReviewRepository {
      * =====================================
      * 自分の口コミを削除
      * =====================================
+     *
+     * Android側でもuser_idを確認し、
+     * Supabase側のRLSでも
+     * auth.uid() = user_id の行だけ削除できる。
      */
     suspend fun deleteReview(
         reviewId: String
@@ -333,7 +418,7 @@ class ReviewRepository {
 
 
         /*
-         * 自分の口コミであることを確認
+         * 自分の口コミであることを確認。
          */
         val ownReview =
             supabase
@@ -353,6 +438,7 @@ class ReviewRepository {
                             "id",
                             normalizedReviewId
                         )
+
 
                         eq(
                             "user_id",
@@ -386,6 +472,7 @@ class ReviewRepository {
                         "id",
                         normalizedReviewId
                     )
+
 
                     eq(
                         "user_id",

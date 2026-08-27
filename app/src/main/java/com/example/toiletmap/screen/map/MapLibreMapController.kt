@@ -63,6 +63,27 @@ class MapLibreMapController(
     private val markerIdToToiletId =
         mutableMapOf<Long, String>()
 
+    /*
+     * =====================================
+     * 監査 #10: Marker Icon キャッシュ
+     * =====================================
+     *
+     * トイレピンは清掃状態ごとに見た目が固定なので、
+     * 再描画のたびに Bitmap を作り直さず再利用する。
+     *
+     * NORMAL / REQUESTED / IN_PROGRESS / COMPLETED
+     * の最大4種類だけ生成する。
+     */
+    private val markerIconCache =
+        mutableMapOf<CleaningStatus, Icon>()
+
+    /*
+     * 現在地アイコンも見た目が固定なので1個だけ再利用する。
+     */
+    private var currentLocationIconCache:
+            Icon? =
+        null
+
     private var onToiletMarkerClick:
             ((Toilet) -> Unit)? =
         null
@@ -972,6 +993,17 @@ class MapLibreMapController(
     private fun createCurrentLocationIcon():
             Icon {
 
+        /*
+         * 監査 #10:
+         * すでに生成済みなら Bitmap を作らず、その Icon を再利用する。
+         */
+        currentLocationIconCache
+            ?.let { cachedIcon ->
+
+                return cachedIcon
+            }
+
+
         val density =
 
             activity
@@ -1072,13 +1104,22 @@ class MapLibreMapController(
         )
 
 
-        return IconFactory
-            .getInstance(
-                activity
-            )
-            .fromBitmap(
-                bitmap
-            )
+        val icon =
+
+            IconFactory
+                .getInstance(
+                    activity
+                )
+                .fromBitmap(
+                    bitmap
+                )
+
+
+        currentLocationIconCache =
+            icon
+
+
+        return icon
     }
 
 
@@ -1232,6 +1273,22 @@ class MapLibreMapController(
     private fun createMarkerIcon(
         status: CleaningStatus
     ): Icon {
+
+        /*
+         * 監査 #10:
+         * 同じ清掃状態のピンは同じ Icon を使う。
+         *
+         * renderLatestToilets() のたびに
+         * Bitmap を大量生成しない。
+         */
+        markerIconCache[
+            status
+        ]?.let {
+                cachedIcon ->
+
+            return cachedIcon
+        }
+
 
         val density =
 
@@ -1484,13 +1541,24 @@ class MapLibreMapController(
         )
 
 
-        return IconFactory
-            .getInstance(
-                activity
-            )
-            .fromBitmap(
-                bitmap
-            )
+        val icon =
+
+            IconFactory
+                .getInstance(
+                    activity
+                )
+                .fromBitmap(
+                    bitmap
+                )
+
+
+        markerIconCache[
+            status
+        ] =
+            icon
+
+
+        return icon
     }
 
 
@@ -1536,6 +1604,18 @@ class MapLibreMapController(
 
         mapView
             .onDestroy()
+
+
+        /*
+         * Controller破棄時に
+         * Iconキャッシュの参照も手放す。
+         */
+        markerIconCache
+            .clear()
+
+
+        currentLocationIconCache =
+            null
 
 
         owner

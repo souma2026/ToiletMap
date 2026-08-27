@@ -9,6 +9,7 @@ import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.storage.storage
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -91,9 +92,10 @@ object AccountRepository {
         return getCurrentUser() != null
     }
 
-// =========================================
-// 保存済みログイン状態を復元
-// =========================================
+
+    // =========================================
+    // 保存済みログイン状態を復元
+    // =========================================
 
     suspend fun restoreLoginState(): Boolean {
 
@@ -111,6 +113,7 @@ object AccountRepository {
             .auth
             .currentUserOrNull() != null
     }
+
 
     // =========================================
     // デイリー清掃依頼ポイント更新
@@ -158,7 +161,9 @@ object AccountRepository {
     ): UserProfile {
 
         return supabase
-            .from("profiles")
+            .from(
+                "profiles"
+            )
             .select {
 
                 filter {
@@ -183,7 +188,9 @@ object AccountRepository {
     ) {
 
         supabase
-            .from("profiles")
+            .from(
+                "profiles"
+            )
             .update(
                 {
 
@@ -215,7 +222,9 @@ object AccountRepository {
     ) {
 
         supabase
-            .from("profiles")
+            .from(
+                "profiles"
+            )
             .update(
                 {
 
@@ -249,7 +258,9 @@ object AccountRepository {
         val bucket =
             supabase
                 .storage
-                .from("avatars")
+                .from(
+                    "avatars"
+                )
 
 
         val path =
@@ -305,7 +316,9 @@ object AccountRepository {
         storedAvatarValue: String?
     ): String? {
 
-        if (storedAvatarValue.isNullOrBlank()) {
+        if (
+            storedAvatarValue.isNullOrBlank()
+        ) {
 
             return null
         }
@@ -315,8 +328,12 @@ object AccountRepository {
          * すでにURLならそのまま使用
          */
         if (
-            storedAvatarValue.startsWith("https://") ||
-            storedAvatarValue.startsWith("http://")
+            storedAvatarValue.startsWith(
+                "https://"
+            ) ||
+            storedAvatarValue.startsWith(
+                "http://"
+            )
         ) {
 
             return storedAvatarValue
@@ -332,14 +349,20 @@ object AccountRepository {
          */
         val path =
             storedAvatarValue
-                .substringBefore("?")
-                .trimStart('/')
+                .substringBefore(
+                    "?"
+                )
+                .trimStart(
+                    '/'
+                )
 
 
         val bucket =
             supabase
                 .storage
-                .from("avatars")
+                .from(
+                    "avatars"
+                )
 
 
         val publicUrl =
@@ -355,15 +378,66 @@ object AccountRepository {
     // =========================================
     // ポイント履歴取得
     // =========================================
+    //
+    // 監査 #13 対応
+    //
+    // 修正前:
+    //
+    // ユーザーのポイント履歴を全件取得
+    // ↓
+    // Android側で createdAt 降順
+    //
+    //
+    // 修正後:
+    //
+    // Supabase側で
+    //
+    // 1. user_id で絞り込み
+    // 2. created_at DESC
+    // 3. 最新100件だけ取得
+    //
+    // とする。
+    //
+    // データが増えても毎回全履歴を
+    // Androidへ送信しない。
+    // =========================================
 
     suspend fun loadPointTransactions(
         userId: String
     ): List<PointTransaction> {
 
         return supabase
-            .from("point_transactions")
+            .from(
+                "point_transactions"
+            )
             .select {
 
+                /*
+                 * 新しい履歴から取得
+                 */
+                order(
+                    column =
+                        "created_at",
+
+                    order =
+                        Order.DESCENDING,
+
+                    nullsFirst =
+                        false
+                )
+
+
+                /*
+                 * 無制限取得を防止
+                 */
+                limit(
+                    100
+                )
+
+
+                /*
+                 * ログインユーザーの履歴だけ取得
+                 */
                 filter {
 
                     eq(
@@ -373,15 +447,24 @@ object AccountRepository {
                 }
             }
             .decodeList<PointTransaction>()
-            .sortedByDescending {
-
-                it.createdAt
-            }
     }
 
 
     // =========================================
-    // 履歴取得
+    // トイレ編集履歴取得
+    // =========================================
+    //
+    // ここもポイント履歴と同様に、
+    // Android側で全件取得してから
+    // ソートしていたため同時に修正する。
+    //
+    // Supabase側で
+    //
+    // 1. user_id
+    // 2. edited_at DESC
+    // 3. 最新100件
+    //
+    // に絞って取得する。
     // =========================================
 
     suspend fun loadHistory(
@@ -389,8 +472,33 @@ object AccountRepository {
     ): List<ToiletEditHistory> {
 
         return supabase
-            .from("toilet_edit_history")
+            .from(
+                "toilet_edit_history"
+            )
             .select {
+
+                /*
+                 * 新しい編集履歴から取得
+                 */
+                order(
+                    column =
+                        "edited_at",
+
+                    order =
+                        Order.DESCENDING,
+
+                    nullsFirst =
+                        false
+                )
+
+
+                /*
+                 * 無制限取得を防止
+                 */
+                limit(
+                    100
+                )
+
 
                 filter {
 
@@ -401,10 +509,6 @@ object AccountRepository {
                 }
             }
             .decodeList<ToiletEditHistory>()
-            .sortedByDescending {
-
-                it.editedAt
-            }
     }
 
 
@@ -431,7 +535,9 @@ object AccountRepository {
 
 
         supabase
-            .from("toilet_edit_history")
+            .from(
+                "toilet_edit_history"
+            )
             .insert(
                 history
             )

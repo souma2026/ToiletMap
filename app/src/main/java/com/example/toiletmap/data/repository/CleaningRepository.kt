@@ -7,8 +7,31 @@ import com.example.toiletmap.model.UserProfile
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.Order
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+
+
+/*
+ * =========================================
+ * 清掃完了RPCの実際の結果
+ * =========================================
+ *
+ * Supabase complete_cleaning() が
+ * 実際に処理した値を受け取る。
+ */
+@Serializable
+data class CleaningCompletionResult(
+
+    @SerialName("earned_points")
+    val earnedPoints: Int,
+
+    @SerialName("remaining_reward_points")
+    val remainingRewardPoints: Int
+)
+
 
 /**
  * 清掃依頼の取得と Supabase RPC の呼び出しを担当する。
@@ -26,6 +49,7 @@ import kotlinx.serialization.json.put
 class CleaningRepository {
 
     companion object {
+
         val SELECTABLE_REQUEST_POINTS: Set<Int> =
             setOf(
                 4,
@@ -34,11 +58,17 @@ class CleaningRepository {
             )
     }
 
+
     private val supabase =
         SupabaseClientProvider.client
 
+
     suspend fun getCurrentUserId(): String? {
-        supabase.auth.awaitInitialization()
+
+        supabase
+            .auth
+            .awaitInitialization()
+
 
         return supabase
             .auth
@@ -46,39 +76,53 @@ class CleaningRepository {
             ?.id
     }
 
+
     /**
      * 現在の清掃依頼ポイントを取得する。
      *
      * 取得前にデイリー更新 RPC を呼ぶ。
-     * SQL 側で同一日付の二重加算を防止しているため、
-     * マップ画面・アカウント画面の両方から呼ばれても安全。
      */
     suspend fun loadCurrentRequestPoints(
         userId: String
     ): Int {
+
         val loggedInUserId =
             requireLoggedIn(
                 "依頼ポイントを確認するにはログインが必要です"
             )
 
-        if (loggedInUserId != userId) {
+
+        if (
+            loggedInUserId != userId
+        ) {
+
             throw IllegalStateException(
                 "ログイン中のユーザー情報と一致しません"
             )
         }
 
+
         supabase
             .postgrest
             .rpc(
-                function = "refresh_daily_request_points"
+                function =
+                    "refresh_daily_request_points"
             )
 
+
         return supabase
-            .from("profiles")
+            .from(
+                "profiles"
+            )
             .select {
-                limit(1)
+
+                limit(
+                    1
+                )
+
 
                 filter {
+
                     eq(
                         "id",
                         userId
@@ -91,44 +135,88 @@ class CleaningRepository {
             ?: 0
     }
 
-    suspend fun loadActiveRequests(): List<CleaningRequest> {
+
+    /**
+     * 現在有効な清掃依頼一覧を取得する。
+     *
+     * 監査 #12 対応済み。
+     *
+     * REQUESTED / IN_PROGRESS だけを
+     * Supabase側で取得する。
+     */
+    suspend fun loadActiveRequests():
+            List<CleaningRequest> {
+
         return supabase
-            .from("cleaning_requests")
-            .select()
+            .from(
+                "cleaning_requests"
+            )
+            .select {
+
+                filter {
+
+                    isIn(
+                        "status",
+                        listOf(
+                            CleaningStatus.REQUESTED.name,
+                            CleaningStatus.IN_PROGRESS.name
+                        )
+                    )
+                }
+
+
+                order(
+                    column =
+                        "requested_at",
+
+                    order =
+                        Order.DESCENDING,
+
+                    nullsFirst =
+                        false
+                )
+            }
             .decodeList<CleaningRequest>()
-            .filter {
-                it.status == CleaningStatus.REQUESTED ||
-                        it.status == CleaningStatus.IN_PROGRESS
-            }
-            .sortedByDescending {
-                it.requestedAt ?: it.createdAt.orEmpty()
-            }
     }
 
+
     suspend fun requestCleaning(
+
         toiletId: String,
+
         requestPoints: Int
+
     ) {
+
         requireLoggedIn(
             "清掃を依頼するにはログインが必要です"
         )
 
+
         require(
-            requestPoints in SELECTABLE_REQUEST_POINTS
+            requestPoints in
+                    SELECTABLE_REQUEST_POINTS
         ) {
+
             "清掃依頼ポイントは4pt・8pt・12ptから選択してください"
         }
+
 
         supabase
             .postgrest
             .rpc(
-                function = "request_cleaning_with_selected_points",
+
+                function =
+                    "request_cleaning_with_selected_points",
+
                 parameters =
                     buildJsonObject {
+
                         put(
                             "p_toilet_id",
                             toiletId
                         )
+
 
                         put(
                             "p_request_points",
@@ -138,19 +226,26 @@ class CleaningRepository {
             )
     }
 
+
     suspend fun acceptCleaning(
         cleaningRequestId: String
     ) {
+
         requireLoggedIn(
             "清掃を引き受けるにはログインが必要です"
         )
 
+
         supabase
             .postgrest
             .rpc(
-                function = "accept_cleaning",
+
+                function =
+                    "accept_cleaning",
+
                 parameters =
                     buildJsonObject {
+
                         put(
                             "p_cleaning_request_id",
                             cleaningRequestId
@@ -159,40 +254,76 @@ class CleaningRepository {
             )
     }
 
+
+    /*
+     * =========================================
+     * 清掃完了
+     * =========================================
+     *
+     * 監査 #14 対応。
+     *
+     * 修正前:
+     *
+     * RPCを実行するだけで戻り値を使わない。
+     *
+     *
+     * 修正後:
+     *
+     * DBが実際に付与した
+     *
+     * earned_points
+     * remaining_reward_points
+     *
+     * をdecodeしてAndroidへ返す。
+     */
     suspend fun completeCleaning(
         cleaningRequestId: String
-    ) {
+    ): CleaningCompletionResult {
+
         requireLoggedIn(
             "清掃を完了するにはログインが必要です"
         )
 
-        supabase
+
+        return supabase
             .postgrest
             .rpc(
-                function = "complete_cleaning",
+
+                function =
+                    "complete_cleaning",
+
                 parameters =
                     buildJsonObject {
+
                         put(
                             "p_cleaning_request_id",
                             cleaningRequestId
                         )
                     }
             )
+            .decodeSingle<CleaningCompletionResult>()
     }
+
 
     suspend fun cancelCleaning(
         cleaningRequestId: String
     ) {
+
         requireLoggedIn(
             "清掃担当をキャンセルするにはログインが必要です"
         )
 
+
         supabase
             .postgrest
             .rpc(
-                function = "cancel_cleaning",
+
+                function =
+                    "cancel_cleaning",
+
                 parameters =
                     buildJsonObject {
+
                         put(
                             "p_cleaning_request_id",
                             cleaningRequestId
@@ -200,20 +331,27 @@ class CleaningRepository {
                     }
             )
     }
+
 
     suspend fun cancelCleaningRequest(
         cleaningRequestId: String
     ) {
+
         requireLoggedIn(
             "清掃依頼を取り消すにはログインが必要です"
         )
 
+
         supabase
             .postgrest
             .rpc(
-                function = "cancel_cleaning_request",
+
+                function =
+                    "cancel_cleaning_request",
+
                 parameters =
                     buildJsonObject {
+
                         put(
                             "p_cleaning_request_id",
                             cleaningRequestId
@@ -222,12 +360,15 @@ class CleaningRepository {
             )
     }
 
+
     private suspend fun requireLoggedIn(
         message: String
     ): String {
+
         supabase
             .auth
             .awaitInitialization()
+
 
         return supabase
             .auth

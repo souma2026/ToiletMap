@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.toiletmap.data.repository.ReviewRepository
 import com.example.toiletmap.model.ToiletReview
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,12 +13,19 @@ import kotlinx.coroutines.launch
 
 class ReviewViewModel : ViewModel() {
 
+    /*
+     * =====================================
+     * Repository
+     * =====================================
+     */
     private val repository =
         ReviewRepository()
 
 
     /*
-     * 現在口コミを表示しているトイレ
+     * =====================================
+     * 現在口コミを表示しているトイレID
+     * =====================================
      */
     private var currentToiletId:
             String? =
@@ -42,8 +50,11 @@ class ReviewViewModel : ViewModel() {
 
     /*
      * =====================================
-     * レビュー用ログインユーザーID
+     * 現在ログイン中ユーザーID
      * =====================================
+     *
+     * 清掃機能のログイン状態には依存させず、
+     * ReviewRepositoryから直接取得する。
      */
     private val _currentUserId =
         MutableStateFlow<String?>(
@@ -74,8 +85,10 @@ class ReviewViewModel : ViewModel() {
 
     /*
      * =====================================
-     * 投稿・削除処理中
+     * 口コミ操作中
      * =====================================
+     *
+     * 投稿中・削除中の両方でtrueになる。
      */
     private val _isPosting =
         MutableStateFlow(
@@ -90,7 +103,7 @@ class ReviewViewModel : ViewModel() {
 
     /*
      * =====================================
-     * エラー
+     * エラーメッセージ
      * =====================================
      */
     private val _errorMessage =
@@ -122,7 +135,7 @@ class ReviewViewModel : ViewModel() {
 
     /*
      * =====================================
-     * 選択したトイレ変更
+     * 選択中トイレが変わったときの準備
      * =====================================
      */
     fun prepareForToilet(
@@ -160,7 +173,7 @@ class ReviewViewModel : ViewModel() {
 
     /*
      * =====================================
-     * 口コミ取得
+     * 口コミ一覧取得
      * =====================================
      */
     fun loadReviews(
@@ -178,6 +191,10 @@ class ReviewViewModel : ViewModel() {
         }
 
 
+        /*
+         * 別のトイレの読み込みなら
+         * 表示対象を切り替える。
+         */
         if (
             currentToiletId !=
             toiletId
@@ -185,6 +202,7 @@ class ReviewViewModel : ViewModel() {
 
             currentToiletId =
                 toiletId
+
 
             _reviews.value =
                 emptyList()
@@ -196,17 +214,28 @@ class ReviewViewModel : ViewModel() {
             _isLoading.value =
                 true
 
+
             _errorMessage.value =
                 null
 
 
             try {
 
+                /*
+                 * ログインユーザー取得
+                 */
                 val loggedInUserId =
                     repository
                         .getCurrentUserId()
 
 
+                /*
+                 * 口コミ取得
+                 *
+                 * ReviewRepository側で
+                 * created_at DESC + limit
+                 * を実行する。
+                 */
                 val loadedReviews =
                     repository
                         .loadReviews(
@@ -215,8 +244,8 @@ class ReviewViewModel : ViewModel() {
 
 
                 /*
-                 * 別のトイレへ移動済みなら
-                 * 古い結果を表示しない。
+                 * 通信中に別のトイレへ移動した場合、
+                 * 古い通信結果を画面へ反映しない。
                  */
                 if (
                     currentToiletId ==
@@ -226,9 +255,22 @@ class ReviewViewModel : ViewModel() {
                     _currentUserId.value =
                         loggedInUserId
 
+
                     _reviews.value =
                         loadedReviews
                 }
+
+
+            } catch (
+                e: CancellationException
+            ) {
+
+                /*
+                 * Coroutineキャンセルを
+                 * 通常エラーとして扱わない。
+                 */
+                throw e
+
 
             } catch (
                 e: Exception
@@ -244,8 +286,14 @@ class ReviewViewModel : ViewModel() {
 
                     _errorMessage.value =
                         e.message
+                            ?.takeIf {
+                                    message ->
+
+                                message.isNotBlank()
+                            }
                             ?: "口コミの取得に失敗しました"
                 }
+
 
             } finally {
 
@@ -273,6 +321,10 @@ class ReviewViewModel : ViewModel() {
         comment: String
     ) {
 
+        /*
+         * 二重タップによる
+         * 二重操作を防止。
+         */
         if (
             _isPosting.value
         ) {
@@ -289,6 +341,7 @@ class ReviewViewModel : ViewModel() {
             currentToiletId =
                 toiletId
 
+
             _reviews.value =
                 emptyList()
         }
@@ -299,8 +352,10 @@ class ReviewViewModel : ViewModel() {
             _isPosting.value =
                 true
 
+
             _errorMessage.value =
                 null
+
 
             _successMessage.value =
                 null
@@ -321,6 +376,11 @@ class ReviewViewModel : ViewModel() {
                     )
 
 
+                /*
+                 * 投稿成功後、
+                 * 最新の口コミ一覧と
+                 * ログインユーザーを再取得。
+                 */
                 val loggedInUserId =
                     repository
                         .getCurrentUserId()
@@ -341,12 +401,26 @@ class ReviewViewModel : ViewModel() {
                     _currentUserId.value =
                         loggedInUserId
 
+
                     _reviews.value =
                         loadedReviews
+
 
                     _successMessage.value =
                         "口コミを投稿しました"
                 }
+
+
+            } catch (
+                e: CancellationException
+            ) {
+
+                /*
+                 * Coroutineキャンセルは
+                 * エラー表示しない。
+                 */
+                throw e
+
 
             } catch (
                 e: Exception
@@ -362,8 +436,14 @@ class ReviewViewModel : ViewModel() {
 
                     _errorMessage.value =
                         e.message
+                            ?.takeIf {
+                                    message ->
+
+                                message.isNotBlank()
+                            }
                             ?: "口コミの投稿に失敗しました"
                 }
+
 
             } finally {
 
@@ -390,6 +470,10 @@ class ReviewViewModel : ViewModel() {
         reviewId: String
     ) {
 
+        /*
+         * 投稿・削除処理中なら
+         * 二重操作しない。
+         */
         if (
             _isPosting.value
         ) {
@@ -418,6 +502,7 @@ class ReviewViewModel : ViewModel() {
             currentToiletId =
                 toiletId
 
+
             _reviews.value =
                 emptyList()
         }
@@ -428,8 +513,10 @@ class ReviewViewModel : ViewModel() {
             _isPosting.value =
                 true
 
+
             _errorMessage.value =
                 null
+
 
             _successMessage.value =
                 null
@@ -437,6 +524,9 @@ class ReviewViewModel : ViewModel() {
 
             try {
 
+                /*
+                 * Supabaseから口コミ削除
+                 */
                 repository
                     .deleteReview(
                         reviewId
@@ -444,9 +534,11 @@ class ReviewViewModel : ViewModel() {
 
 
                 /*
-                 * 削除後に一覧再取得。
-                 * 自分の口コミがなくなるので、
-                 * 投稿欄が再表示される。
+                 * 削除後、
+                 * 最新の口コミ一覧を再取得。
+                 *
+                 * 自分の口コミがなくなるので
+                 * 再度投稿できる状態になる。
                  */
                 val loggedInUserId =
                     repository
@@ -468,12 +560,26 @@ class ReviewViewModel : ViewModel() {
                     _currentUserId.value =
                         loggedInUserId
 
+
                     _reviews.value =
                         loadedReviews
+
 
                     _successMessage.value =
                         "口コミを削除しました"
                 }
+
+
+            } catch (
+                e: CancellationException
+            ) {
+
+                /*
+                 * Coroutineキャンセルは
+                 * 通常エラーとして扱わない。
+                 */
+                throw e
+
 
             } catch (
                 e: Exception
@@ -489,8 +595,14 @@ class ReviewViewModel : ViewModel() {
 
                     _errorMessage.value =
                         e.message
+                            ?.takeIf {
+                                    message ->
+
+                                message.isNotBlank()
+                            }
                             ?: "口コミの削除に失敗しました"
                 }
+
 
             } finally {
 
@@ -509,13 +621,14 @@ class ReviewViewModel : ViewModel() {
 
     /*
      * =====================================
-     * メッセージ削除
+     * メッセージを消す
      * =====================================
      */
     fun clearMessages() {
 
         _errorMessage.value =
             null
+
 
         _successMessage.value =
             null

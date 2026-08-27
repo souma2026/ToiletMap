@@ -6,6 +6,7 @@ import com.example.toiletmap.model.RewardRedemption
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
+import io.github.jan.supabase.postgrest.query.Order
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
@@ -56,9 +57,15 @@ object PointExchangeRepository {
                 }
             }
             .decodeList<RewardItem>()
-            .sortedBy {
-                it.displayOrder
-            }
+            .sortedWith(
+                compareBy<RewardItem> {
+                    it.requiredPoints
+                }.thenBy {
+                    it.displayOrder
+                }.thenBy {
+                    it.name
+                }
+            )
     }
 
 
@@ -69,6 +76,18 @@ object PointExchangeRepository {
      *
      * SupabaseのRLSにより、
      * ログイン中ユーザー本人の履歴だけ取得する。
+     *
+     * 監査 #11 対応:
+     *
+     * Android側で50件取得後に並べ替えるのではなく、
+     *
+     * 1. Supabase側で created_at DESC
+     * 2. その後、最大50件に制限
+     *
+     * とする。
+     *
+     * これにより履歴が50件を超えても、
+     * 正しく最新50件を取得できる。
      */
     suspend fun loadRedemptionHistory(): List<RewardRedemption> {
 
@@ -84,12 +103,24 @@ object PointExchangeRepository {
                     "created_at"
                 )
             ) {
-                limit(50)
+
+                /*
+                 * 最新の交換履歴から取得
+                 */
+                order(
+                    column = "created_at",
+                    order = Order.DESCENDING
+                )
+
+
+                /*
+                 * 最新50件だけ取得
+                 */
+                limit(
+                    50
+                )
             }
             .decodeList<RewardRedemption>()
-            .sortedByDescending {
-                it.createdAt
-            }
     }
 
 
