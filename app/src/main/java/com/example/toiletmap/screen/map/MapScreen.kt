@@ -1,6 +1,7 @@
 package com.example.toiletmap.screen.map
 
 import android.view.ViewGroup
+import android.location.Location
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -77,7 +78,6 @@ import com.example.toiletmap.model.CleaningRequest
 import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.model.Toilet
 import com.example.toiletmap.screen.cleaning.formatCleaningDateTime
-import com.example.toiletmap.screen.listofuncleaned.rememberCurrentLocationState
 import com.example.toiletmap.screen.map.facilities.ToiletFacilityEditor
 import kotlinx.coroutines.delay
 import org.maplibre.android.camera.CameraPosition
@@ -102,6 +102,169 @@ private val FinderBlue = Color(0xFF1976D2)
 private val FinderRed = Color(0xFFD94B4B)
 private val FinderSoftGreen = Color(0xFFE5F4F1)
 private val FinderBorder = Color(0xFFD7DEDC)
+
+
+/*
+ * =====================================
+ * 検索候補用の位置情報・表示名補正
+ * =====================================
+ */
+private fun isUsableCoordinate(
+    latitude: Double,
+    longitude: Double
+): Boolean {
+
+    if (
+        !latitude.isFinite() ||
+        !longitude.isFinite()
+    ) {
+        return false
+    }
+
+    if (
+        latitude !in -90.0..90.0 ||
+        longitude !in -180.0..180.0
+    ) {
+        return false
+    }
+
+    /*
+     * 0,0 は端末やエミュレータで
+     * 未取得時の仮値として入ることがある。
+     */
+    if (
+        kotlin.math.abs(latitude) < 0.000001 &&
+        kotlin.math.abs(longitude) < 0.000001
+    ) {
+        return false
+    }
+
+    return true
+}
+
+
+private fun isUsableFinderLocation(
+    location: Location?
+): Boolean {
+
+    val target =
+        location
+            ?: return false
+
+    return isUsableCoordinate(
+        latitude = target.latitude,
+        longitude = target.longitude
+    )
+}
+
+
+private fun finderDisplayName(
+    rawName: String
+): String {
+
+    val trimmed =
+        rawName.trim()
+
+    if (
+        trimmed.isBlank()
+    ) {
+        return "名称未登録のトイレ"
+    }
+
+    val visibleCharacters =
+        trimmed.filterNot {
+            it.isWhitespace()
+        }
+
+    val brokenCharacterCount =
+        visibleCharacters.count { character ->
+
+            character == '?' ||
+                    character == '？' ||
+                    character == '�'
+        }
+
+    /*
+     * 文字化けした名称をそのまま表示しない。
+     */
+    if (
+        visibleCharacters.isEmpty() ||
+        brokenCharacterCount * 2 >= visibleCharacters.length
+    ) {
+        return "名称未登録のトイレ"
+    }
+
+    return trimmed
+}
+
+
+/*
+ * =====================================
+ * 検索候補用現在地
+ * =====================================
+ *
+ * 地図本体で使っているMapLibreの位置情報を
+ * 検索候補でも使用する。
+ */
+@Composable
+private fun rememberFinderCurrentLocation(
+    mapView: MapView
+): Location? {
+
+    var currentLocation by
+    remember(
+        mapView
+    ) {
+
+        mutableStateOf<Location?>(
+            null
+        )
+    }
+
+
+    LaunchedEffect(
+        mapView
+    ) {
+
+        while (
+            true
+        ) {
+
+            mapView.getMapAsync { map ->
+
+                val candidate =
+                    runCatching {
+
+                        map.locationComponent
+                            .lastKnownLocation
+
+                    }.getOrNull()
+
+
+                if (
+                    isUsableFinderLocation(
+                        candidate
+                    )
+                ) {
+
+                    currentLocation =
+                        candidate
+                }
+            }
+
+
+            /*
+             * 移動した場合も検索候補の距離を更新する。
+             */
+            delay(
+                1_000L
+            )
+        }
+    }
+
+
+    return currentLocation
+}
 
 
 /*
@@ -1316,29 +1479,54 @@ private fun FinderHeader(
                                     toilet ->
 
                                 SearchResultItem(
+
                                     toilet =
                                         toilet,
 
                                     distanceText =
-                                        currentLocationState.location?.let { location ->
+                                        currentLocation
+                                            ?.takeIf {
 
-                                            val meters =
-                                                distanceMeters(
-                                                    location.latitude,
-                                                    location.longitude,
-                                                    toilet.latitude,
-                                                    toilet.longitude
+                                                isUsableCoordinate(
+                                                    latitude =
+                                                        toilet.latitude,
+
+                                                    longitude =
+                                                        toilet.longitude
                                                 )
-
-                                            if (meters >= 1000) {
-                                                "%.1fkm".format(meters / 1000.0)
-                                            } else {
-                                                "${meters}m"
                                             }
+                                            ?.let {
+                                                    location ->
 
-                                        },
+                                                val meters =
+                                                    distanceMeters(
+
+                                                        location.latitude,
+
+                                                        location.longitude,
+
+                                                        toilet.latitude,
+
+                                                        toilet.longitude
+                                                    )
+
+
+                                                if (
+                                                    meters >= 1000
+                                                ) {
+
+                                                    "%.1fkm".format(
+                                                        meters / 1000.0
+                                                    )
+
+                                                } else {
+
+                                                    "${meters}m"
+                                                }
+                                            },
 
                                     onClick = {
+
                                         selectToilet(
                                             toilet
                                         )
@@ -2283,11 +2471,6 @@ private fun ToiletDetailCard(
                 /*
                  * =====================================
                  * 設備情報
-                 *
-                 * 閲覧
-                 * 編集
-                 * ログイン判定
-                 * Supabase保存
                  * =====================================
                  */
                 ToiletFacilityEditor(
@@ -2301,7 +2484,6 @@ private fun ToiletDetailCard(
                     onOpenAccount =
                         onOpenAccount
                 )
-
 
                 when (cleaningStatus) {
 
