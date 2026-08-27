@@ -9,6 +9,8 @@ import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -276,6 +278,22 @@ class ToiletRepository {
                     }
                 }
                 .decodeList<MapToiletRow>()
+
+
+        /*
+         * =====================================
+         * キャンセル済みの古い範囲取得を破棄
+         * =====================================
+         *
+         * ViewModel側で新しい範囲取得へ切り替えた場合、
+         * 古いCoroutineはcancelされる。
+         *
+         * HTTP応答がほぼ同時に返ってきた場合でも、
+         * キャンセル済みならここでCancellationExceptionを発生させ、
+         * 古い範囲で_toiletsを上書きしない。
+         */
+        currentCoroutineContext()
+            .ensureActive()
 
 
         _toilets.value =

@@ -4,7 +4,10 @@ import android.os.SystemClock
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,47 +36,33 @@ import org.maplibre.android.maps.MapView
 @Composable
 fun ToiletMapApp(
 
-    /*
-     * 隠しゲーム
-     */
     gameViewModel:
     GameViewModel,
 
-
-    /*
-     * MapLibre
-     */
     mapView:
     MapView,
 
-
-    /*
-     * 全トイレ
-     *
-     * Supabaseから取得した一覧。
-     * 検索にも使用する。
-     */
     toilets:
     List<Toilet>,
 
+    searchResults:
+    List<Toilet>,
 
-    /*
-     * 現在選択中のトイレ
-     */
+    isSearchingToilets:
+    Boolean,
+
     selectedToilet:
     Toilet?,
 
+    isAddingToilet:
+    Boolean,
 
-    /*
-     * 清掃依頼中一覧
-     */
+    addedToilet:
+    Toilet?,
+
     uncleanedToilets:
     List<UncleanedToilet>,
 
-
-    /*
-     * 清掃依頼・担当状態
-     */
     cleaningRequests:
     List<CleaningRequest>,
 
@@ -89,10 +78,6 @@ fun ToiletMapApp(
     cleaningActionRequestId:
     String?,
 
-
-    /*
-     * 選択中トイレの口コミ状態
-     */
     reviews:
     List<ToiletReview>,
 
@@ -102,93 +87,51 @@ fun ToiletMapApp(
     isPostingReview:
     Boolean,
 
+    reviewCurrentUserId:
+    String?,
+
     reviewErrorMessage:
     String?,
 
     reviewSuccessMessage:
     String?,
 
-
-    /*
-     * 未清掃一覧から地図を開く
-     */
     onShowUncleanedToiletOnMap:
         (UncleanedToilet) -> Unit,
 
+    onSearchQueryChanged:
+        (String) -> Unit,
 
-    /*
-     * 検索結果を選択
-     */
     onSearchToiletSelected:
         (Toilet) -> Unit,
 
-
-    /*
-     * 詳細を閉じる
-     */
     onDismissSelectedToilet:
         () -> Unit,
 
-
-    /*
-     * 清掃依頼
-     */
     onRequestCleaning:
         (Toilet, Int) -> Unit,
 
-
-    /*
-     * 清掃を引き受ける
-     */
     onAcceptCleaning:
         (CleaningRequest) -> Unit,
 
-
-    /*
-     * 清掃完了
-     */
     onCompleteCleaning:
         (CleaningRequest) -> Unit,
 
-
-    /*
-     * 清掃担当をキャンセル
-     */
     onCancelCleaning:
         (CleaningRequest) -> Unit,
 
-
-    /*
-     * 自分が出した清掃依頼を取り消す
-     */
     onCancelCleaningRequest:
         (CleaningRequest) -> Unit,
 
-
-    /*
-     * 清掃依頼を再読込
-     */
     onReloadCleaning:
         () -> Unit,
 
-
-    /*
-     * 清掃画面から対象トイレを地図で開く
-     */
     onShowCleaningToiletOnMap:
         (String) -> Unit,
 
-
-    /*
-     * 口コミ一覧取得
-     */
     onLoadReviews:
         (String) -> Unit,
 
-
-    /*
-     * 口コミ投稿
-     */
     onSubmitReview:
         (
         String,
@@ -196,41 +139,25 @@ fun ToiletMapApp(
         String
     ) -> Unit,
 
+    onDeleteReview:
+        (
+        String,
+        String
+    ) -> Unit,
 
-    /*
-     * 口コミメッセージを消す
-     */
     onClearReviewMessages:
         () -> Unit,
 
-
-    /*
-     * トイレ追加
-     */
     onAddToilet:
         (Toilet) -> Unit,
 
+    onAddSuccessHandled:
+        (Toilet) -> Unit,
 
-    /*
-     * 現在地
-     */
     onCurrentLocationRequested:
         () -> Unit
-
 ) {
 
-
-    /*
-     * =====================================
-     * 画面番号
-     * =====================================
-     *
-     * 0 = 未清掃一覧
-     * 1 = 清掃
-     * 2 = Map
-     * 3 = トイレ追加
-     * 4 = アカウント
-     */
     var selectedScreen by
     rememberSaveable {
 
@@ -240,68 +167,79 @@ fun ToiletMapApp(
     }
 
 
-    /*
-     * 地図からトイレ位置を選んでいる途中か
-     */
     var isSelectingLocation by
     rememberSaveable {
-        mutableStateOf(false)
+
+        mutableStateOf(
+            false
+        )
     }
 
 
-    /*
-     * 口コミ投稿画面を表示しているか
-     */
     var showReviewDialog by
     rememberSaveable {
-        mutableStateOf(false)
+
+        mutableStateOf(
+            false
+        )
     }
 
 
-    /*
-     * =====================================
-     * 隠しゲーム起動判定
-     * =====================================
-     *
-     * Map画面のWCロゴを2秒以内に5回連続タップすると起動。
-     * ボトムナビにはゲーム項目を表示しない。
-     */
     var showSecretGame by
     rememberSaveable {
-        mutableStateOf(false)
+
+        mutableStateOf(
+            false
+        )
     }
 
 
     var secretTapCount by
     rememberSaveable {
-        mutableIntStateOf(0)
+
+        mutableIntStateOf(
+            0
+        )
     }
 
 
     var lastSecretTapAtMillis by
     rememberSaveable {
-        mutableStateOf(0L)
+
+        mutableStateOf(
+            0L
+        )
     }
 
 
     fun handleSecretLogoTap() {
+
         val now =
             SystemClock.elapsedRealtime()
+
 
         secretTapCount =
             if (
                 lastSecretTapAtMillis == 0L ||
                 now - lastSecretTapAtMillis > 2_000L
             ) {
+
                 1
+
             } else {
+
                 secretTapCount + 1
             }
+
 
         lastSecretTapAtMillis =
             now
 
-        if (secretTapCount >= 5) {
+
+        if (
+            secretTapCount >= 5
+        ) {
+
             secretTapCount =
                 0
 
@@ -315,6 +253,7 @@ fun ToiletMapApp(
                 false
 
             onClearReviewMessages()
+
             onDismissSelectedToilet()
 
             showSecretGame =
@@ -323,13 +262,14 @@ fun ToiletMapApp(
     }
 
 
-    /*
-     * 別画面へ移動した場合は連続タップ判定をリセット。
-     */
     LaunchedEffect(
         selectedScreen
     ) {
-        if (!showSecretGame) {
+
+        if (
+            !showSecretGame
+        ) {
+
             secretTapCount =
                 0
 
@@ -339,15 +279,17 @@ fun ToiletMapApp(
     }
 
 
-    /*
-     * ゲーム中はToiletMap本体とボトムナビを表示しない。
-     */
-    if (showSecretGame) {
+    if (
+        showSecretGame
+    ) {
+
         SecretGameScreen(
+
             viewModel =
                 gameViewModel,
 
             onExit = {
+
                 showSecretGame =
                     false
 
@@ -362,41 +304,35 @@ fun ToiletMapApp(
             }
         )
 
+
         return
     }
 
 
     /*
-     * =====================================
-     * Map画面を開いたら現在地を表示
-     * =====================================
-     *
-     * 未清掃画面と同じように、画面表示時に
-     * 自動で現在地取得を開始する。
-     * Mapへ戻ってきたときも位置を更新する。
+     * Map画面を開いただけでは
+     * 現在地権限を要求しない。
      */
     LaunchedEffect(
         selectedScreen
     ) {
 
-        when (selectedScreen) {
+        when (
+            selectedScreen
+        ) {
 
             0,
-            1 ->
-                onReloadCleaning()
-
-            2 -> {
+            1,
+            2 ->
 
                 onReloadCleaning()
-                onCurrentLocationRequested()
-            }
         }
     }
 
 
     /*
      * =====================================
-     * トイレ追加画面
+     * トイレ追加フォーム
      * =====================================
      */
     var toiletName by
@@ -445,8 +381,50 @@ fun ToiletMapApp(
 
 
     /*
-     * 別のトイレを選んだ場合は、
-     * 前のトイレの口コミ画面を閉じる。
+     * =====================================
+     * トイレ追加成功後
+     * =====================================
+     */
+    LaunchedEffect(
+        addedToilet?.id
+    ) {
+
+        val toilet =
+            addedToilet
+                ?: return@LaunchedEffect
+
+
+        toiletName =
+            ""
+
+        cleanliness =
+            3
+
+        comment =
+            ""
+
+        selectedLatitude =
+            null
+
+        selectedLongitude =
+            null
+
+        isSelectingLocation =
+            false
+
+        selectedScreen =
+            2
+
+
+        onAddSuccessHandled(
+            toilet
+        )
+    }
+
+
+    /*
+     * 別のトイレに移動した場合
+     * 口コミ画面を閉じる。
      */
     LaunchedEffect(
         selectedToilet?.id
@@ -459,17 +437,6 @@ fun ToiletMapApp(
     }
 
 
-    /*
- * =====================================
- * ボトムナビゲーション表示判定
- * =====================================
- *
- * Map画面でトイレ詳細を表示している間だけ、
- * 下のナビゲーションバーを隠す。
- *
- * これによって詳細カードが画面下端まで使えるので、
- * カード上端を今より下へ移動できる。
- */
     val showBottomNavigation =
 
         !(
@@ -495,10 +462,6 @@ fun ToiletMapApp(
                             screen ->
 
 
-                        /*
-                         * Map以外へ移動したら
-                         * 場所選択を終了
-                         */
                         if (
                             screen != 2
                         ) {
@@ -537,16 +500,12 @@ fun ToiletMapApp(
 
         ) {
 
-
             when (
                 selectedScreen
             ) {
 
-
                 /*
-                 * =====================================
                  * 未清掃一覧
-                 * =====================================
                  */
                 0 -> {
 
@@ -562,6 +521,7 @@ fun ToiletMapApp(
                             selectedScreen =
                                 2
 
+
                             onShowUncleanedToiletOnMap(
                                 toilet
                             )
@@ -571,9 +531,7 @@ fun ToiletMapApp(
 
 
                 /*
-                 * =====================================
                  * 清掃
-                 * =====================================
                  */
                 1 -> {
 
@@ -603,6 +561,7 @@ fun ToiletMapApp(
 
                             selectedScreen =
                                 2
+
 
                             onShowCleaningToiletOnMap(
                                 request.toiletId
@@ -640,9 +599,7 @@ fun ToiletMapApp(
 
 
                 /*
-                 * =====================================
                  * Map
-                 * =====================================
                  */
                 2 -> {
 
@@ -651,64 +608,51 @@ fun ToiletMapApp(
                         mapView =
                             mapView,
 
-
-                        /*
-                         * 検索対象
-                         */
                         toilets =
                             toilets,
 
+                        searchResults =
+                            searchResults,
 
-                        /*
-                         * 検索結果選択
-                         */
+                        isSearchingToilets =
+                            isSearchingToilets,
+
+                        onSearchQueryChanged =
+                            onSearchQueryChanged,
+
                         onSearchToiletSelected =
                             onSearchToiletSelected,
 
-
-                        /*
-                         * WCロゴ5回タップで隠しゲーム
-                         */
                         onSecretLogoTap = {
+
                             handleSecretLogoTap()
                         },
 
-
-                        /*
-                         * 現在地
-                         */
                         onCurrentLocationClick =
                             onCurrentLocationRequested,
 
-
-                        /*
-                         * 場所選択中
-                         */
                         isSelectingLocation =
                             isSelectingLocation,
 
-
-                        /*
-                         * 現在選択中のトイレ
-                         */
                         selectedToilet =
                             selectedToilet,
 
-
-                        /*
-                         * 選択中トイレの有効な清掃依頼
-                         */
                         cleaningRequest =
                             selectedToilet
-                                ?.let { toilet ->
+                                ?.let {
+                                        toilet ->
 
                                     cleaningRequests
-                                        .firstOrNull { request ->
+                                        .firstOrNull {
+                                                request ->
 
-                                            request.toiletId == toilet.id &&
+                                            request.toiletId ==
+                                                    toilet.id &&
                                                     (
-                                                            request.status == CleaningStatus.REQUESTED ||
-                                                                    request.status == CleaningStatus.IN_PROGRESS
+                                                            request.status ==
+                                                                    CleaningStatus.REQUESTED ||
+                                                                    request.status ==
+                                                                    CleaningStatus.IN_PROGRESS
                                                             )
                                         }
                                 },
@@ -725,41 +669,21 @@ fun ToiletMapApp(
                         cleaningActionRequestId =
                             cleaningActionRequestId,
 
-
-                        /*
-                         * 詳細を閉じる
-                         */
                         onDismissSelectedToilet =
                             onDismissSelectedToilet,
 
-
-                        /*
-                         * 清掃依頼
-                         */
                         onRequestCleaning =
                             onRequestCleaning,
 
-
-                        /*
-                         * 清掃を引き受ける
-                         */
                         onAcceptCleaning =
                             onAcceptCleaning,
 
-
-                        /*
-                         * 自分の担当状況を開く
-                         */
                         onOpenCleaningScreen = {
 
                             selectedScreen =
                                 1
                         },
 
-
-                        /*
-                         * 未ログイン時はアカウント画面へ誘導
-                         */
                         onOpenAccount = {
 
                             showReviewDialog =
@@ -771,30 +695,22 @@ fun ToiletMapApp(
                                 4
                         },
 
-
-                        /*
-                         * 口コミを投稿
-                         */
                         onOpenReviews = {
                                 toilet ->
 
 
                             onClearReviewMessages()
 
+
                             onLoadReviews(
                                 toilet.id
                             )
+
 
                             showReviewDialog =
                                 true
                         },
 
-
-                        /*
-                         * =====================================
-                         * 地図をタップして位置選択
-                         * =====================================
-                         */
                         onLocationSelected = {
                                 latitude,
                                 longitude ->
@@ -806,22 +722,13 @@ fun ToiletMapApp(
                             selectedLongitude =
                                 longitude
 
-
                             isSelectingLocation =
                                 false
 
-
-                            /*
-                             * トイレ追加画面へ戻る
-                             */
                             selectedScreen =
                                 3
                         },
 
-
-                        /*
-                         * 場所選択キャンセル
-                         */
                         onCancelLocationSelection = {
 
                             isSelectingLocation =
@@ -835,9 +742,7 @@ fun ToiletMapApp(
 
 
                 /*
-                 * =====================================
                  * トイレ追加
-                 * =====================================
                  */
                 3 -> {
 
@@ -858,90 +763,51 @@ fun ToiletMapApp(
                         longitude =
                             selectedLongitude,
 
-
-                        /*
-                         * 名前
-                         */
                         onToiletNameChange = {
 
                             toiletName =
                                 it
                         },
 
-
-                        /*
-                         * 清潔度
-                         */
                         onCleanlinessChange = {
 
                             cleanliness =
                                 it
                         },
 
-
-                        /*
-                         * コメント
-                         */
                         onCommentChange = {
 
                             comment =
                                 it
                         },
 
-
-                        /*
-                         * =====================================
-                         * 地図から場所を選択
-                         * =====================================
-                         */
                         onSelectLocation = {
 
-                            /*
-                             * 既存詳細を閉じる
-                             */
                             onDismissSelectedToilet()
-
 
                             isSelectingLocation =
                                 true
 
-
-                            /*
-                             * Mapへ移動
-                             */
                             selectedScreen =
                                 2
                         },
 
-
-                        /*
-                         * =====================================
-                         * 登録
-                         * =====================================
-                         */
                         onAddToilet = {
-
 
                             val latitude =
                                 selectedLatitude
-
 
                             val longitude =
                                 selectedLongitude
 
 
-                            /*
-                             * 場所が選択されている場合のみ
-                             * 登録
-                             */
                             if (
+                                !isAddingToilet &&
                                 latitude != null &&
                                 longitude != null
                             ) {
 
-
                                 val toilet =
-
                                     Toilet(
 
                                         name =
@@ -963,38 +829,9 @@ fun ToiletMapApp(
                                     )
 
 
-                                /*
-                                 * MainActivityへ渡す
-                                 */
                                 onAddToilet(
                                     toilet
                                 )
-
-
-                                /*
-                                 * 入力内容をリセット
-                                 */
-                                toiletName =
-                                    ""
-
-                                cleanliness =
-                                    3
-
-                                comment =
-                                    ""
-
-                                selectedLatitude =
-                                    null
-
-                                selectedLongitude =
-                                    null
-
-
-                                /*
-                                 * Mapへ戻る
-                                 */
-                                selectedScreen =
-                                    2
                             }
                         }
                     )
@@ -1002,9 +839,7 @@ fun ToiletMapApp(
 
 
                 /*
-                 * =====================================
                  * アカウント
-                 * =====================================
                  */
                 4 -> {
 
@@ -1015,6 +850,44 @@ fun ToiletMapApp(
     }
 
 
+    /*
+     * =====================================
+     * トイレ登録中
+     * =====================================
+     */
+    if (
+        isAddingToilet
+    ) {
+
+        AlertDialog(
+
+            onDismissRequest = {
+            },
+
+            title = {
+
+                Text(
+                    text =
+                        "トイレを登録中"
+                )
+            },
+
+            text = {
+
+                CircularProgressIndicator()
+            },
+
+            confirmButton = {
+            }
+        )
+    }
+
+
+    /*
+     * =====================================
+     * 口コミダイアログ
+     * =====================================
+     */
     val reviewTarget =
         selectedToilet
 
@@ -1038,6 +911,9 @@ fun ToiletMapApp(
             isPosting =
                 isPostingReview,
 
+            currentUserId =
+                reviewCurrentUserId,
+
             errorMessage =
                 reviewErrorMessage,
 
@@ -1057,9 +933,24 @@ fun ToiletMapApp(
 
 
                 onSubmitReview(
+
                     reviewTarget.id,
+
                     rating,
+
                     reviewComment
+                )
+            },
+
+            onDelete = {
+                    reviewId ->
+
+
+                onDeleteReview(
+
+                    reviewTarget.id,
+
+                    reviewId
                 )
             },
 

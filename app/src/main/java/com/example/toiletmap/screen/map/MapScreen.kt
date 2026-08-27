@@ -1,6 +1,7 @@
 package com.example.toiletmap.screen.map
 
 import android.view.ViewGroup
+import android.location.Location
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -77,7 +78,6 @@ import com.example.toiletmap.model.CleaningRequest
 import com.example.toiletmap.model.CleaningStatus
 import com.example.toiletmap.model.Toilet
 import com.example.toiletmap.screen.cleaning.formatCleaningDateTime
-import com.example.toiletmap.screen.listofuncleaned.rememberCurrentLocationState
 import com.example.toiletmap.screen.map.facilities.ToiletFacilityEditor
 import kotlinx.coroutines.delay
 import org.maplibre.android.camera.CameraPosition
@@ -106,6 +106,169 @@ private val FinderBorder = Color(0xFFD7DEDC)
 
 /*
  * =====================================
+ * 検索候補用の位置情報・表示名補正
+ * =====================================
+ */
+private fun isUsableCoordinate(
+    latitude: Double,
+    longitude: Double
+): Boolean {
+
+    if (
+        !latitude.isFinite() ||
+        !longitude.isFinite()
+    ) {
+        return false
+    }
+
+    if (
+        latitude !in -90.0..90.0 ||
+        longitude !in -180.0..180.0
+    ) {
+        return false
+    }
+
+    /*
+     * 0,0 は端末やエミュレータで
+     * 未取得時の仮値として入ることがある。
+     */
+    if (
+        kotlin.math.abs(latitude) < 0.000001 &&
+        kotlin.math.abs(longitude) < 0.000001
+    ) {
+        return false
+    }
+
+    return true
+}
+
+
+private fun isUsableFinderLocation(
+    location: Location?
+): Boolean {
+
+    val target =
+        location
+            ?: return false
+
+    return isUsableCoordinate(
+        latitude = target.latitude,
+        longitude = target.longitude
+    )
+}
+
+
+private fun finderDisplayName(
+    rawName: String
+): String {
+
+    val trimmed =
+        rawName.trim()
+
+    if (
+        trimmed.isBlank()
+    ) {
+        return "名称未登録のトイレ"
+    }
+
+    val visibleCharacters =
+        trimmed.filterNot {
+            it.isWhitespace()
+        }
+
+    val brokenCharacterCount =
+        visibleCharacters.count { character ->
+
+            character == '?' ||
+                    character == '？' ||
+                    character == '�'
+        }
+
+    /*
+     * 文字化けした名称をそのまま表示しない。
+     */
+    if (
+        visibleCharacters.isEmpty() ||
+        brokenCharacterCount * 2 >= visibleCharacters.length
+    ) {
+        return "名称未登録のトイレ"
+    }
+
+    return trimmed
+}
+
+
+/*
+ * =====================================
+ * 検索候補用現在地
+ * =====================================
+ *
+ * 地図本体で使っているMapLibreの位置情報を
+ * 検索候補でも使用する。
+ */
+@Composable
+private fun rememberFinderCurrentLocation(
+    mapView: MapView
+): Location? {
+
+    var currentLocation by
+    remember(
+        mapView
+    ) {
+
+        mutableStateOf<Location?>(
+            null
+        )
+    }
+
+
+    LaunchedEffect(
+        mapView
+    ) {
+
+        while (
+            true
+        ) {
+
+            mapView.getMapAsync { map ->
+
+                val candidate =
+                    runCatching {
+
+                        map.locationComponent
+                            .lastKnownLocation
+
+                    }.getOrNull()
+
+
+                if (
+                    isUsableFinderLocation(
+                        candidate
+                    )
+                ) {
+
+                    currentLocation =
+                        candidate
+                }
+            }
+
+
+            /*
+             * 移動した場合も検索候補の距離を更新する。
+             */
+            delay(
+                1_000L
+            )
+        }
+    }
+
+
+    return currentLocation
+}
+
+
+/*
+ * =====================================
  * Map画面
  * =====================================
  */
@@ -114,9 +277,18 @@ fun MapScreen(
     mapView: MapView,
 
     /*
-     * 検索対象
+     * 空欄時の「現在地に近いトイレ」候補に使用する。
      */
     toilets: List<Toilet> = emptyList(),
+
+    /*
+     * Supabase全体検索結果。
+     */
+    searchResults: List<Toilet> = emptyList(),
+
+    isSearchingToilets: Boolean = false,
+
+    onSearchQueryChanged: (String) -> Unit = {},
 
     /*
      * 検索結果を選択
@@ -347,6 +519,15 @@ fun MapScreen(
             mapView = mapView,
 
             toilets = toilets,
+
+            searchResults =
+                searchResults,
+
+            isSearchingToilets =
+                isSearchingToilets,
+
+            onSearchQueryChanged =
+                onSearchQueryChanged,
 
             onToiletSelected =
                 onSearchToiletSelected,
@@ -612,6 +793,9 @@ fun MapScreen(
 private fun FinderHeader(
     mapView: MapView,
     toilets: List<Toilet>,
+    searchResults: List<Toilet>,
+    isSearchingToilets: Boolean,
+    onSearchQueryChanged: (String) -> Unit,
     onToiletSelected: (Toilet) -> Unit,
     onSecretLogoTap: () -> Unit,
     onNotificationClick: () -> Unit,
@@ -666,13 +850,18 @@ private fun FinderHeader(
     /*
      * =====================================
      * 現在地付近検索用
-     *
-     * 未清掃画面と同じ現在地取得処理を再利用し、
-     * 端末の現在地を基準に近いトイレを表示する。
      * =====================================
+     *
+     * 地図本体と同じMapLibre LocationComponentの
+     * 現在地を使う。
+     *
+     * 0,0などの無効値はrememberFinderCurrentLocation側で
+     * 除外するため、約8,300kmという誤表示を防げる。
      */
-    val currentLocationState =
-        rememberCurrentLocationState()
+    val currentLocation =
+        rememberFinderCurrentLocation(
+            mapView = mapView
+        )
 
 
     fun distanceKm(
@@ -695,9 +884,15 @@ private fun FinderHeader(
                     sin(dLon / 2) *
                     sin(dLon / 2)
 
+        val safeA =
+            a.coerceIn(
+                0.0,
+                1.0
+            )
+
         return r * 2 * atan2(
-            sqrt(a),
-            sqrt(1 - a)
+            sqrt(safeA),
+            sqrt(1 - safeA)
         )
     }
 
@@ -723,23 +918,29 @@ private fun FinderHeader(
 
     /*
      * =====================================
-     * 検索
+     * 画面に表示する検索候補
      * =====================================
+     *
+     * 空欄:
+     *   現在地に近い、現在読み込み済みのトイレを最大5件。
+     *
+     * 文字あり:
+     *   ViewModelがSupabase全体検索した結果を最大10件。
+     *
+     * ここでは名前・コメントによるローカル検索を行わない。
      */
-    val searchResults =
+    val displayedSearchResults =
         remember(
             searchQuery,
             toilets,
-            currentLocationState.location
+            searchResults,
+            currentLocation
         ) {
 
             val query =
                 searchQuery.trim()
 
             if (query.isBlank()) {
-
-                val currentLocation =
-                    currentLocationState.location
 
                 if (currentLocation == null) {
 
@@ -762,18 +963,12 @@ private fun FinderHeader(
 
             } else {
 
-                toilets
+                searchResults
                     .filter { toilet ->
-
-                        toilet.name.contains(
-                            query,
-                            ignoreCase = true
-                        ) ||
-
-                                toilet.comment.contains(
-                                    query,
-                                    ignoreCase = true
-                                )
+                        isUsableCoordinate(
+                            latitude = toilet.latitude,
+                            longitude = toilet.longitude
+                        )
                     }
                     .take(10)
             }
@@ -997,6 +1192,10 @@ private fun FinderHeader(
                         newValue
 
                     showSearchSuggestions = true
+
+                    onSearchQueryChanged(
+                        newValue.text
+                    )
                 },
 
                 modifier =
@@ -1010,6 +1209,14 @@ private fun FinderHeader(
 
                             if (focusState.isFocused) {
                                 showSearchSuggestions = true
+
+                                /*
+                                 * 候補を閉じた後に再度検索欄を押した場合も、
+                                 * 現在の文字列で検索結果を最新化する。
+                                 */
+                                onSearchQueryChanged(
+                                    searchValue.text
+                                )
                             } else {
                                 showSearchSuggestions = false
                             }
@@ -1065,6 +1272,10 @@ private fun FinderHeader(
                                 searchValue =
                                     TextFieldValue("")
 
+                                onSearchQueryChanged(
+                                    ""
+                                )
+
                                 /*
                                  * キーボードを閉じる
                                  */
@@ -1108,7 +1319,7 @@ private fun FinderHeader(
                         onSearch = {
 
                             val firstResult =
-                                searchResults
+                                displayedSearchResults
                                     .firstOrNull()
 
                             if (firstResult != null) {
@@ -1176,7 +1387,56 @@ private fun FinderHeader(
                         )
                 ) {
 
-                    if (searchResults.isEmpty()) {
+                    if (
+                        searchQuery.trim().isNotBlank() &&
+                        isSearchingToilets
+                    ) {
+
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        16.dp
+                                    ),
+
+                            verticalAlignment =
+                                Alignment.CenterVertically,
+
+                            horizontalArrangement =
+                                Arrangement.spacedBy(
+                                    10.dp
+                                )
+                        ) {
+
+                            CircularProgressIndicator(
+                                modifier =
+                                    Modifier.size(
+                                        20.dp
+                                    ),
+
+                                color =
+                                    FinderGreen,
+
+                                strokeWidth =
+                                    2.dp
+                            )
+
+                            Text(
+                                text =
+                                    "Supabaseから検索中...",
+
+                                color =
+                                    FinderMuted,
+
+                                style =
+                                    MaterialTheme
+                                        .typography
+                                        .bodyMedium
+                            )
+                        }
+
+                    } else if (displayedSearchResults.isEmpty()) {
 
                         Text(
                             text =
@@ -1209,7 +1469,7 @@ private fun FinderHeader(
 
                             items(
                                 items =
-                                    searchResults,
+                                    displayedSearchResults,
 
                                 key = {
                                         toilet ->
@@ -1219,29 +1479,54 @@ private fun FinderHeader(
                                     toilet ->
 
                                 SearchResultItem(
+
                                     toilet =
                                         toilet,
 
                                     distanceText =
-                                        currentLocationState.location?.let { location ->
+                                        currentLocation
+                                            ?.takeIf {
 
-                                            val meters =
-                                                distanceMeters(
-                                                    location.latitude,
-                                                    location.longitude,
-                                                    toilet.latitude,
-                                                    toilet.longitude
+                                                isUsableCoordinate(
+                                                    latitude =
+                                                        toilet.latitude,
+
+                                                    longitude =
+                                                        toilet.longitude
                                                 )
-
-                                            if (meters >= 1000) {
-                                                "%.1fkm".format(meters / 1000.0)
-                                            } else {
-                                                "${meters}m"
                                             }
+                                            ?.let {
+                                                    location ->
 
-                                        },
+                                                val meters =
+                                                    distanceMeters(
+
+                                                        location.latitude,
+
+                                                        location.longitude,
+
+                                                        toilet.latitude,
+
+                                                        toilet.longitude
+                                                    )
+
+
+                                                if (
+                                                    meters >= 1000
+                                                ) {
+
+                                                    "%.1fkm".format(
+                                                        meters / 1000.0
+                                                    )
+
+                                                } else {
+
+                                                    "${meters}m"
+                                                }
+                                            },
 
                                     onClick = {
+
                                         selectToilet(
                                             toilet
                                         )
@@ -2186,11 +2471,6 @@ private fun ToiletDetailCard(
                 /*
                  * =====================================
                  * 設備情報
-                 *
-                 * 閲覧
-                 * 編集
-                 * ログイン判定
-                 * Supabase保存
                  * =====================================
                  */
                 ToiletFacilityEditor(
@@ -2204,7 +2484,6 @@ private fun ToiletDetailCard(
                     onOpenAccount =
                         onOpenAccount
                 )
-
 
                 when (cleaningStatus) {
 

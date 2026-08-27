@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.toiletmap.data.repository.ToiletRepository
 import com.example.toiletmap.model.Toilet
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,6 +48,15 @@ class ToiletViewModel : ViewModel() {
         private const val
                 MAP_LOAD_DEBOUNCE_MS =
             700L
+
+
+        /*
+         * 検索文字入力後の待ち時間。
+         * 入力のたびにSupabaseへ通信しないため400ms待つ。
+         */
+        private const val
+                SEARCH_DEBOUNCE_MS =
+            400L
 
 
         /*
@@ -162,6 +172,42 @@ class ToiletViewModel : ViewModel() {
 
     /*
      * =====================================
+     * Supabase全体検索の結果
+     * =====================================
+     *
+     * 地図に読み込まれている範囲とは別に保持する。
+     * これにより、現在の画面外にあるトイレも検索できる。
+     */
+    private val _searchResults =
+        MutableStateFlow<List<Toilet>>(
+            emptyList()
+        )
+
+
+    val searchResults:
+            StateFlow<List<Toilet>> =
+        _searchResults
+            .asStateFlow()
+
+
+    private val _isSearching =
+        MutableStateFlow(
+            false
+        )
+
+
+    val isSearching:
+            StateFlow<Boolean> =
+        _isSearching
+            .asStateFlow()
+
+
+    private var latestSearchQuery =
+        ""
+
+
+    /*
+     * =====================================
      * 選択中トイレの詳細
      * =====================================
      *
@@ -201,7 +247,12 @@ class ToiletViewModel : ViewModel() {
             .asStateFlow()
 
 
-    private var lastSupplementalIds:
+    private var loadedSupplementalIds:
+            Set<String> =
+        emptySet()
+
+
+    private var requestedSupplementalIds:
             Set<String> =
         emptySet()
 
@@ -222,6 +273,47 @@ class ToiletViewModel : ViewModel() {
             StateFlow<String?> =
 
         _errorMessage
+            .asStateFlow()
+
+
+    /*
+     * =====================================
+     * トイレ追加状態
+     * =====================================
+     *
+     * INSERTが完了するまではtrue。
+     * UI側はこの間、二重送信を行わない。
+     */
+    private val _isAdding =
+        MutableStateFlow(
+            false
+        )
+
+
+    val isAdding:
+            StateFlow<Boolean> =
+        _isAdding
+            .asStateFlow()
+
+
+    /*
+     * =====================================
+     * トイレ追加成功イベント
+     * =====================================
+     *
+     * Supabase INSERTが成功した場合だけ値を入れる。
+     * UI側で画面遷移・フォーム消去を行った後、
+     * consumeAddSuccess() でnullへ戻す。
+     */
+    private val _addedToilet =
+        MutableStateFlow<Toilet?>(
+            null
+        )
+
+
+    val addedToilet:
+            StateFlow<Toilet?> =
+        _addedToilet
             .asStateFlow()
 
 
@@ -249,6 +341,19 @@ class ToiletViewModel : ViewModel() {
 
     /*
      * =====================================
+     * 範囲取得の世代番号
+     * =====================================
+     *
+     * 新しい範囲取得を開始するたびに増やす。
+     * 古いCoroutineが遅れて戻ってきても、
+     * 現在の世代と一致しなければ結果を採用しない。
+     */
+    private var boundsRequestGeneration =
+        0L
+
+
+    /*
+     * =====================================
      * Job
      * =====================================
      */
@@ -258,6 +363,16 @@ class ToiletViewModel : ViewModel() {
 
 
     private var detailLoadJob:
+            Job? =
+        null
+
+
+    private var searchLoadJob:
+            Job? =
+        null
+
+
+    private var supplementalLoadJob:
             Job? =
         null
 
@@ -338,39 +453,37 @@ class ToiletViewModel : ViewModel() {
             )
         ) {
 
+            /*
+             * すでに現在範囲のデータを持っている場合でも、
+             * 別の古い範囲を取得中なら止める。
+             *
+             * 世代番号も進めることで、キャンセル済みの古いJobが
+             * 遅れて完了しても結果を採用しない。
+             */
+            boundsRequestGeneration +=
+                1L
+
+            boundsLoadJob
+                ?.cancel()
+
+            boundsLoadJob =
+                null
+
             return
         }
 
 
-        /*
-         * 前の予約をキャンセル。
-         */
-        boundsLoadJob
-            ?.cancel()
+        requestBoundsLoad(
 
+            visibleBounds =
+                visibleBounds,
 
-        boundsLoadJob =
+            showError =
+                true,
 
-            viewModelScope.launch {
-
-                /*
-                 * 地図が完全に止まってから
-                 * 少し待つ。
-                 */
-                delay(
-                    MAP_LOAD_DEBOUNCE_MS
-                )
-
-
-                loadBounds(
-
-                    visibleBounds =
-                        visibleBounds,
-
-                    showError =
-                        true
-                )
-            }
+            debounceMs =
+                MAP_LOAD_DEBOUNCE_MS
+        )
     }
 
 
@@ -387,22 +500,223 @@ class ToiletViewModel : ViewModel() {
                 ?: return
 
 
+        requestBoundsLoad(
+
+            visibleBounds =
+                visibleBounds,
+
+            showError =
+                true,
+
+            debounceMs =
+                0L
+        )
+    }
+
+
+    /*
+     * =====================================
+     * 範囲取得を単一Jobで開始
+     * =====================================
+     *
+     * 地図移動・手動更新・1時間更新・登録後更新のすべてを
+     * boundsLoadJob 1本に統一する。
+     */
+    private fun requestBoundsLoad(
+
+        visibleBounds: Bounds,
+
+        showError: Boolean,
+
+        debounceMs: Long
+
+    ) {
+
+        boundsRequestGeneration +=
+            1L
+
+
+        val requestGeneration =
+            boundsRequestGeneration
+
+
         boundsLoadJob
             ?.cancel()
 
 
         boundsLoadJob =
-
             viewModelScope.launch {
 
-                loadBounds(
+                try {
 
-                    visibleBounds =
-                        visibleBounds,
+                    if (
+                        debounceMs > 0L
+                    ) {
 
-                    showError =
-                        true
-                )
+                        delay(
+                            debounceMs
+                        )
+                    }
+
+
+                    loadBounds(
+
+                        visibleBounds =
+                            visibleBounds,
+
+                        showError =
+                            showError,
+
+                        requestGeneration =
+                            requestGeneration
+                    )
+
+                } finally {
+
+                    /*
+                     * 古いJobのfinallyが、新しく開始したJob参照を
+                     * nullへ戻さないように世代番号を確認する。
+                     */
+                    if (
+                        requestGeneration ==
+                        boundsRequestGeneration
+                    ) {
+
+                        boundsLoadJob =
+                            null
+                    }
+                }
+            }
+    }
+
+
+    /*
+     * =====================================
+     * Supabase全体からトイレ名検索
+     * =====================================
+     *
+     * MapScreen側ではローカル絞り込みを行わず、
+     * Repository.searchToiletsByName() を使用する。
+     *
+     * 400msのデバウンスを入れ、連続入力時は
+     * 直前の検索Jobをキャンセルする。
+     */
+    fun searchToilets(
+        query: String
+    ) {
+
+        val normalizedQuery =
+            query.trim()
+
+
+        latestSearchQuery =
+            normalizedQuery
+
+
+        searchLoadJob
+            ?.cancel()
+
+
+        searchLoadJob =
+            null
+
+
+        if (normalizedQuery.isBlank()) {
+
+            _searchResults.value =
+                emptyList()
+
+            _isSearching.value =
+                false
+
+            return
+        }
+
+
+        /*
+         * 前の検索結果を表示したままにすると、
+         * 新しい文字を入力した直後に古い候補が見えるため消す。
+         */
+        _searchResults.value =
+            emptyList()
+
+        _isSearching.value =
+            true
+
+
+        searchLoadJob =
+            viewModelScope.launch {
+
+                try {
+
+                    delay(
+                        SEARCH_DEBOUNCE_MS
+                    )
+
+
+                    val results =
+                        repository
+                            .searchToiletsByName(
+                                normalizedQuery
+                            )
+
+
+                    /*
+                     * 古い検索が遅れて返ってきても、
+                     * 最新文字列と一致するときだけ採用する。
+                     */
+                    if (
+                        latestSearchQuery ==
+                        normalizedQuery
+                    ) {
+
+                        _searchResults.value =
+                            results
+
+                        _errorMessage.value =
+                            null
+                    }
+
+                } catch (
+                    e: CancellationException
+                ) {
+
+                    /*
+                     * 新しい文字入力による正常なキャンセル。
+                     * エラーとして扱わない。
+                     */
+                    throw e
+
+                } catch (
+                    e: Exception
+                ) {
+
+                    e.printStackTrace()
+
+
+                    if (
+                        latestSearchQuery ==
+                        normalizedQuery
+                    ) {
+
+                        _searchResults.value =
+                            emptyList()
+
+                        _errorMessage.value =
+                            "トイレの検索に失敗しました"
+                    }
+
+                } finally {
+
+                    if (
+                        latestSearchQuery ==
+                        normalizedQuery
+                    ) {
+
+                        _isSearching.value =
+                            false
+                    }
+                }
             }
     }
 
@@ -416,7 +730,9 @@ class ToiletViewModel : ViewModel() {
 
         visibleBounds: Bounds,
 
-        showError: Boolean
+        showError: Boolean,
+
+        requestGeneration: Long
 
     ) {
 
@@ -446,12 +762,35 @@ class ToiletViewModel : ViewModel() {
                 )
 
 
+            /*
+             * 新しい範囲取得がすでに開始されている場合、
+             * この結果は古いのでViewModel状態へ反映しない。
+             */
+            if (
+                requestGeneration !=
+                boundsRequestGeneration
+            ) {
+
+                return
+            }
+
+
             lastLoadedBounds =
                 fetchBounds
 
 
             _errorMessage.value =
                 null
+
+        } catch (
+            e: CancellationException
+        ) {
+
+            /*
+             * 新しい地図範囲の読み込みによる正常なキャンセル。
+             * エラーとして表示しない。
+             */
+            throw e
 
         } catch (
             e: Exception
@@ -461,7 +800,9 @@ class ToiletViewModel : ViewModel() {
 
 
             if (
-                showError
+                showError &&
+                requestGeneration ==
+                boundsRequestGeneration
             ) {
 
                 _errorMessage.value =
@@ -569,6 +910,16 @@ class ToiletViewModel : ViewModel() {
                     }
 
                 } catch (
+                    e: CancellationException
+                ) {
+
+                    /*
+                     * 別のトイレを選択したことによる正常なキャンセル。
+                     * エラーとして表示しない。
+                     */
+                    throw e
+
+                } catch (
                     e: Exception
                 ) {
 
@@ -624,21 +975,24 @@ class ToiletViewModel : ViewModel() {
 
 
         if (
-            normalizedIds ==
-            lastSupplementalIds
-        ) {
-
-            return
-        }
-
-
-        lastSupplementalIds =
-            normalizedIds
-
-
-        if (
             normalizedIds.isEmpty()
         ) {
+
+            supplementalLoadJob
+                ?.cancel()
+
+
+            supplementalLoadJob =
+                null
+
+
+            requestedSupplementalIds =
+                emptySet()
+
+
+            loadedSupplementalIds =
+                emptySet()
+
 
             _supplementalToilets.value =
                 emptyList()
@@ -648,34 +1002,137 @@ class ToiletViewModel : ViewModel() {
         }
 
 
-        viewModelScope.launch {
+        /*
+         * The same request is already running.
+         * Do not start a duplicate request.
+         */
+        if (
+            normalizedIds ==
+            requestedSupplementalIds &&
 
-            try {
+            supplementalLoadJob
+                ?.isActive ==
+            true
+        ) {
 
-                _supplementalToilets.value =
-
-                    repository
-                        .loadToiletsByIds(
-                            normalizedIds.toList()
-                        )
-
-            } catch (
-                e: Exception
-            ) {
-
-                /*
-                 * 補助取得失敗だけでは
-                 * 地図を止めない。
-                 */
-                e.printStackTrace()
-            }
+            return
         }
+
+
+        /*
+         * A different request is running.
+         * Cancel it before making the new request current.
+         */
+        if (
+            supplementalLoadJob
+                ?.isActive ==
+            true
+        ) {
+
+            supplementalLoadJob
+                ?.cancel()
+        }
+
+
+        supplementalLoadJob =
+            null
+
+
+        requestedSupplementalIds =
+            normalizedIds
+
+
+        /*
+         * Remove records that are no longer requested while keeping
+         * any overlapping records available during the refresh.
+         */
+        _supplementalToilets.value =
+            _supplementalToilets
+                .value
+                .filter { toilet ->
+                    toilet.id in normalizedIds
+                }
+
+
+        /*
+         * These IDs were already loaded successfully.
+         * If an older different request was running, it was cancelled above.
+         */
+        if (
+            normalizedIds ==
+            loadedSupplementalIds
+        ) {
+
+            return
+        }
+
+
+        supplementalLoadJob =
+
+            viewModelScope.launch {
+
+                try {
+
+                    val loadedToilets =
+
+                        repository
+                            .loadToiletsByIds(
+                                normalizedIds.toList()
+                            )
+
+
+                    /*
+                     * Only the newest requested ID set may update the UI.
+                     * This also protects against a cancelled old request
+                     * returning after a newer request has started.
+                     */
+                    if (
+                        requestedSupplementalIds ==
+                        normalizedIds
+                    ) {
+
+                        _supplementalToilets.value =
+                            loadedToilets
+
+
+                        loadedSupplementalIds =
+                            normalizedIds
+                    }
+
+                } catch (
+                    e: CancellationException
+                ) {
+
+                    throw e
+
+                } catch (
+                    e: Exception
+                ) {
+
+                    /*
+                     * Do not mark this ID set as successfully loaded.
+                     * A later call with the same IDs can therefore retry.
+                     */
+                    e.printStackTrace()
+
+                } finally {
+
+                    if (
+                        requestedSupplementalIds ==
+                        normalizedIds
+                    ) {
+
+                        supplementalLoadJob =
+                            null
+                    }
+                }
+            }
     }
 
 
     /*
      * =====================================
-     * トイレ追加
+     * Toilet add
      * =====================================
      */
     fun addToilet(
@@ -684,10 +1141,41 @@ class ToiletViewModel : ViewModel() {
 
     ) {
 
+        /*
+         * 登録中の連打を防ぐ。
+         */
+        if (
+            _isAdding.value
+        ) {
+
+            return
+        }
+
+
+        _isAdding.value =
+            true
+
+
+        _addedToilet.value =
+            null
+
+
+        _errorMessage.value =
+            null
+
+
         viewModelScope.launch {
 
             try {
 
+                /*
+                 * =====================================
+                 * Supabase INSERT
+                 * =====================================
+                 *
+                 * ここが正常終了するまでは、
+                 * UI側へ成功を通知しない。
+                 */
                 repository
                     .addToilet(
                         toilet
@@ -695,24 +1183,68 @@ class ToiletViewModel : ViewModel() {
 
 
                 /*
-                 * 登録した1件の詳細を取得。
+                 * =====================================
+                 * INSERT成功
+                 * =====================================
+                 *
+                 * この時点でDB登録は完了しているので、
+                 * UIへ成功を通知する。
+                 * 詳細再取得や地図再読込の完了は待たない。
                  */
                 _selectedToilet.value =
-
-                    repository
-                        .loadToiletById(
-                            toilet.id
-                        )
-
-                        ?: toilet
+                    toilet
 
 
                 _errorMessage.value =
                     null
 
 
+                _isAdding.value =
+                    false
+
+
+                _addedToilet.value =
+                    toilet
+
+
                 /*
-                 * 現在の範囲だけ更新。
+                 * =====================================
+                 * 登録後の詳細情報を再取得
+                 * =====================================
+                 *
+                 * ここで通信に失敗しても、INSERT自体は
+                 * 成功済みなので登録失敗には戻さない。
+                 */
+                try {
+
+                    repository
+                        .loadToiletById(
+                            toilet.id
+                        )
+                        ?.let {
+                                savedToilet ->
+
+                            _selectedToilet.value =
+                                savedToilet
+                        }
+
+                } catch (
+                    e: CancellationException
+                ) {
+
+                    throw e
+
+                } catch (
+                    e: Exception
+                ) {
+
+                    e.printStackTrace()
+                }
+
+
+                /*
+                 * 現在の範囲を静かに更新。
+                 * ここが失敗しても登録成功は取り消さない。
                  */
                 val visibleBounds =
                     lastVisibleBounds
@@ -722,15 +1254,24 @@ class ToiletViewModel : ViewModel() {
                     visibleBounds != null
                 ) {
 
-                    loadBounds(
+                    requestBoundsLoad(
 
                         visibleBounds =
                             visibleBounds,
 
                         showError =
-                            true
+                            false,
+
+                        debounceMs =
+                            0L
                     )
                 }
+
+            } catch (
+                e: CancellationException
+            ) {
+
+                throw e
 
             } catch (
                 e: Exception
@@ -739,13 +1280,38 @@ class ToiletViewModel : ViewModel() {
                 e.printStackTrace()
 
 
+                /*
+                 * INSERT失敗時は成功イベントを出さない。
+                 * そのため追加画面と入力内容は保持される。
+                 */
+                _addedToilet.value =
+                    null
+
+
                 _errorMessage.value =
 
                     e.message
 
                         ?: "トイレの登録に失敗しました"
+
+            } finally {
+
+                _isAdding.value =
+                    false
             }
         }
+    }
+
+
+    /*
+     * =====================================
+     * 追加成功イベントを消費
+     * =====================================
+     */
+    fun consumeAddSuccess() {
+
+        _addedToilet.value =
+            null
     }
 
 
@@ -792,7 +1358,7 @@ class ToiletViewModel : ViewModel() {
      *
      * 全件ではなく現在の範囲だけ。
      */
-    private suspend fun refreshToiletsSilently() {
+    private fun refreshToiletsSilently() {
 
         val visibleBounds =
             lastVisibleBounds
@@ -800,13 +1366,31 @@ class ToiletViewModel : ViewModel() {
                 ?: return
 
 
-        loadBounds(
+        /*
+         * ユーザー操作による範囲取得が進行中なら、
+         * その取得自体が最新データになるため
+         * 1時間更新を重ねて開始しない。
+         */
+        if (
+            boundsLoadJob
+                ?.isActive ==
+            true
+        ) {
+
+            return
+        }
+
+
+        requestBoundsLoad(
 
             visibleBounds =
                 visibleBounds,
 
             showError =
-                false
+                false,
+
+            debounceMs =
+                0L
         )
     }
 
@@ -908,6 +1492,14 @@ class ToiletViewModel : ViewModel() {
             ?.cancel()
 
 
+        searchLoadJob
+            ?.cancel()
+
+
+        supplementalLoadJob
+            ?.cancel()
+
+
         autoRefreshJob
             ?.cancel()
 
@@ -917,6 +1509,14 @@ class ToiletViewModel : ViewModel() {
 
 
         detailLoadJob =
+            null
+
+
+        searchLoadJob =
+            null
+
+
+        supplementalLoadJob =
             null
 
 

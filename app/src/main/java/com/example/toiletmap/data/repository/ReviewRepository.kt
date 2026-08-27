@@ -38,6 +38,25 @@ class ReviewRepository {
 
     /*
      * =====================================
+     * 現在ログイン中のユーザーID
+     * =====================================
+     */
+    suspend fun getCurrentUserId(): String? {
+
+        supabase
+            .auth
+            .awaitInitialization()
+
+
+        return supabase
+            .auth
+            .currentUserOrNull()
+            ?.id
+    }
+
+
+    /*
+     * =====================================
      * 口コミ一覧取得
      * =====================================
      */
@@ -45,12 +64,18 @@ class ReviewRepository {
         toiletId: String
     ): List<ToiletReview> {
 
-        if (toiletId.isBlank()) {
+        if (
+            toiletId.isBlank()
+        ) {
+
             return emptyList()
         }
 
+
         return supabase
-            .from("toilet_reviews")
+            .from(
+                "toilet_reviews"
+            )
             .select {
 
                 filter {
@@ -62,7 +87,8 @@ class ReviewRepository {
                 }
             }
             .decodeList<ToiletReview>()
-            .sortedByDescending { review ->
+            .sortedByDescending {
+                    review ->
 
                 review.createdAt
             }
@@ -71,8 +97,51 @@ class ReviewRepository {
 
     /*
      * =====================================
+     * 現在のユーザーが
+     * このトイレへ口コミ投稿済みか
+     * =====================================
+     */
+    private suspend fun hasCurrentUserReview(
+        toiletId: String,
+        userId: String
+    ): Boolean {
+
+        return supabase
+            .from(
+                "toilet_reviews"
+            )
+            .select {
+
+                limit(
+                    1
+                )
+
+
+                filter {
+
+                    eq(
+                        "toilet_id",
+                        toiletId
+                    )
+
+                    eq(
+                        "user_id",
+                        userId
+                    )
+                }
+            }
+            .decodeList<ToiletReview>()
+            .isNotEmpty()
+    }
+
+
+    /*
+     * =====================================
      * 口コミ追加
      * =====================================
+     *
+     * 1ユーザーにつき
+     * 1トイレ1件まで。
      */
     suspend fun addReview(
         toiletId: String,
@@ -80,30 +149,27 @@ class ReviewRepository {
         comment: String
     ) {
 
-        /*
-         * 端末に保存されているログイン状態の
-         * 復元完了を待つ。
-         */
         supabase
             .auth
             .awaitInitialization()
 
 
-        /*
-         * ログインしているか確認
-         */
-        supabase
-            .auth
-            .currentUserOrNull()
-            ?: throw IllegalStateException(
-                "口コミを投稿するにはログインが必要です"
-            )
+        val currentUser =
+            supabase
+                .auth
+                .currentUserOrNull()
+                ?: throw IllegalStateException(
+                    "口コミを投稿するにはログインが必要です"
+                )
 
 
-        /*
-         * トイレID確認
-         */
-        if (toiletId.isBlank()) {
+        val normalizedToiletId =
+            toiletId.trim()
+
+
+        if (
+            normalizedToiletId.isBlank()
+        ) {
 
             throw IllegalArgumentException(
                 "口コミを投稿するトイレを選択してください"
@@ -111,10 +177,9 @@ class ReviewRepository {
         }
 
 
-        /*
-         * 評価確認
-         */
-        if (rating !in 1..5) {
+        if (
+            rating !in 1..5
+        ) {
 
             throw IllegalArgumentException(
                 "評価は1～5で選択してください"
@@ -126,10 +191,9 @@ class ReviewRepository {
             comment.trim()
 
 
-        /*
-         * 空コメント防止
-         */
-        if (trimmedComment.isBlank()) {
+        if (
+            trimmedComment.isBlank()
+        ) {
 
             throw IllegalArgumentException(
                 "口コミを入力してください"
@@ -137,10 +201,9 @@ class ReviewRepository {
         }
 
 
-        /*
-         * 最大文字数
-         */
-        if (trimmedComment.length > 500) {
+        if (
+            trimmedComment.length > 500
+        ) {
 
             throw IllegalArgumentException(
                 "口コミは500文字以内で入力してください"
@@ -149,8 +212,24 @@ class ReviewRepository {
 
 
         /*
-         * Supabaseへ送るデータ
+         * すでに投稿済みなら拒否
          */
+        if (
+            hasCurrentUserReview(
+                toiletId =
+                    normalizedToiletId,
+
+                userId =
+                    currentUser.id
+            )
+        ) {
+
+            throw IllegalStateException(
+                "このトイレにはすでに口コミを投稿しています。投稿し直す場合は自分の口コミを削除してください"
+            )
+        }
+
+
         val newReview =
             NewToiletReview(
 
@@ -160,7 +239,7 @@ class ReviewRepository {
                         .toString(),
 
                 toiletId =
-                    toiletId,
+                    normalizedToiletId,
 
                 rating =
                     rating,
@@ -171,12 +250,148 @@ class ReviewRepository {
 
 
         /*
-         * Supabaseへ登録
+         * DBのUNIQUE制約でも二重投稿を防ぐ。
          */
+        try {
+
+            supabase
+                .from(
+                    "toilet_reviews"
+                )
+                .insert(
+                    newReview
+                )
+
+        } catch (
+            e: Exception
+        ) {
+
+            val message =
+                e.message
+                    .orEmpty()
+
+
+            if (
+                message.contains(
+                    "23505"
+                ) ||
+                message.contains(
+                    "duplicate key",
+                    ignoreCase = true
+                ) ||
+                message.contains(
+                    "toilet_reviews_one_per_user_per_toilet_uq"
+                )
+            ) {
+
+                throw IllegalStateException(
+                    "このトイレにはすでに口コミを投稿しています。投稿し直す場合は自分の口コミを削除してください"
+                )
+            }
+
+
+            throw e
+        }
+    }
+
+
+    /*
+     * =====================================
+     * 自分の口コミを削除
+     * =====================================
+     */
+    suspend fun deleteReview(
+        reviewId: String
+    ) {
+
         supabase
-            .from("toilet_reviews")
-            .insert(
-                newReview
+            .auth
+            .awaitInitialization()
+
+
+        val currentUser =
+            supabase
+                .auth
+                .currentUserOrNull()
+                ?: throw IllegalStateException(
+                    "口コミを削除するにはログインが必要です"
+                )
+
+
+        val normalizedReviewId =
+            reviewId.trim()
+
+
+        if (
+            normalizedReviewId.isBlank()
+        ) {
+
+            throw IllegalArgumentException(
+                "削除する口コミを選択してください"
             )
+        }
+
+
+        /*
+         * 自分の口コミであることを確認
+         */
+        val ownReview =
+            supabase
+                .from(
+                    "toilet_reviews"
+                )
+                .select {
+
+                    limit(
+                        1
+                    )
+
+
+                    filter {
+
+                        eq(
+                            "id",
+                            normalizedReviewId
+                        )
+
+                        eq(
+                            "user_id",
+                            currentUser.id
+                        )
+                    }
+                }
+                .decodeList<ToiletReview>()
+                .firstOrNull()
+
+
+        if (
+            ownReview == null
+        ) {
+
+            throw IllegalStateException(
+                "自分が投稿した口コミだけ削除できます"
+            )
+        }
+
+
+        supabase
+            .from(
+                "toilet_reviews"
+            )
+            .delete {
+
+                filter {
+
+                    eq(
+                        "id",
+                        normalizedReviewId
+                    )
+
+                    eq(
+                        "user_id",
+                        currentUser.id
+                    )
+                }
+            }
     }
 }
