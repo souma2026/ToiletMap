@@ -496,14 +496,6 @@ fun CleaningScreen(
 
     if (cancellationTarget != null) {
 
-        val toiletName =
-            toiletsById[
-                cancellationTarget.toiletId
-            ]
-                ?.name
-                ?: "このトイレ"
-
-
         AlertDialog(
             onDismissRequest = {
 
@@ -513,6 +505,7 @@ fun CleaningScreen(
                         null
                 }
             },
+
             title = {
 
                 Text(
@@ -522,13 +515,7 @@ fun CleaningScreen(
                         FontWeight.Bold
                 )
             },
-            text = {
 
-                Text(
-                    text =
-                        "${toiletName}の清掃依頼を取り消します。使用した${cancellationTarget.requestPointsUsed}ptは、所持上限10ptの範囲で返却されます。担当者が決まった後は取り消せません。"
-                )
-            },
             confirmButton = {
 
                 TextButton(
@@ -553,6 +540,7 @@ fun CleaningScreen(
                     )
                 }
             },
+
             dismissButton = {
 
                 TextButton(
