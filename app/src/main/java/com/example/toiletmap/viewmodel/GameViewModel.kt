@@ -13,10 +13,10 @@ import com.example.toiletmap.screen.game.GamePlayer
 import com.example.toiletmap.screen.game.GameState
 import com.example.toiletmap.screen.game.LevelConfig
 import com.example.toiletmap.screen.game.ObstacleType
+import com.example.toiletmap.screen.game.RecoveryItem
 import com.example.toiletmap.screen.game.levelConfigFor
 import com.example.toiletmap.screen.game.levelTitle
 import kotlin.random.Random
-
 
 class GameViewModel(
     application: Application
@@ -39,70 +39,83 @@ class GameViewModel(
     private var invincibleRemainingSeconds =
         0f
 
+    /*
+     * 回復アイテム用タイマー。
+     * LIFEが減っている間だけ進む。
+     */
+    private var recoverySpawnAccumulatorSeconds =
+        0f
+
+    private var recoverySpawnWaitSeconds =
+        nextRecoveryDelaySeconds()
 
     var gameState by
-        mutableStateOf(
-            GameState.TITLE
-        )
+    mutableStateOf(
+        GameState.TITLE
+    )
         private set
 
     var score by
-        mutableIntStateOf(0)
+    mutableIntStateOf(0)
         private set
 
     var life by
-        mutableIntStateOf(
-            GamePlayer.INITIAL_LIFE
-        )
+    mutableIntStateOf(
+        GamePlayer.INITIAL_LIFE
+    )
         private set
 
     var survivalTime by
-        mutableFloatStateOf(0f)
+    mutableFloatStateOf(0f)
         private set
 
     var playerX by
-        mutableFloatStateOf(0.5f)
+    mutableFloatStateOf(0.5f)
         private set
 
     var fallingObjects by
-        mutableStateOf<List<FallingObject>>(
-            emptyList()
-        )
+    mutableStateOf<List<FallingObject>>(
+        emptyList()
+    )
+        private set
+
+    var recoveryItems by
+    mutableStateOf<List<RecoveryItem>>(
+        emptyList()
+    )
         private set
 
     var currentLevel by
-        mutableIntStateOf(1)
+    mutableIntStateOf(1)
         private set
 
     var countdownText by
-        mutableStateOf("3")
+    mutableStateOf("3")
         private set
 
     var levelAnnouncement by
-        mutableStateOf<String?>(null)
+    mutableStateOf<String?>(null)
         private set
 
     var isInvincible by
-        mutableStateOf(false)
+    mutableStateOf(false)
         private set
 
     var bestScore by
-        mutableIntStateOf(0)
+    mutableIntStateOf(0)
         private set
 
     var bestSurvivalTime by
-        mutableFloatStateOf(0f)
+    mutableFloatStateOf(0f)
         private set
 
     var playCount by
-        mutableIntStateOf(0)
+    mutableIntStateOf(0)
         private set
-
 
     init {
         loadBestRecord()
     }
-
 
     fun returnToTitle() {
         gameState =
@@ -110,7 +123,6 @@ class GameViewModel(
 
         resetRound()
     }
-
 
     fun startGame() {
         resetRound()
@@ -122,11 +134,9 @@ class GameViewModel(
             GameState.COUNTDOWN
     }
 
-
     fun retry() {
         startGame()
     }
-
 
     fun updateCountdownText(
         text: String
@@ -134,7 +144,6 @@ class GameViewModel(
         countdownText =
             text
     }
-
 
     fun beginPlaying() {
         if (
@@ -151,12 +160,10 @@ class GameViewModel(
             "LEVEL 1\n${levelTitle(1)}"
     }
 
-
     fun clearLevelAnnouncement() {
         levelAnnouncement =
             null
     }
-
 
     fun movePlayerBy(
         normalizedDeltaX: Float
@@ -179,7 +186,6 @@ class GameViewModel(
                     maximumValue = 1f - halfWidth
                 )
     }
-
 
     fun updateFrame(
         deltaSeconds: Float
@@ -220,11 +226,30 @@ class GameViewModel(
             dt
         )
 
+        /*
+         * LEVEL 5 = TOILET HELL。
+         * 60秒以降、10秒ごとに約6%ずつ加速。
+         * 暴走しすぎないよう最大1.75倍まで。
+         */
+        val hellSpeedMultiplier =
+            currentHellSpeedMultiplier()
+
         spawnAccumulatorMillis +=
             dt * 1_000f
 
+        val effectiveSpawnIntervalMillis =
+            if (currentLevel == 5) {
+                (
+                        config.spawnIntervalMillis /
+                                hellSpeedMultiplier.coerceAtMost(1.35f)
+                        ).toLong()
+                    .coerceAtLeast(250L)
+            } else {
+                config.spawnIntervalMillis
+            }
+
         if (
-            spawnAccumulatorMillis >= config.spawnIntervalMillis &&
+            spawnAccumulatorMillis >= effectiveSpawnIntervalMillis &&
             fallingObjects.size < config.maxObjects
         ) {
             spawnAccumulatorMillis =
@@ -240,12 +265,12 @@ class GameViewModel(
         fallingObjects =
             fallingObjects
                 .map { obstacle ->
-
                     obstacle.copy(
                         y =
                             obstacle.y +
                                     obstacle.speed *
                                     config.speedMultiplier *
+                                    hellSpeedMultiplier *
                                     dt
                     )
                 }
@@ -253,9 +278,13 @@ class GameViewModel(
                     obstacle.y < 1.08f
                 }
 
+        updateRecoveryItems(
+            dt
+        )
+
+        checkRecoveryCollision()
         checkCollision()
     }
-
 
     private fun updateLevel() {
         val calculatedLevel =
@@ -285,7 +314,6 @@ class GameViewModel(
         }
     }
 
-
     private fun updateInvincibility(
         dt: Float
     ) {
@@ -312,6 +340,21 @@ class GameViewModel(
         }
     }
 
+    private fun currentHellSpeedMultiplier(): Float {
+        if (currentLevel < 5) {
+            return 1f
+        }
+
+        val hellElapsedSeconds =
+            (survivalTime - 60f)
+                .coerceAtLeast(0f)
+
+        return (
+                1f +
+                        (hellElapsedSeconds / 10f) *
+                        0.06f
+                ).coerceAtMost(1.75f)
+    }
 
     private fun createFallingObject(
         config: LevelConfig
@@ -332,27 +375,20 @@ class GameViewModel(
         return FallingObject(
             id =
                 nextObjectId++,
-
             x =
                 x,
-
             y =
                 -type.heightFraction,
-
             width =
                 type.widthFraction,
-
             height =
                 type.heightFraction,
-
             speed =
                 type.baseSpeed,
-
             type =
                 type
         )
     }
-
 
     private fun selectObstacleType(
         config: LevelConfig
@@ -393,24 +429,86 @@ class GameViewModel(
         }
     }
 
+    /*
+     * =========================================
+     * 回復アイテム
+     * =========================================
+     */
+    private fun updateRecoveryItems(
+        dt: Float
+    ) {
+        if (life < GamePlayer.INITIAL_LIFE) {
+            recoverySpawnAccumulatorSeconds +=
+                dt
 
-    private fun checkCollision() {
+            if (
+                recoveryItems.isEmpty() &&
+                recoverySpawnAccumulatorSeconds >= recoverySpawnWaitSeconds
+            ) {
+                recoveryItems =
+                    listOf(
+                        createRecoveryItem()
+                    )
 
-        if (
-            isInvincible ||
-            fallingObjects.isEmpty()
-        ) {
-            return
+                recoverySpawnAccumulatorSeconds =
+                    0f
+
+                recoverySpawnWaitSeconds =
+                    nextRecoveryDelaySeconds()
+            }
+        } else {
+            recoverySpawnAccumulatorSeconds =
+                0f
         }
 
-        /*
-         * =========================================
-         * プレイヤーの当たり判定
-         * =========================================
-         *
-         * 画面に表示されている緑色の
-         * WCの枠と同じサイズ。
-         */
+        val recoverySpeedMultiplier =
+            1f +
+                    (currentLevel - 1) *
+                    0.08f
+
+        recoveryItems =
+            recoveryItems
+                .map { item ->
+                    item.copy(
+                        y =
+                            item.y +
+                                    item.speed *
+                                    recoverySpeedMultiplier *
+                                    dt
+                    )
+                }
+                .filter { item ->
+                    item.y < 1.08f
+                }
+    }
+
+    private fun createRecoveryItem(): RecoveryItem {
+        val maxX =
+            (1f - RecoveryItem.WIDTH)
+                .coerceAtLeast(0f)
+
+        return RecoveryItem(
+            id =
+                nextObjectId++,
+            x =
+                random.nextFloat() * maxX,
+            y =
+                -RecoveryItem.HEIGHT
+        )
+    }
+
+    private fun nextRecoveryDelaySeconds(): Float =
+        random
+            .nextInt(
+                from = 9,
+                until = 15
+            )
+            .toFloat()
+
+    private fun checkRecoveryCollision() {
+        if (recoveryItems.isEmpty()) {
+            return
+        }
 
         val playerLeft =
             playerX -
@@ -429,25 +527,90 @@ class GameViewModel(
             GamePlayer.PLAYER_Y +
                     GamePlayer.PLAYER_HEIGHT
 
+        val collected =
+            recoveryItems
+                .firstOrNull { item ->
+                    val horizontalInset =
+                        item.width *
+                                0.08f
 
-        /*
-         * =========================================
-         * 障害物との当たり判定
-         * =========================================
-         */
+                    val verticalInset =
+                        item.height *
+                                0.08f
+
+                    val itemLeft =
+                        item.x + horizontalInset
+
+                    val itemRight =
+                        item.x +
+                                item.width -
+                                horizontalInset
+
+                    val itemTop =
+                        item.y + verticalInset
+
+                    val itemBottom =
+                        item.y +
+                                item.height -
+                                verticalInset
+
+                    playerLeft < itemRight &&
+                            playerRight > itemLeft &&
+                            playerTop < itemBottom &&
+                            playerBottom > itemTop
+                }
+                ?: return
+
+        recoveryItems =
+            recoveryItems
+                .filterNot {
+                    it.id == collected.id
+                }
+
+        life =
+            (life + 1)
+                .coerceAtMost(
+                    GamePlayer.INITIAL_LIFE
+                )
+
+        recoverySpawnAccumulatorSeconds =
+            0f
+
+        recoverySpawnWaitSeconds =
+            nextRecoveryDelaySeconds()
+    }
+
+    private fun checkCollision() {
+        if (
+            isInvincible ||
+            fallingObjects.isEmpty()
+        ) {
+            return
+        }
+
+        val playerLeft =
+            playerX -
+                    GamePlayer.PLAYER_WIDTH /
+                    2f
+
+        val playerRight =
+            playerX +
+                    GamePlayer.PLAYER_WIDTH /
+                    2f
+
+        val playerTop =
+            GamePlayer.PLAYER_Y
+
+        val playerBottom =
+            GamePlayer.PLAYER_Y +
+                    GamePlayer.PLAYER_HEIGHT
 
         val collided =
             fallingObjects
                 .firstOrNull { obstacle ->
-
                     /*
-                     * 障害物を表示しているBoxには、
-                     * 絵文字の周囲に空白がある。
-                     *
-                     * その空白まで当たり判定にならないように
-                     * 判定範囲を少し内側へ縮める。
+                     * 絵文字の透明な余白を当たり判定から除外。
                      */
-
                     val horizontalInset =
                         obstacle.width *
                                 0.10f
@@ -455,11 +618,6 @@ class GameViewModel(
                     val verticalInset =
                         obstacle.height *
                                 0.22f
-
-
-                    /*
-                     * 実際に使用する障害物の判定枠
-                     */
 
                     val obstacleLeft =
                         obstacle.x +
@@ -479,12 +637,6 @@ class GameViewModel(
                                 obstacle.height -
                                 verticalInset
 
-
-                    /*
-                     * プレイヤーと障害物の枠が
-                     * 重なっているか確認
-                     */
-
                     playerLeft < obstacleRight &&
                             playerRight > obstacleLeft &&
                             playerTop < obstacleBottom &&
@@ -492,46 +644,21 @@ class GameViewModel(
                 }
                 ?: return
 
-
-        /*
-         * =========================================
-         * 当たった障害物を削除
-         * =========================================
-         */
-
         fallingObjects =
             fallingObjects
                 .filterNot {
-                    it.id ==
-                            collided.id
+                    it.id == collided.id
                 }
-
-
-        /*
-         * =========================================
-         * ライフを1減らす
-         * =========================================
-         */
 
         life =
             (life - 1)
                 .coerceAtLeast(0)
 
-
-        /*
-         * =========================================
-         * GAME OVER または 無敵時間
-         * =========================================
-         */
-
         if (
             life <= 0
         ) {
-
             finishGame()
-
         } else {
-
             isInvincible =
                 true
 
@@ -540,7 +667,6 @@ class GameViewModel(
         }
     }
 
-
     private fun finishGame() {
         gameState =
             GameState.GAME_OVER
@@ -548,11 +674,13 @@ class GameViewModel(
         fallingObjects =
             emptyList()
 
+        recoveryItems =
+            emptyList()
+
         val record =
             scoreRepository.saveResult(
                 score =
                     score,
-
                 survivalTime =
                     survivalTime
             )
@@ -566,7 +694,6 @@ class GameViewModel(
         playCount =
             record.playCount
     }
-
 
     private fun resetRound() {
         score =
@@ -582,6 +709,9 @@ class GameViewModel(
             0.5f
 
         fallingObjects =
+            emptyList()
+
+        recoveryItems =
             emptyList()
 
         currentLevel =
@@ -601,8 +731,13 @@ class GameViewModel(
 
         spawnAccumulatorMillis =
             0f
-    }
 
+        recoverySpawnAccumulatorSeconds =
+            0f
+
+        recoverySpawnWaitSeconds =
+            nextRecoveryDelaySeconds()
+    }
 
     private fun loadBestRecord() {
         val record =
