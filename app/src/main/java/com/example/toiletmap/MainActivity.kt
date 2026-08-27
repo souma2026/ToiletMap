@@ -3,14 +3,16 @@ package com.example.toiletmap
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,66 +39,46 @@ import com.example.toiletmap.viewmodel.ToiletViewModel
 
 class MainActivity : ComponentActivity() {
 
-    /*
-     * =====================================
-     * MapLibre
-     * =====================================
-     */
     private lateinit var mapController:
             MapLibreMapController
 
-
-    /*
-     * =====================================
-     * ToiletViewModel
-     * =====================================
-     */
     private lateinit var toiletViewModel:
             ToiletViewModel
 
-
-    /*
-     * =====================================
-     * ReviewViewModel
-     * =====================================
-     */
     private lateinit var reviewViewModel:
             ReviewViewModel
 
-
-    /*
-     * =====================================
-     * CleaningViewModel
-     * =====================================
-     */
     private lateinit var cleaningViewModel:
             CleaningViewModel
 
-
-    /*
-     * =====================================
-     * Secret Game ViewModel
-     * =====================================
-     */
     private lateinit var gameViewModel:
             GameViewModel
 
 
     /*
      * =====================================
-     * 位置情報権限リクエスト
+     * 位置情報権限
      * =====================================
      */
     private val locationPermissionLauncher =
         registerForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
-        ) { permissions ->
+        ) {
+                permissions ->
+
 
             val granted =
-                permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-                        permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+                permissions[
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                ] == true ||
+                        permissions[
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        ] == true
 
-            if (granted) {
+
+            if (
+                granted
+            ) {
 
                 requestAndShowCurrentLocation()
 
@@ -117,32 +99,38 @@ class MainActivity : ComponentActivity() {
         }
 
 
-    /*
-     * =====================================
-     * 現在選択中のトイレID
-     * =====================================
-     *
-     * ・地図のピンを押した
-     * ・検索結果を押した
-     *
-     * どちらの場合もここを書き換える。
-     */
     private var selectedToiletId by
     mutableStateOf<String?>(
         null
     )
 
 
-    /*
-     * =====================================
-     * 地図範囲取得開始済みか
-     * =====================================
-     *
-     * 初期位置が確定する前に東京駅周辺を取得し、
-     * 直後に現在地周辺をもう一度取得する無駄を防ぐ。
-     */
     private var viewportLoadingStarted =
         false
+
+
+    /*
+     * =====================================
+     * 初期位置取得タイムアウト
+     * =====================================
+     */
+    private val mainHandler =
+        Handler(
+            Looper.getMainLooper()
+        )
+
+
+    private var initialLocationTimeoutRunnable:
+            Runnable? =
+        null
+
+
+    private var initialLocationTimedOut =
+        false
+
+
+    private val initialLocationTimeoutMillis =
+        4_000L
 
 
     override fun onCreate(
@@ -154,46 +142,31 @@ class MainActivity : ComponentActivity() {
         )
 
 
-        /*
-         * =====================================
-         * ViewModel
-         * =====================================
-         */
         toiletViewModel =
-
             ViewModelProvider(this)[
                 ToiletViewModel::class.java
             ]
 
 
         reviewViewModel =
-
             ViewModelProvider(this)[
                 ReviewViewModel::class.java
             ]
 
 
         cleaningViewModel =
-
             ViewModelProvider(this)[
                 CleaningViewModel::class.java
             ]
 
 
         gameViewModel =
-
             ViewModelProvider(this)[
                 GameViewModel::class.java
             ]
 
 
-        /*
-         * =====================================
-         * MapLibre
-         * =====================================
-         */
         mapController =
-
             MapLibreMapController(
 
                 activity =
@@ -204,20 +177,6 @@ class MainActivity : ComponentActivity() {
             )
 
 
-        /*
-         * =====================================
-         * 地図の初期位置決定
-         * =====================================
-         *
-         * 位置情報権限がすでにある:
-         * → 現在地取得を試す
-         *
-         * 権限なし / 位置取得失敗:
-         * → 東京駅
-         *
-         * 初期位置が確定してから、
-         * 表示範囲のトイレ取得を開始する。
-         */
         mapController
             .setOnMapReadyListener {
 
@@ -225,11 +184,6 @@ class MainActivity : ComponentActivity() {
             }
 
 
-        /*
-         * =====================================
-         * 地図上のトイレピンを押した
-         * =====================================
-         */
         mapController
             .setOnToiletMarkerClickListener {
                     toilet ->
@@ -240,25 +194,13 @@ class MainActivity : ComponentActivity() {
             }
 
 
-        /*
-         * =====================================
-         * Compose
-         * =====================================
-         */
         setContent {
 
             ToiletMapTheme {
 
-                /*
-                 * =====================================
-                 * 清掃完了ダイアログ
-                 * =====================================
-                 *
-                 * 清掃完了時だけ、Toastではなく
-                 * 画面中央に大きく表示する。
-                 */
                 var cleaningCompleteMessage by
                 remember {
+
                     mutableStateOf<String?>(
                         null
                     )
@@ -267,45 +209,52 @@ class MainActivity : ComponentActivity() {
 
                 /*
                  * =====================================
-                 * Supabaseから取得した
-                 * トイレ一覧
+                 * トイレ
                  * =====================================
                  */
                 val toilets by
-
                 toiletViewModel
                     .toilets
                     .collectAsState()
 
 
-                /*
-                 * 地図の表示範囲外でも、清掃依頼一覧などで
-                 * 必要なトイレだけ別途保持する。
-                 */
-                val supplementalToilets by
+                val searchResults by
+                toiletViewModel
+                    .searchResults
+                    .collectAsState()
 
+
+                val isSearchingToilets by
+                toiletViewModel
+                    .isSearching
+                    .collectAsState()
+
+
+                val supplementalToilets by
                 toiletViewModel
                     .supplementalToilets
                     .collectAsState()
 
 
-                /*
-                 * =====================================
-                 * 選択中トイレの完全な詳細データ
-                 * =====================================
-                 *
-                 * ピンや検索結果を選択した時だけ
-                 * Supabaseから1件取得される。
-                 */
                 val selectedToilet by
-
                 toiletViewModel
                     .selectedToilet
                     .collectAsState()
 
 
-                val errorMessage by
+                val isAddingToilet by
+                toiletViewModel
+                    .isAdding
+                    .collectAsState()
 
+
+                val addedToilet by
+                toiletViewModel
+                    .addedToilet
+                    .collectAsState()
+
+
+                val errorMessage by
                 toiletViewModel
                     .errorMessage
                     .collectAsState()
@@ -336,39 +285,44 @@ class MainActivity : ComponentActivity() {
 
                 /*
                  * =====================================
-                 * 選択中トイレの口コミ状態
+                 * レビュー
                  * =====================================
                  */
                 val reviews by
-
                 reviewViewModel
                     .reviews
                     .collectAsState()
 
 
                 val isLoadingReviews by
-
                 reviewViewModel
                     .isLoading
                     .collectAsState()
 
 
                 val isPostingReview by
-
                 reviewViewModel
                     .isPosting
                     .collectAsState()
 
 
-                val reviewErrorMessage by
+                /*
+                 * レビュー機能専用の
+                 * ログイン中ユーザーID。
+                 */
+                val reviewCurrentUserId by
+                reviewViewModel
+                    .currentUserId
+                    .collectAsState()
 
+
+                val reviewErrorMessage by
                 reviewViewModel
                     .errorMessage
                     .collectAsState()
 
 
                 val reviewSuccessMessage by
-
                 reviewViewModel
                     .successMessage
                     .collectAsState()
@@ -376,53 +330,46 @@ class MainActivity : ComponentActivity() {
 
                 /*
                  * =====================================
-                 * 清掃依頼・担当状態
+                 * 清掃
                  * =====================================
                  */
                 val cleaningRequests by
-
                 cleaningViewModel
                     .requests
                     .collectAsState()
 
 
                 val currentUserId by
-
                 cleaningViewModel
                     .currentUserId
                     .collectAsState()
 
 
                 val requestPoints by
-
                 cleaningViewModel
                     .requestPoints
                     .collectAsState()
 
 
                 val isLoadingCleaning by
-
                 cleaningViewModel
                     .isLoading
                     .collectAsState()
 
 
                 val cleaningActionRequestId by
-
                 cleaningViewModel
                     .actionRequestId
                     .collectAsState()
 
 
                 val cleaningErrorMessage by
-
                 cleaningViewModel
                     .errorMessage
                     .collectAsState()
 
 
                 val cleaningSuccessMessage by
-
                 cleaningViewModel
                     .successMessage
                     .collectAsState()
@@ -440,9 +387,6 @@ class MainActivity : ComponentActivity() {
                         cleaningSuccessMessage
 
 
-                    /*
-                     * エラーは従来どおりToast
-                     */
                     if (
                         error != null
                     ) {
@@ -455,16 +399,15 @@ class MainActivity : ComponentActivity() {
                             )
                             .show()
 
+
                         cleaningViewModel
                             .clearMessages()
+
 
                         return@LaunchedEffect
                     }
 
 
-                    /*
-                     * 清掃完了は大きなダイアログで表示
-                     */
                     if (
                         success != null &&
                         (
@@ -480,17 +423,15 @@ class MainActivity : ComponentActivity() {
                         cleaningCompleteMessage =
                             success
 
+
                         cleaningViewModel
                             .clearMessages()
+
 
                         return@LaunchedEffect
                     }
 
 
-                    /*
-                     * 清掃依頼・引受・キャンセルなどは
-                     * 従来どおりToast
-                     */
                     if (
                         success != null
                     ) {
@@ -502,6 +443,7 @@ class MainActivity : ComponentActivity() {
                                 Toast.LENGTH_LONG
                             )
                             .show()
+
 
                         cleaningViewModel
                             .clearMessages()
@@ -515,7 +457,8 @@ class MainActivity : ComponentActivity() {
                  * =====================================
                  */
                 if (
-                    cleaningCompleteMessage != null
+                    cleaningCompleteMessage !=
+                    null
                 ) {
 
                     AlertDialog(
@@ -529,14 +472,19 @@ class MainActivity : ComponentActivity() {
                         title = {
 
                             Text(
+
                                 text =
                                     "清掃お疲れさまでした！",
+
                                 modifier =
                                     Modifier.fillMaxWidth(),
+
                                 fontSize =
                                     28.sp,
+
                                 fontWeight =
                                     FontWeight.Bold,
+
                                 textAlign =
                                     TextAlign.Center
                             )
@@ -547,6 +495,7 @@ class MainActivity : ComponentActivity() {
                             val originalMessage =
                                 cleaningCompleteMessage
                                     .orEmpty()
+
 
                             val earnedPoints =
                                 Regex(
@@ -559,6 +508,7 @@ class MainActivity : ComponentActivity() {
                                     ?.getOrNull(
                                         1
                                     )
+
 
                             val rewardText =
                                 if (
@@ -580,21 +530,29 @@ class MainActivity : ComponentActivity() {
                                         )
                                         .trim()
                                         .ifBlank {
+
                                             "清掃が完了しました"
                                         }
                                 }
 
+
                             Text(
+
                                 text =
                                     rewardText,
+
                                 modifier =
                                     Modifier.fillMaxWidth(),
+
                                 fontSize =
                                     30.sp,
+
                                 fontWeight =
                                     FontWeight.Bold,
+
                                 textAlign =
                                     TextAlign.Center,
+
                                 lineHeight =
                                     40.sp
                             )
@@ -603,16 +561,20 @@ class MainActivity : ComponentActivity() {
                         confirmButton = {
 
                             Button(
+
                                 onClick = {
 
                                     cleaningCompleteMessage =
                                         null
                                 }
+
                             ) {
 
                                 Text(
+
                                     text =
                                         "閉じる",
+
                                     fontSize =
                                         18.sp
                                 )
@@ -624,53 +586,32 @@ class MainActivity : ComponentActivity() {
 
                 /*
                  * =====================================
-                 * UIで使用できるトイレ一覧
+                 * UIで使用するトイレ一覧
                  * =====================================
-                 *
-                 * 優先順位
-                 *
-                 * 1. 選択中の完全な詳細データ
-                 * 2. 清掃用に取得した完全データ
-                 * 3. 地図表示用の軽量データ
-                 *
-                 * 同じIDがあった場合は
-                 * 上にある完全データを優先する。
                  */
                 val knownToilets =
                     (
                             listOfNotNull(
                                 selectedToilet
                             ) +
-
                                     supplementalToilets +
-
                                     toilets
                             )
                         .distinctBy {
+
                             it.id
                         }
 
 
-                /*
-                 * =====================================
-                 * トイレごとの有効な清掃依頼
-                 * =====================================
-                 */
                 val cleaningRequestByToiletId =
-
                     cleaningRequests
                         .associateBy {
+
                             it.toiletId
                         }
 
 
-                /*
-                 * =====================================
-                 * 清掃待ちトイレ
-                 * =====================================
-                 */
                 val uncleanedToilets =
-
                     knownToilets
                         .filter {
                                 toilet ->
@@ -715,16 +656,13 @@ class MainActivity : ComponentActivity() {
 
                 /*
                  * =====================================
-                 * 選択中トイレが変わった
+                 * 選択トイレ変更
                  * =====================================
                  */
                 LaunchedEffect(
                     selectedToiletId
                 ) {
 
-                    /*
-                     * 口コミ側の準備
-                     */
                     reviewViewModel
                         .prepareForToilet(
                             selectedToiletId
@@ -736,22 +674,15 @@ class MainActivity : ComponentActivity() {
 
 
                     if (
-                        toiletId == null
+                        toiletId ==
+                        null
                     ) {
 
-                        /*
-                         * 詳細カードを閉じた
-                         */
                         toiletViewModel
                             .clearSelectedToilet()
 
                     } else {
 
-                        /*
-                         * =====================================
-                         * この1件だけSupabaseから詳細取得
-                         * =====================================
-                         */
                         toiletViewModel
                             .loadToiletDetail(
                                 toiletId
@@ -762,8 +693,7 @@ class MainActivity : ComponentActivity() {
 
                 /*
                  * =====================================
-                 * トイレ一覧が更新されたら
-                 * 地図上のピンを更新
+                 * 地図ピン更新
                  * =====================================
                  */
                 LaunchedEffect(
@@ -778,48 +708,37 @@ class MainActivity : ComponentActivity() {
 
 
                 /*
-                 * 清掃依頼が別端末で更新された場合も、
-                 * toilets.cleaning_status を再取得して
-                 * ピンと詳細表示を同期する。
+                 * =====================================
+                 * 清掃依頼更新
+                 * =====================================
                  */
                 LaunchedEffect(
                     cleaningRequests
                 ) {
 
-                    /*
-                     * =====================================
-                     * 清掃対象だけ完全データ取得
-                     * =====================================
-                     */
                     toiletViewModel
                         .loadSupplementalToilets(
 
                             cleaningRequests
                                 .map {
+
                                     it.toiletId
                                 }
                         )
 
-                    /*
-                     * =====================================
-                     * 現在表示範囲の軽量データ更新
-                     * =====================================
-                     */
+
                     toiletViewModel
                         .loadToilets()
 
-                    /*
-                     * =====================================
-                     * 詳細カードを開いている場合
-                     * その1件だけ再取得
-                     * =====================================
-                     */
+
                     selectedToiletId
                         ?.let {
                                 toiletId ->
 
+
                             toiletViewModel
                                 .loadToiletDetail(
+
                                     toiletId =
                                         toiletId,
 
@@ -837,46 +756,33 @@ class MainActivity : ComponentActivity() {
                  */
                 ToiletMapApp(
 
-                    /*
-                     * 隠しゲーム
-                     */
                     gameViewModel =
                         gameViewModel,
 
-
-                    /*
-                     * MapLibre
-                     */
                     mapView =
                         mapController.mapView,
 
-
-                    /*
-                     * =====================================
-                     * 検索対象
-                     * =====================================
-                     */
                     toilets =
                         knownToilets,
 
+                    searchResults =
+                        searchResults,
 
-                    /*
-                     * 現在選択中
-                     */
+                    isSearchingToilets =
+                        isSearchingToilets,
+
                     selectedToilet =
                         selectedToilet,
 
+                    isAddingToilet =
+                        isAddingToilet,
 
-                    /*
-                     * 清掃待ち一覧
-                     */
+                    addedToilet =
+                        addedToilet,
+
                     uncleanedToilets =
                         uncleanedToilets,
 
-
-                    /*
-                     * 清掃依頼・担当状態
-                     */
                     cleaningRequests =
                         cleaningRequests,
 
@@ -892,10 +798,6 @@ class MainActivity : ComponentActivity() {
                     cleaningActionRequestId =
                         cleaningActionRequestId,
 
-
-                    /*
-                     * 口コミ状態
-                     */
                     reviews =
                         reviews,
 
@@ -905,6 +807,12 @@ class MainActivity : ComponentActivity() {
                     isPostingReview =
                         isPostingReview,
 
+                    /*
+                     * 今回追加
+                     */
+                    reviewCurrentUserId =
+                        reviewCurrentUserId,
+
                     reviewErrorMessage =
                         reviewErrorMessage,
 
@@ -912,11 +820,6 @@ class MainActivity : ComponentActivity() {
                         reviewSuccessMessage,
 
 
-                    /*
-                     * =====================================
-                     * 未清掃一覧から地図で見る
-                     * =====================================
-                     */
                     onShowUncleanedToiletOnMap = {
                             uncleanedToilet ->
 
@@ -924,17 +827,20 @@ class MainActivity : ComponentActivity() {
                         val toilet =
                             knownToilets
                                 .firstOrNull {
+
                                     it.id ==
                                             uncleanedToilet.id
                                 }
 
 
                         if (
-                            toilet != null
+                            toilet !=
+                            null
                         ) {
 
                             selectedToiletId =
                                 toilet.id
+
 
                             mapController
                                 .focusOnToilet(
@@ -944,25 +850,25 @@ class MainActivity : ComponentActivity() {
                     },
 
 
-                    /*
-                     * =====================================
-                     * 検索結果を押した
-                     * =====================================
-                     */
+                    onSearchQueryChanged = {
+                            query ->
+
+
+                        toiletViewModel
+                            .searchToilets(
+                                query
+                            )
+                    },
+
+
                     onSearchToiletSelected = {
                             toilet ->
 
 
-                        /*
-                         * 選択中にする
-                         */
                         selectedToiletId =
                             toilet.id
 
 
-                        /*
-                         * そのトイレへ地図移動
-                         */
                         mapController
                             .focusOnToilet(
                                 toilet
@@ -970,24 +876,13 @@ class MainActivity : ComponentActivity() {
                     },
 
 
-                    /*
-                     * =====================================
-                     * 詳細を閉じる
-                     * =====================================
-                     */
                     onDismissSelectedToilet = {
-
 
                         selectedToiletId =
                             null
                     },
 
 
-                    /*
-                     * =====================================
-                     * 清掃依頼
-                     * =====================================
-                     */
                     onRequestCleaning = {
                             toilet,
                             selectedRequestPoints ->
@@ -995,6 +890,7 @@ class MainActivity : ComponentActivity() {
 
                         cleaningViewModel
                             .requestCleaning(
+
                                 toiletId =
                                     toilet.id,
 
@@ -1004,11 +900,6 @@ class MainActivity : ComponentActivity() {
                     },
 
 
-                    /*
-                     * =====================================
-                     * 清掃を引き受ける
-                     * =====================================
-                     */
                     onAcceptCleaning = {
                             request ->
 
@@ -1020,11 +911,6 @@ class MainActivity : ComponentActivity() {
                     },
 
 
-                    /*
-                     * =====================================
-                     * 清掃完了
-                     * =====================================
-                     */
                     onCompleteCleaning = {
                             request ->
 
@@ -1036,11 +922,6 @@ class MainActivity : ComponentActivity() {
                     },
 
 
-                    /*
-                     * =====================================
-                     * 清掃担当をキャンセル
-                     * =====================================
-                     */
                     onCancelCleaning = {
                             request ->
 
@@ -1052,13 +933,10 @@ class MainActivity : ComponentActivity() {
                     },
 
 
-                    /*
-                     * =====================================
-                     * 自分が出した清掃依頼を取り消す
-                     * =====================================
-                     */
                     onCancelCleaningRequest = {
-                            request: CleaningRequest ->
+                            request:
+                            CleaningRequest ->
+
 
                         cleaningViewModel
                             .cancelCleaningRequest(
@@ -1074,11 +952,6 @@ class MainActivity : ComponentActivity() {
                     },
 
 
-                    /*
-                     * =====================================
-                     * 清掃画面から地図で見る
-                     * =====================================
-                     */
                     onShowCleaningToiletOnMap = {
                             toiletId ->
 
@@ -1086,14 +959,20 @@ class MainActivity : ComponentActivity() {
                         val toilet =
                             knownToilets
                                 .firstOrNull {
-                                    it.id == toiletId
+
+                                    it.id ==
+                                            toiletId
                                 }
 
 
-                        if (toilet != null) {
+                        if (
+                            toilet !=
+                            null
+                        ) {
 
                             selectedToiletId =
                                 toilet.id
+
 
                             mapController
                                 .focusOnToilet(
@@ -1105,7 +984,7 @@ class MainActivity : ComponentActivity() {
 
                     /*
                      * =====================================
-                     * 口コミを開く・再読込
+                     * 口コミ取得
                      * =====================================
                      */
                     onLoadReviews = {
@@ -1132,6 +1011,7 @@ class MainActivity : ComponentActivity() {
 
                         reviewViewModel
                             .addReview(
+
                                 toiletId =
                                     toiletId,
 
@@ -1144,6 +1024,28 @@ class MainActivity : ComponentActivity() {
                     },
 
 
+                    /*
+                     * =====================================
+                     * 口コミ削除
+                     * =====================================
+                     */
+                    onDeleteReview = {
+                            toiletId,
+                            reviewId ->
+
+
+                        reviewViewModel
+                            .deleteReview(
+
+                                toiletId =
+                                    toiletId,
+
+                                reviewId =
+                                    reviewId
+                            )
+                    },
+
+
                     onClearReviewMessages = {
 
                         reviewViewModel
@@ -1151,11 +1053,6 @@ class MainActivity : ComponentActivity() {
                     },
 
 
-                    /*
-                     * =====================================
-                     * トイレ追加
-                     * =====================================
-                     */
                     onAddToilet = {
                             toilet ->
 
@@ -1164,36 +1061,28 @@ class MainActivity : ComponentActivity() {
                             .addToilet(
                                 toilet
                             )
+                    },
 
 
-                        /*
-                         * 登録したトイレを選択
-                         */
+                    onAddSuccessHandled = {
+                            toilet ->
+
+
                         selectedToiletId =
                             toilet.id
 
 
-                        /*
-                         * 登録場所へ移動
-                         */
                         mapController
                             .focusOnToilet(
                                 toilet
                             )
+
+
+                        toiletViewModel
+                            .consumeAddSuccess()
                     },
 
 
-                    /*
-                     * =====================================
-                     * 現在地ボタン
-                     * =====================================
-                     *
-                     * 権限がある場合:
-                     * → 現在位置を取得して地図へ表示
-                     *
-                     * 権限がない場合:
-                     * → Androidの権限ダイアログを表示
-                     */
                     onCurrentLocationRequested = {
 
                         showCurrentLocationWithPermissionCheck()
@@ -1206,14 +1095,8 @@ class MainActivity : ComponentActivity() {
 
     /*
      * =====================================
-     * 初期表示位置を決定
+     * 初期地図位置
      * =====================================
-     *
-     * 起動時には位置情報の権限ダイアログを勝手に出さない。
-     * すでに権限がある場合だけ現在地取得を試す。
-     *
-     * 権限がない、位置情報OFF、取得できない場合は
-     * 東京駅を使用する。
      */
     private fun focusInitialMapLocation() {
 
@@ -1221,13 +1104,16 @@ class MainActivity : ComponentActivity() {
             ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
+            ) ==
+                    PackageManager.PERMISSION_GRANTED
+
 
         val coarseGranted =
             ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_COARSE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
+            ) ==
+                    PackageManager.PERMISSION_GRANTED
 
 
         if (
@@ -1235,18 +1121,76 @@ class MainActivity : ComponentActivity() {
             coarseGranted
         ) {
 
+            initialLocationTimedOut =
+                false
+
+
+            cancelInitialLocationTimeout()
+
+
+            val timeoutRunnable =
+                Runnable {
+
+                    initialLocationTimeoutRunnable =
+                        null
+
+
+                    initialLocationTimedOut =
+                        true
+
+
+                    mapController
+                        .focusOnTokyoStation()
+
+
+                    startViewportLoading()
+                }
+
+
+            initialLocationTimeoutRunnable =
+                timeoutRunnable
+
+
+            mainHandler
+                .postDelayed(
+
+                    timeoutRunnable,
+
+                    initialLocationTimeoutMillis
+                )
+
+
             mapController
                 .showCurrentLocation(
 
                     onSuccess = {
+
+                        cancelInitialLocationTimeout()
+
+
+                        initialLocationTimedOut =
+                            false
+
 
                         startViewportLoading()
                     },
 
                     onError = {
 
+                        if (
+                            initialLocationTimedOut
+                        ) {
+
+                            return@showCurrentLocation
+                        }
+
+
+                        cancelInitialLocationTimeout()
+
+
                         mapController
                             .focusOnTokyoStation()
+
 
                         startViewportLoading()
                     }
@@ -1254,24 +1198,42 @@ class MainActivity : ComponentActivity() {
 
         } else {
 
+            cancelInitialLocationTimeout()
+
+
             mapController
                 .focusOnTokyoStation()
+
 
             startViewportLoading()
         }
     }
 
 
-    /*
-     * =====================================
-     * 表示範囲に応じたトイレ取得を開始
-     * =====================================
-     */
+    private fun cancelInitialLocationTimeout() {
+
+        val runnable =
+            initialLocationTimeoutRunnable
+                ?: return
+
+
+        mainHandler
+            .removeCallbacks(
+                runnable
+            )
+
+
+        initialLocationTimeoutRunnable =
+            null
+    }
+
+
     private fun startViewportLoading() {
 
         if (
             viewportLoadingStarted
         ) {
+
             return
         }
 
@@ -1287,12 +1249,21 @@ class MainActivity : ComponentActivity() {
                     west,
                     east ->
 
+
                 toiletViewModel
                     .onVisibleBoundsChanged(
-                        south = south,
-                        north = north,
-                        west = west,
-                        east = east
+
+                        south =
+                            south,
+
+                        north =
+                            north,
+
+                        west =
+                            west,
+
+                        east =
+                            east
                     )
             }
     }
@@ -1300,7 +1271,7 @@ class MainActivity : ComponentActivity() {
 
     /*
      * =====================================
-     * 現在地表示の権限確認
+     * 現在地ボタン
      * =====================================
      */
     private fun showCurrentLocationWithPermissionCheck() {
@@ -1309,13 +1280,16 @@ class MainActivity : ComponentActivity() {
             ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
+            ) ==
+                    PackageManager.PERMISSION_GRANTED
+
 
         val coarseGranted =
             ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_COARSE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
+            ) ==
+                    PackageManager.PERMISSION_GRANTED
 
 
         if (
@@ -1327,21 +1301,20 @@ class MainActivity : ComponentActivity() {
 
         } else {
 
-            locationPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
+            locationPermissionLauncher
+                .launch(
+
+                    arrayOf(
+
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
                 )
-            )
         }
     }
 
 
-    /*
-     * =====================================
-     * 現在位置を取得して地図へ表示
-     * =====================================
-     */
     private fun requestAndShowCurrentLocation() {
 
         mapController
@@ -1351,19 +1324,27 @@ class MainActivity : ComponentActivity() {
 
                     Toast
                         .makeText(
+
                             this,
+
                             "現在地を表示しました",
+
                             Toast.LENGTH_SHORT
                         )
                         .show()
                 },
 
-                onError = { message ->
+                onError = {
+                        message ->
+
 
                     Toast
                         .makeText(
+
                             this,
+
                             message,
+
                             Toast.LENGTH_LONG
                         )
                         .show()
@@ -1372,11 +1353,15 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    /*
-     * =====================================
-     * MapView状態保存
-     * =====================================
-     */
+    override fun onDestroy() {
+
+        cancelInitialLocationTimeout()
+
+
+        super.onDestroy()
+    }
+
+
     override fun onSaveInstanceState(
         outState: Bundle
     ) {
@@ -1393,11 +1378,6 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    /*
-     * =====================================
-     * メモリ不足
-     * =====================================
-     */
     override fun onLowMemory() {
 
         super.onLowMemory()

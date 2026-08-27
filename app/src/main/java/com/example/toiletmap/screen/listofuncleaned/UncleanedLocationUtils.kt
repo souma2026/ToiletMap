@@ -5,9 +5,10 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import android.os.Build
+import android.os.Looper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,11 +20,6 @@ import androidx.core.content.ContextCompat
 import kotlin.math.roundToInt
 
 
-/*
- * =====================================
- * 現在地の状態
- * =====================================
- */
 data class CurrentLocationState(
 
     val location: Location?,
@@ -33,25 +29,29 @@ data class CurrentLocationState(
 
 
 /*
- * =====================================
- * 現在地を取得する
- * =====================================
+ * Last Known Location は
+ *
+ * ・5分以内
+ * ・精度200m以内
+ *
+ * の場合だけ再利用する。
  */
+private const val
+        MAX_LAST_KNOWN_LOCATION_AGE_MS =
+    5 * 60 * 1000L
+
+
+private const val
+        MAX_LAST_KNOWN_LOCATION_ACCURACY_METERS =
+    200f
+
+
 @Composable
 fun rememberCurrentLocationState():
         CurrentLocationState {
 
     val context =
         LocalContext.current
-
-
-    var currentLocation by
-    remember {
-
-        mutableStateOf<Location?>(
-            null
-        )
-    }
 
 
     var hasPermission by
@@ -65,73 +65,85 @@ fun rememberCurrentLocationState():
     }
 
 
-    /*
-     * 位置情報権限を要求
-     */
-    val permissionLauncher =
+    var currentLocation by
+    remember {
 
-        rememberLauncherForActivityResult(
-
-            contract =
-                ActivityResultContracts
-                    .RequestMultiplePermissions()
-
-        ) { permissions ->
-
-
-            hasPermission =
-
-                permissions[
-                    Manifest.permission
-                        .ACCESS_FINE_LOCATION
-                ] == true ||
-
-                        permissions[
-                            Manifest.permission
-                                .ACCESS_COARSE_LOCATION
-                        ] == true
-
-
-            if (
-                hasPermission
-            ) {
-
-                currentLocation =
-                    getLastKnownLocation(
-                        context
-                    )
-            }
-        }
+        mutableStateOf<Location?>(
+            null
+        )
+    }
 
 
     /*
-     * 画面を開いたとき
+     * ここでは権限要求をしない。
      */
     LaunchedEffect(Unit) {
 
+        hasPermission =
+
+            hasLocationPermission(
+                context
+            )
+
+
         if (
-            hasPermission
+            !hasPermission
         ) {
 
             currentLocation =
-                getLastKnownLocation(
-                    context
-                )
+                null
 
-        } else {
 
-            permissionLauncher.launch(
-
-                arrayOf(
-
-                    Manifest.permission
-                        .ACCESS_FINE_LOCATION,
-
-                    Manifest.permission
-                        .ACCESS_COARSE_LOCATION
-                )
-            )
+            return@LaunchedEffect
         }
+
+
+        /*
+         * まず保存済み位置を確認。
+         */
+        val lastKnownLocation =
+
+            getUsableLastKnownLocation(
+                context
+            )
+
+
+        if (
+            lastKnownLocation != null
+        ) {
+
+            currentLocation =
+                lastKnownLocation
+
+
+            return@LaunchedEffect
+        }
+
+
+        /*
+         * 保存済み位置が
+         *
+         * ・ない
+         * ・古い
+         * ・精度が悪い
+         *
+         * 場合はfresh locationを取得。
+         *
+         * Permissionダイアログは出さない。
+         */
+        requestFreshLocation(
+
+            context =
+                context,
+
+            onResult = {
+                    location ->
+
+
+                currentLocation =
+                    location
+            }
+        )
     }
 
 
@@ -146,11 +158,6 @@ fun rememberCurrentLocationState():
 }
 
 
-/*
- * =====================================
- * 位置情報権限確認
- * =====================================
- */
 private fun hasLocationPermission(
     context: Context
 ): Boolean {
@@ -183,13 +190,109 @@ private fun hasLocationPermission(
 }
 
 
+private fun hasFineLocationPermission(
+    context: Context
+): Boolean {
+
+    return ContextCompat.checkSelfPermission(
+
+        context,
+
+        Manifest.permission
+            .ACCESS_FINE_LOCATION
+
+    ) == PackageManager.PERMISSION_GRANTED
+}
+
+
 /*
  * =====================================
- * 最後に取得された現在地
+ * 保存済み位置を使用できるか
+ * =====================================
+ */
+private fun isUsableLastKnownLocation(
+    location: Location
+): Boolean {
+
+    if (
+        location.time <= 0L
+    ) {
+
+        return false
+    }
+
+
+    val ageMillis =
+
+        System.currentTimeMillis() -
+                location.time
+
+
+    /*
+     * 未来時刻または5分以上前。
+     */
+    if (
+        ageMillis < 0L ||
+        ageMillis >
+        MAX_LAST_KNOWN_LOCATION_AGE_MS
+    ) {
+
+        return false
+    }
+
+
+    /*
+     * 精度情報なし、
+     * または200mを超える。
+     */
+    if (
+        !location.hasAccuracy() ||
+        !location.accuracy.isFinite() ||
+        location.accuracy >
+        MAX_LAST_KNOWN_LOCATION_ACCURACY_METERS
+    ) {
+
+        return false
+    }
+
+
+    return isValidLocationCoordinate(
+        location
+    )
+}
+
+
+/*
+ * =====================================
+ * 緯度経度が正常か
+ * =====================================
+ */
+private fun isValidLocationCoordinate(
+    location: Location
+): Boolean {
+
+    val latitude =
+        location.latitude
+
+
+    val longitude =
+        location.longitude
+
+
+    return latitude.isFinite() &&
+            longitude.isFinite() &&
+            latitude in -90.0..90.0 &&
+            longitude in -180.0..180.0
+}
+
+
+/*
+ * =====================================
+ * 使用できる保存済み位置を取得
  * =====================================
  */
 @SuppressLint("MissingPermission")
-private fun getLastKnownLocation(
+private fun getUsableLastKnownLocation(
     context: Context
 ): Location? {
 
@@ -213,8 +316,12 @@ private fun getLastKnownLocation(
     val locations =
 
         locationManager
-            .getProviders(true)
-            .mapNotNull { provider ->
+            .getProviders(
+                true
+            )
+            .mapNotNull {
+                    provider ->
+
 
                 try {
 
@@ -230,11 +337,16 @@ private fun getLastKnownLocation(
                     null
                 }
             }
+            .filter {
+                    location ->
 
 
-    /*
-     * 一番新しい位置情報を使用
-     */
+                isUsableLastKnownLocation(
+                    location
+                )
+            }
+
+
     return locations
         .maxByOrNull {
 
@@ -245,16 +357,278 @@ private fun getLastKnownLocation(
 
 /*
  * =====================================
- * 現在地 → トイレの距離
+ * ProviderがONか確認
  * =====================================
  */
+private fun isProviderEnabledSafely(
+
+    locationManager:
+    LocationManager,
+
+    provider:
+    String
+
+): Boolean {
+
+    return try {
+
+        locationManager
+            .isProviderEnabled(
+                provider
+            )
+
+    } catch (
+        e: Exception
+    ) {
+
+        false
+    }
+}
+
+
+/*
+ * =====================================
+ * 新しい現在地を1回取得
+ * =====================================
+ *
+ * ここでも権限要求は行わない。
+ */
+@SuppressLint("MissingPermission")
+private fun requestFreshLocation(
+
+    context:
+    Context,
+
+    onResult:
+        (Location?) -> Unit
+
+) {
+
+    if (
+        !hasLocationPermission(
+            context
+        )
+    ) {
+
+        onResult(
+            null
+        )
+
+
+        return
+    }
+
+
+    val locationManager =
+
+        context.getSystemService(
+            Context.LOCATION_SERVICE
+        ) as LocationManager
+
+
+    val enabledProviders =
+
+        try {
+
+            locationManager
+                .getProviders(
+                    true
+                )
+
+        } catch (
+            e: Exception
+        ) {
+
+            emptyList()
+        }
+
+
+    val provider =
+
+        when {
+
+            hasFineLocationPermission(
+                context
+            ) &&
+                    isProviderEnabledSafely(
+
+                        locationManager,
+
+                        LocationManager.GPS_PROVIDER
+                    ) ->
+
+                LocationManager.GPS_PROVIDER
+
+
+            isProviderEnabledSafely(
+
+                locationManager,
+
+                LocationManager.NETWORK_PROVIDER
+            ) ->
+
+                LocationManager.NETWORK_PROVIDER
+
+
+            else ->
+
+                enabledProviders
+                    .firstOrNull()
+        }
+
+
+    if (
+        provider == null
+    ) {
+
+        onResult(
+            null
+        )
+
+
+        return
+    }
+
+
+    fun deliver(
+        location: Location?
+    ) {
+
+        val validLocation =
+
+            location
+                ?.takeIf {
+
+                    isValidLocationCoordinate(
+                        it
+                    )
+                }
+
+
+        onResult(
+            validLocation
+        )
+    }
+
+
+    try {
+
+        /*
+         * Android 11以降。
+         */
+        if (
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.R
+        ) {
+
+            locationManager
+                .getCurrentLocation(
+
+                    provider,
+
+                    null,
+
+                    context.mainExecutor
+
+                ) {
+                        location ->
+
+
+                    deliver(
+                        location
+                    )
+                }
+
+
+        } else {
+
+            /*
+             * Android 10以前。
+             */
+            val listener =
+
+                object : LocationListener {
+
+                    override fun onLocationChanged(
+                        location: Location
+                    ) {
+
+                        locationManager
+                            .removeUpdates(
+                                this
+                            )
+
+
+                        deliver(
+                            location
+                        )
+                    }
+
+
+                    override fun onProviderDisabled(
+                        provider: String
+                    ) {
+
+                        locationManager
+                            .removeUpdates(
+                                this
+                            )
+
+
+                        deliver(
+                            null
+                        )
+                    }
+                }
+
+
+            @Suppress("DEPRECATION")
+            locationManager
+                .requestSingleUpdate(
+
+                    provider,
+
+                    listener,
+
+                    Looper.getMainLooper()
+                )
+        }
+
+
+    } catch (
+        e: SecurityException
+    ) {
+
+        onResult(
+            null
+        )
+
+
+    } catch (
+        e: Exception
+    ) {
+
+        onResult(
+            null
+        )
+    }
+}
+
+
 fun calculateDistance(
-    currentLocation: Location,
-    toilet: UncleanedToilet
+
+    currentLocation:
+    Location,
+
+    toilet:
+    UncleanedToilet
+
 ): Float {
 
     val result =
-        FloatArray(1)
+        FloatArray(
+            1
+        )
 
 
     Location.distanceBetween(
@@ -275,16 +649,6 @@ fun calculateDistance(
 }
 
 
-/*
- * =====================================
- * 距離表示
- *
- * 例
- *
- * 350 m
- * 1.2 km
- * =====================================
- */
 fun formatDistance(
     distanceMeters: Float
 ): String {
@@ -307,11 +671,6 @@ fun formatDistance(
 }
 
 
-/*
- * =====================================
- * 前回清掃からの経過時間
- * =====================================
- */
 fun formatElapsedSinceCleaning(
     lastCleanedAtMillis: Long?
 ): String {
@@ -330,7 +689,9 @@ fun formatElapsedSinceCleaning(
                 System.currentTimeMillis() -
                         lastCleanedAtMillis
                 )
-            .coerceAtLeast(0)
+            .coerceAtLeast(
+                0
+            )
 
 
     val minutes =
@@ -357,7 +718,8 @@ fun formatElapsedSinceCleaning(
 
     val hours =
 
-        minutes / 60
+        minutes /
+                60
 
 
     if (
@@ -370,7 +732,8 @@ fun formatElapsedSinceCleaning(
 
     val days =
 
-        hours / 24
+        hours /
+                24
 
 
     return "${days}日前"

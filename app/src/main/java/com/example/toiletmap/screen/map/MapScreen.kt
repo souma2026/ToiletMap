@@ -269,9 +269,18 @@ fun MapScreen(
     mapView: MapView,
 
     /*
-     * 検索対象
+     * 空欄時の「現在地に近いトイレ」候補に使用する。
      */
     toilets: List<Toilet> = emptyList(),
+
+    /*
+     * Supabase全体検索結果。
+     */
+    searchResults: List<Toilet> = emptyList(),
+
+    isSearchingToilets: Boolean = false,
+
+    onSearchQueryChanged: (String) -> Unit = {},
 
     /*
      * 検索結果を選択
@@ -502,6 +511,15 @@ fun MapScreen(
             mapView = mapView,
 
             toilets = toilets,
+
+            searchResults =
+                searchResults,
+
+            isSearchingToilets =
+                isSearchingToilets,
+
+            onSearchQueryChanged =
+                onSearchQueryChanged,
 
             onToiletSelected =
                 onSearchToiletSelected,
@@ -767,6 +785,9 @@ fun MapScreen(
 private fun FinderHeader(
     mapView: MapView,
     toilets: List<Toilet>,
+    searchResults: List<Toilet>,
+    isSearchingToilets: Boolean,
+    onSearchQueryChanged: (String) -> Unit,
     onToiletSelected: (Toilet) -> Unit,
     onSecretLogoTap: () -> Unit,
     onNotificationClick: () -> Unit,
@@ -889,13 +910,22 @@ private fun FinderHeader(
 
     /*
      * =====================================
-     * 検索
+     * 画面に表示する検索候補
      * =====================================
+     *
+     * 空欄:
+     *   現在地に近い、現在読み込み済みのトイレを最大5件。
+     *
+     * 文字あり:
+     *   ViewModelがSupabase全体検索した結果を最大10件。
+     *
+     * ここでは名前・コメントによるローカル検索を行わない。
      */
-    val searchResults =
+    val displayedSearchResults =
         remember(
             searchQuery,
             toilets,
+            searchResults,
             currentLocation
         ) {
 
@@ -931,26 +961,12 @@ private fun FinderHeader(
 
             } else {
 
-                toilets
+                searchResults
                     .filter { toilet ->
                         isUsableCoordinate(
                             latitude = toilet.latitude,
                             longitude = toilet.longitude
                         )
-                    }
-                    .filter { toilet ->
-
-                        finderDisplayName(
-                            toilet.name
-                        ).contains(
-                            query,
-                            ignoreCase = true
-                        ) ||
-
-                                toilet.comment.contains(
-                                    query,
-                                    ignoreCase = true
-                                )
                     }
                     .take(10)
             }
@@ -1179,6 +1195,10 @@ private fun FinderHeader(
                         newValue
 
                     showSearchSuggestions = true
+
+                    onSearchQueryChanged(
+                        newValue.text
+                    )
                 },
 
                 modifier =
@@ -1192,6 +1212,14 @@ private fun FinderHeader(
 
                             if (focusState.isFocused) {
                                 showSearchSuggestions = true
+
+                                /*
+                                 * 候補を閉じた後に再度検索欄を押した場合も、
+                                 * 現在の文字列で検索結果を最新化する。
+                                 */
+                                onSearchQueryChanged(
+                                    searchValue.text
+                                )
                             } else {
                                 showSearchSuggestions = false
                             }
@@ -1248,6 +1276,10 @@ private fun FinderHeader(
                                 searchValue =
                                     TextFieldValue("")
 
+                                onSearchQueryChanged(
+                                    ""
+                                )
+
                                 /*
                                  * 入力欄のフォーカスは残し、
                                  * 空欄時の近いトイレ候補を表示できるようにする。
@@ -1293,7 +1325,7 @@ private fun FinderHeader(
                         onSearch = {
 
                             val firstResult =
-                                searchResults
+                                displayedSearchResults
                                     .firstOrNull()
 
                             if (firstResult != null) {
@@ -1361,7 +1393,56 @@ private fun FinderHeader(
                         )
                 ) {
 
-                    if (searchResults.isEmpty()) {
+                    if (
+                        searchQuery.trim().isNotBlank() &&
+                        isSearchingToilets
+                    ) {
+
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        16.dp
+                                    ),
+
+                            verticalAlignment =
+                                Alignment.CenterVertically,
+
+                            horizontalArrangement =
+                                Arrangement.spacedBy(
+                                    10.dp
+                                )
+                        ) {
+
+                            CircularProgressIndicator(
+                                modifier =
+                                    Modifier.size(
+                                        20.dp
+                                    ),
+
+                                color =
+                                    FinderGreen,
+
+                                strokeWidth =
+                                    2.dp
+                            )
+
+                            Text(
+                                text =
+                                    "Supabaseから検索中...",
+
+                                color =
+                                    FinderMuted,
+
+                                style =
+                                    MaterialTheme
+                                        .typography
+                                        .bodyMedium
+                            )
+                        }
+
+                    } else if (displayedSearchResults.isEmpty()) {
 
                         Text(
                             text =
@@ -1394,7 +1475,7 @@ private fun FinderHeader(
 
                             items(
                                 items =
-                                    searchResults,
+                                    displayedSearchResults,
 
                                 key = {
                                         toilet ->

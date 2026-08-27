@@ -1,5 +1,6 @@
 package com.example.toiletmap.screen.review
 
+import com.example.toiletmap.model.ToiletReview
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -44,7 +46,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.example.toiletmap.model.ToiletReview
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -71,11 +72,6 @@ private val ReviewError =
     Color(0xFFB3261E)
 
 
-/*
- * =====================================
- * 地図上に表示する口コミボタン
- * =====================================
- */
 @Composable
 fun ReviewOpenButton(
 
@@ -97,6 +93,7 @@ fun ReviewOpenButton(
                 .shadow(
                     elevation =
                         7.dp,
+
                     shape =
                         RoundedCornerShape(
                             50
@@ -121,8 +118,10 @@ fun ReviewOpenButton(
 
         contentPadding =
             PaddingValues(
+
                 horizontal =
                     18.dp,
+
                 vertical =
                     10.dp
             )
@@ -141,11 +140,6 @@ fun ReviewOpenButton(
 }
 
 
-/*
- * =====================================
- * 口コミ一覧・投稿画面
- * =====================================
- */
 @Composable
 fun ReviewDialog(
 
@@ -158,6 +152,8 @@ fun ReviewDialog(
 
     isPosting: Boolean,
 
+    currentUserId: String?,
+
     errorMessage: String?,
 
     successMessage: String?,
@@ -168,6 +164,8 @@ fun ReviewDialog(
         Int,
         String
     ) -> Unit,
+
+    onDelete: (String) -> Unit,
 
     onDismiss: () -> Unit
 ) {
@@ -194,10 +192,17 @@ fun ReviewDialog(
     }
 
 
-    /*
-     * 投稿成功後だけ入力欄を初期化する。
-     * 失敗した場合は入力内容を残す。
-     */
+    var reviewIdPendingDelete by
+    rememberSaveable(
+        toiletName
+    ) {
+
+        mutableStateOf<String?>(
+            null
+        )
+    }
+
+
     LaunchedEffect(
         successMessage
     ) {
@@ -227,12 +232,130 @@ fun ReviewDialog(
 
             reviews
                 .map {
-                    review ->
+                        review ->
 
                     review.rating
                 }
                 .average()
         }
+
+
+    /*
+     * 自分が投稿した口コミ
+     */
+    val myReview =
+        currentUserId
+            ?.let {
+                    userId ->
+
+                reviews
+                    .firstOrNull {
+                            review ->
+
+                        review.userId ==
+                                userId
+                    }
+            }
+
+
+    /*
+     * =====================================
+     * 削除確認
+     * =====================================
+     */
+    if (
+        reviewIdPendingDelete !=
+        null
+    ) {
+
+        AlertDialog(
+
+            onDismissRequest = {
+
+                if (
+                    !isPosting
+                ) {
+
+                    reviewIdPendingDelete =
+                        null
+                }
+            },
+
+            title = {
+
+                Text(
+                    text =
+                        "口コミを削除"
+                )
+            },
+
+            text = {
+
+                Text(
+                    text =
+                        "この口コミを削除しますか？削除後は、このトイレへ新しい口コミを1件投稿できます。"
+                )
+            },
+
+            confirmButton = {
+
+                TextButton(
+
+                    onClick = {
+
+                        val reviewId =
+                            reviewIdPendingDelete
+                                ?: return@TextButton
+
+
+                        onDelete(
+                            reviewId
+                        )
+
+
+                        reviewIdPendingDelete =
+                            null
+                    },
+
+                    enabled =
+                        !isPosting
+
+                ) {
+
+                    Text(
+
+                        text =
+                            "削除",
+
+                        color =
+                            ReviewError
+                    )
+                }
+            },
+
+            dismissButton = {
+
+                TextButton(
+
+                    onClick = {
+
+                        reviewIdPendingDelete =
+                            null
+                    },
+
+                    enabled =
+                        !isPosting
+
+                ) {
+
+                    Text(
+                        text =
+                            "キャンセル"
+                    )
+                }
+            }
+        )
+    }
 
 
     Dialog(
@@ -242,6 +365,7 @@ fun ReviewDialog(
 
         properties =
             DialogProperties(
+
                 usePlatformDefaultWidth =
                     false
             )
@@ -292,8 +416,7 @@ fun ReviewDialog(
                 Row(
 
                     modifier =
-                        Modifier
-                            .fillMaxWidth(),
+                        Modifier.fillMaxWidth(),
 
                     verticalAlignment =
                         Alignment.CenterVertically
@@ -303,10 +426,9 @@ fun ReviewDialog(
                     Column(
 
                         modifier =
-                            Modifier
-                                .weight(
-                                    1f
-                                )
+                            Modifier.weight(
+                                1f
+                            )
                     ) {
 
                         Text(
@@ -412,8 +534,10 @@ fun ReviewDialog(
                             Modifier
                                 .fillMaxWidth()
                                 .padding(
+
                                     horizontal =
                                         16.dp,
+
                                     vertical =
                                         13.dp
                                 ),
@@ -487,6 +611,7 @@ fun ReviewDialog(
                                     } else {
 
                                         ratingStars(
+
                                             averageRating
                                                 .roundToInt()
                                         )
@@ -551,8 +676,7 @@ fun ReviewDialog(
                             Column(
 
                                 modifier =
-                                    Modifier
-                                        .fillMaxSize(),
+                                    Modifier.fillMaxSize(),
 
                                 horizontalAlignment =
                                     Alignment.CenterHorizontally,
@@ -674,6 +798,7 @@ fun ReviewDialog(
 
                                 contentPadding =
                                     PaddingValues(
+
                                         vertical =
                                             12.dp
                                     ),
@@ -691,17 +816,34 @@ fun ReviewDialog(
                                         reviews,
 
                                     key = {
-                                        review ->
+                                            review ->
 
                                         review.id
                                     }
 
                                 ) {
-                                    review ->
+                                        review ->
+
 
                                     ReviewCard(
+
                                         review =
-                                            review
+                                            review,
+
+                                        isOwnReview =
+                                            currentUserId !=
+                                                    null &&
+                                                    review.userId ==
+                                                    currentUserId,
+
+                                        isBusy =
+                                            isPosting,
+
+                                        onDelete = {
+
+                                            reviewIdPendingDelete =
+                                                review.id
+                                        }
                                     )
                                 }
                             }
@@ -724,129 +866,247 @@ fun ReviewDialog(
 
                 /*
                  * =====================================
-                 * 口コミ投稿欄
+                 * 投稿欄
                  * =====================================
                  */
-                Text(
+                when {
 
-                    text =
-                        "口コミを投稿",
+                    currentUserId ==
+                            null -> {
 
-                    color =
-                        ReviewDark,
+                        Text(
 
-                    fontWeight =
-                        FontWeight.Bold
-                )
+                            text =
+                                "口コミを投稿するにはログインが必要です",
+
+                            color =
+                                ReviewMuted,
+
+                            fontSize =
+                                13.sp,
+
+                            modifier =
+                                Modifier.padding(
+
+                                    vertical =
+                                        12.dp
+                                )
+                        )
+                    }
 
 
-                Row(
+                    /*
+                     * 自分のレビューが存在する場合は
+                     * 投稿欄を表示しない。
+                     */
+                    myReview !=
+                            null -> {
 
-                    modifier =
-                        Modifier.fillMaxWidth(),
+                        Card(
 
-                    horizontalArrangement =
-                        Arrangement.Center,
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(
 
-                    verticalAlignment =
-                        Alignment.CenterVertically
+                                        vertical =
+                                            10.dp
+                                    ),
 
-                ) {
+                            shape =
+                                RoundedCornerShape(
+                                    16.dp
+                                ),
 
-                    for (
-                        star in
-                        1..5
-                    ) {
+                            colors =
+                                CardDefaults
+                                    .cardColors(
 
-                        TextButton(
+                                        containerColor =
+                                            ReviewPale
+                                    )
 
-                            onClick = {
+                        ) {
 
-                                rating =
-                                    star
-                            },
+                            Column(
 
-                            contentPadding =
-                                PaddingValues(
-                                    1.dp
+                                modifier =
+                                    Modifier.padding(
+                                        14.dp
+                                    )
+                            ) {
+
+                                Text(
+
+                                    text =
+                                        "このトイレには口コミを投稿済みです",
+
+                                    color =
+                                        ReviewDark,
+
+                                    fontWeight =
+                                        FontWeight.Bold
                                 )
 
+
+                                Spacer(
+
+                                    modifier =
+                                        Modifier.height(
+                                            4.dp
+                                        )
+                                )
+
+
+                                Text(
+
+                                    text =
+                                        "投稿し直す場合は、上に表示されている自分の口コミを削除してください。",
+
+                                    color =
+                                        ReviewMuted,
+
+                                    fontSize =
+                                        12.sp
+                                )
+                            }
+                        }
+                    }
+
+
+                    /*
+                     * 未投稿なら投稿欄
+                     */
+                    else -> {
+
+                        Text(
+
+                            text =
+                                "口コミを投稿",
+
+                            color =
+                                ReviewDark,
+
+                            fontWeight =
+                                FontWeight.Bold
+                        )
+
+
+                        Row(
+
+                            modifier =
+                                Modifier.fillMaxWidth(),
+
+                            horizontalArrangement =
+                                Arrangement.Center,
+
+                            verticalAlignment =
+                                Alignment.CenterVertically
+
                         ) {
 
-                            Text(
+                            for (
+                            star in
+                            1..5
+                            ) {
 
-                                text =
-                                    if (
-                                        star <=
-                                        rating
-                                    ) {
+                                TextButton(
 
-                                        "★"
+                                    onClick = {
 
-                                    } else {
-
-                                        "☆"
+                                        rating =
+                                            star
                                     },
 
-                                color =
-                                    ReviewAmber,
+                                    enabled =
+                                        !isPosting,
 
-                                fontSize =
-                                    30.sp
-                            )
+                                    contentPadding =
+                                        PaddingValues(
+                                            1.dp
+                                        )
+
+                                ) {
+
+                                    Text(
+
+                                        text =
+                                            if (
+                                                star <=
+                                                rating
+                                            ) {
+
+                                                "★"
+
+                                            } else {
+
+                                                "☆"
+                                            },
+
+                                        color =
+                                            ReviewAmber,
+
+                                        fontSize =
+                                            30.sp
+                                    )
+                                }
+                            }
                         }
+
+
+                        OutlinedTextField(
+
+                            value =
+                                comment,
+
+                            onValueChange = {
+                                    value ->
+
+                                if (
+                                    value.length <=
+                                    500
+                                ) {
+
+                                    comment =
+                                        value
+                                }
+                            },
+
+                            modifier =
+                                Modifier.fillMaxWidth(),
+
+                            enabled =
+                                !isPosting,
+
+                            label = {
+
+                                Text(
+                                    "口コミ本文"
+                                )
+                            },
+
+                            placeholder = {
+
+                                Text(
+                                    "例：きれいで使いやすかったです"
+                                )
+                            },
+
+                            minLines =
+                                2,
+
+                            maxLines =
+                                4,
+
+                            supportingText = {
+
+                                Text(
+                                    "${comment.length} / 500文字"
+                                )
+                            }
+                        )
                     }
                 }
-
-
-                OutlinedTextField(
-
-                    value =
-                        comment,
-
-                    onValueChange = {
-                            value ->
-
-                        if (
-                            value.length <=
-                            500
-                        ) {
-
-                            comment =
-                                value
-                        }
-                    },
-
-                    modifier =
-                        Modifier.fillMaxWidth(),
-
-                    label = {
-
-                        Text(
-                            "口コミ本文"
-                        )
-                    },
-
-                    placeholder = {
-
-                        Text(
-                            "例：きれいで使いやすかったです"
-                        )
-                    },
-
-                    minLines =
-                        2,
-
-                    maxLines =
-                        4,
-
-                    supportingText = {
-
-                        Text(
-                            "${comment.length} / 500文字"
-                        )
-                    }
-                )
 
 
                 if (
@@ -867,6 +1127,7 @@ fun ReviewDialog(
 
                         modifier =
                             Modifier.padding(
+
                                 top =
                                     4.dp
                             )
@@ -895,6 +1156,7 @@ fun ReviewDialog(
 
                         modifier =
                             Modifier.padding(
+
                                 top =
                                     4.dp
                             )
@@ -902,83 +1164,95 @@ fun ReviewDialog(
                 }
 
 
-                Spacer(
-
-                    modifier =
-                        Modifier.height(
-                            8.dp
-                        )
-                )
-
-
-                Button(
-
-                    onClick = {
-
-                        onSubmit(
-                            rating,
-                            comment
-                        )
-                    },
-
-                    enabled =
-                        comment
-                            .isNotBlank() &&
-                                !isPosting,
-
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(
-                                50.dp
-                            ),
-
-                    shape =
-                        RoundedCornerShape(
-                            16.dp
-                        ),
-
-                    colors =
-                        ButtonDefaults
-                            .buttonColors(
-
-                                containerColor =
-                                    ReviewGreen,
-
-                                contentColor =
-                                    Color.White
-                            )
-
+                /*
+                 * 自分の口コミが無いときだけ
+                 * 投稿ボタンを表示。
+                 */
+                if (
+                    currentUserId !=
+                    null &&
+                    myReview ==
+                    null
                 ) {
 
-                    if (
-                        isPosting
-                    ) {
+                    Spacer(
 
-                        CircularProgressIndicator(
+                        modifier =
+                            Modifier.height(
+                                8.dp
+                            )
+                    )
 
-                            modifier =
-                                Modifier.size(
-                                    22.dp
+
+                    Button(
+
+                        onClick = {
+
+                            onSubmit(
+                                rating,
+                                comment
+                            )
+                        },
+
+                        enabled =
+                            comment
+                                .isNotBlank() &&
+                                    !isPosting,
+
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(
+                                    50.dp
                                 ),
 
-                            color =
-                                Color.White,
+                        shape =
+                            RoundedCornerShape(
+                                16.dp
+                            ),
 
-                            strokeWidth =
-                                2.dp
-                        )
+                        colors =
+                            ButtonDefaults
+                                .buttonColors(
 
-                    } else {
+                                    containerColor =
+                                        ReviewGreen,
 
-                        Text(
+                                    contentColor =
+                                        Color.White
+                                )
 
-                            text =
-                                "投稿する",
+                    ) {
 
-                            fontWeight =
-                                FontWeight.Bold
-                        )
+                        if (
+                            isPosting
+                        ) {
+
+                            CircularProgressIndicator(
+
+                                modifier =
+                                    Modifier.size(
+                                        22.dp
+                                    ),
+
+                                color =
+                                    Color.White,
+
+                                strokeWidth =
+                                    2.dp
+                            )
+
+                        } else {
+
+                            Text(
+
+                                text =
+                                    "投稿する",
+
+                                fontWeight =
+                                    FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -990,7 +1264,13 @@ fun ReviewDialog(
 @Composable
 private fun ReviewCard(
 
-    review: ToiletReview
+    review: ToiletReview,
+
+    isOwnReview: Boolean,
+
+    isBusy: Boolean,
+
+    onDelete: () -> Unit
 ) {
 
     Card(
@@ -1107,6 +1387,55 @@ private fun ReviewCard(
                         .typography
                         .bodyMedium
             )
+
+
+            /*
+             * 自分のレビューだけ削除ボタン表示
+             */
+            if (
+                isOwnReview
+            ) {
+
+                Row(
+
+                    modifier =
+                        Modifier.fillMaxWidth(),
+
+                    horizontalArrangement =
+                        Arrangement.End
+
+                ) {
+
+                    TextButton(
+
+                        onClick =
+                            onDelete,
+
+                        enabled =
+                            !isBusy
+
+                    ) {
+
+                        Text(
+
+                            text =
+                                if (
+                                    isBusy
+                                ) {
+
+                                    "処理中"
+
+                                } else {
+
+                                    "自分の口コミを削除"
+                                },
+
+                            color =
+                                ReviewError
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -1138,8 +1467,11 @@ private fun formatAverage(
 ): String {
 
     return String.format(
+
         Locale.JAPAN,
+
         "%.1f",
+
         average
     )
 }
@@ -1159,8 +1491,11 @@ private fun formatReviewDate(
                 ZoneId.systemDefault()
             )
             .format(
+
                 DateTimeFormatter.ofPattern(
+
                     "yyyy/MM/dd HH:mm",
+
                     Locale.JAPAN
                 )
             )

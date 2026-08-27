@@ -43,110 +43,37 @@ class MapLibreMapController(
 
 ) : DefaultLifecycleObserver {
 
-
-    /*
-     * =====================================
-     * MapView
-     * =====================================
-     */
     val mapView: MapView
 
-
-    /*
-     * =====================================
-     * MapLibre本体
-     * =====================================
-     */
     private var mapLibreMap:
             MapLibreMap? =
         null
 
-
-    /*
-     * =====================================
-     * スタイル読み込み状態
-     * =====================================
-     */
     private var isStyleLoaded =
         false
 
-
-    /*
-     * =====================================
-     * 描画用トイレ一覧
-     * =====================================
-     *
-     * ViewModelから渡された最新状態を
-     * 地図に描画するためだけに参照する。
-     *
-     * ここでは
-     *
-     * ・トイレ追加
-     * ・清掃状態変更
-     *
-     * などのデータ処理は行わない。
-     */
     private var latestToiletsForRendering:
             List<Toilet> =
         emptyList()
 
-
-    /*
-     * =====================================
-     * 現在地
-     * =====================================
-     *
-     * トイレ一覧の再描画でmap.clear()が呼ばれても
-     * 現在地マーカーを復元できるように保持する。
-     */
     private var latestCurrentLocation:
             LatLng? =
         null
 
-
-    /*
-     * =====================================
-     * Marker ID
-     * ↓
-     * Toilet ID
-     * =====================================
-     */
     private val markerIdToToiletId =
         mutableMapOf<Long, String>()
 
-
-    /*
-     * =====================================
-     * トイレピンが押されたとき
-     * =====================================
-     */
     private var onToiletMarkerClick:
             ((Toilet) -> Unit)? =
         null
 
-
-    /*
-     * =====================================
-     * 地図準備完了
-     * =====================================
-     */
     private var onMapReady:
             (() -> Unit)? =
         null
 
-
     private var isMapReady =
         false
 
-
-    /*
-     * =====================================
-     * 表示範囲変更
-     * =====================================
-     *
-     * south / north / west / east
-     * をMainActivityへ通知する。
-     */
     private var onVisibleBoundsChanged:
             ((Double, Double, Double, Double) -> Unit)? =
         null
@@ -154,13 +81,6 @@ class MapLibreMapController(
 
     companion object {
 
-        /*
-         * =====================================
-         * 位置情報が取得できない場合の中心地点
-         *
-         * 東京駅
-         * =====================================
-         */
         const val TOKYO_STATION_LATITUDE =
             35.681236
 
@@ -169,56 +89,56 @@ class MapLibreMapController(
 
         const val DEFAULT_ZOOM =
             15.0
+
+
+        /*
+         * Last Known Location は
+         * 5分以内のものだけ再利用する。
+         */
+        private const val
+                MAX_LAST_KNOWN_LOCATION_AGE_MS =
+            5 * 60 * 1000L
+
+
+        /*
+         * 誤差半径200m以内だけ再利用する。
+         */
+        private const val
+                MAX_LAST_KNOWN_LOCATION_ACCURACY_METERS =
+            200f
     }
 
 
-    /*
-     * =====================================
-     * 初期化
-     * =====================================
-     */
     init {
 
-        /*
-         * MapLibre初期化
-         */
         MapLibre.getInstance(
             activity
         )
 
 
-        /*
-         * =====================================
-         * HTTP Client
-         * =====================================
-         *
-         * OSMへUser-Agentを送る
-         */
         val okHttpClient =
+
             OkHttpClient
                 .Builder()
-
                 .addNetworkInterceptor {
                         chain ->
 
                     val request =
+
                         chain
                             .request()
-
                             .newBuilder()
-
                             .header(
                                 "User-Agent",
                                 "ToiletMap/1.0 (Android; com.example.toiletmap)"
                             )
-
                             .build()
+
 
                     chain.proceed(
                         request
                     )
                 }
-
                 .build()
 
 
@@ -228,15 +148,12 @@ class MapLibreMapController(
             )
 
 
-        /*
-         * =====================================
-         * MapView
-         * =====================================
-         */
         mapView =
+
             MapView(
                 activity
             )
+
 
         mapView
             .onCreate(
@@ -244,15 +161,9 @@ class MapLibreMapController(
             )
 
 
-        /*
-         * 地図設定
-         */
         setupMap()
 
 
-        /*
-         * Activity lifecycle監視
-         */
         activity
             .lifecycle
             .addObserver(
@@ -261,11 +172,6 @@ class MapLibreMapController(
     }
 
 
-    /*
-     * =====================================
-     * ピンタップイベント登録
-     * =====================================
-     */
     fun setOnToiletMarkerClickListener(
 
         listener:
@@ -278,11 +184,6 @@ class MapLibreMapController(
     }
 
 
-    /*
-     * =====================================
-     * 地図準備完了イベント登録
-     * =====================================
-     */
     fun setOnMapReadyListener(
         listener: (() -> Unit)?
     ) {
@@ -290,29 +191,30 @@ class MapLibreMapController(
         onMapReady =
             listener
 
+
         if (
             listener != null &&
             isMapReady
         ) {
 
             mapView.post {
+
                 listener()
             }
         }
     }
 
 
-    /*
-     * =====================================
-     * 表示範囲変更イベント登録
-     * =====================================
-     */
     fun setOnVisibleBoundsChangedListener(
-        listener: ((Double, Double, Double, Double) -> Unit)?
+
+        listener:
+        ((Double, Double, Double, Double) -> Unit)?
+
     ) {
 
         onVisibleBoundsChanged =
             listener
+
 
         if (
             listener != null &&
@@ -320,66 +222,42 @@ class MapLibreMapController(
         ) {
 
             mapView.post {
+
                 notifyVisibleBoundsChanged()
             }
         }
     }
 
 
-    /*
-     * =====================================
-     * 地図設定
-     * =====================================
-     */
     private fun setupMap() {
 
         mapView.getMapAsync {
                 map ->
 
 
-            /*
-             * MapLibreMap保存
-             */
             mapLibreMap =
                 map
 
 
-            /*
-             * =====================================
-             * カメラ移動完了
-             * =====================================
-             *
-             * 指で地図を動かしている最中ではなく、
-             * 完全に停止した時だけ表示範囲を通知する。
-             */
             map.addOnCameraIdleListener {
+
                 notifyVisibleBoundsChanged()
             }
 
 
-            /*
-             * =====================================
-             * トイレピンタップ
-             * =====================================
-             */
             map.setOnMarkerClickListener {
                     marker ->
 
-                /*
-                 * Markerから
-                 * Toilet IDを取得
-                 */
+
                 val toiletId =
+
                     markerIdToToiletId[
                         marker.id
                     ]
 
 
-                /*
-                 * 最新の一覧から
-                 * Toiletを検索
-                 */
                 val toilet =
+
                     latestToiletsForRendering
                         .firstOrNull {
 
@@ -392,13 +270,11 @@ class MapLibreMapController(
                     toilet != null
                 ) {
 
-                    /*
-                     * MainActivityへ通知
-                     */
                     onToiletMarkerClick
                         ?.invoke(
                             toilet
                         )
+
 
                     true
 
@@ -409,12 +285,8 @@ class MapLibreMapController(
             }
 
 
-            /*
-             * =====================================
-             * OpenStreetMap
-             * =====================================
-             */
             val styleJson =
+
                 """
                 {
                   "version": 8,
@@ -439,11 +311,6 @@ class MapLibreMapController(
                 """.trimIndent()
 
 
-            /*
-             * =====================================
-             * 地図スタイル設定
-             * =====================================
-             */
             map.setStyle(
 
                 Style
@@ -454,39 +321,19 @@ class MapLibreMapController(
 
             ) {
 
-                /*
-                 * スタイル読み込み完了
-                 */
                 isStyleLoaded =
                     true
 
 
-                /*
-                 * =====================================
-                 * 初期位置
-                 * =====================================
-                 *
-                 * 位置情報が使えない場合の基準地点として
-                 * 東京都庁を表示する。
-                 */
                 focusOnTokyoStation()
 
 
-                /*
-                 * ViewModelからすでに
-                 * データが来ている場合
-                 * 地図へ表示
-                 */
                 renderLatestToilets()
 
 
-                /*
-                 * 地図が利用可能になったことを通知。
-                 * MainActivity側では、位置情報権限がすでに
-                 * 許可されている場合だけ現在地取得を試す。
-                 */
                 isMapReady =
                     true
+
 
                 onMapReady
                     ?.invoke()
@@ -495,32 +342,35 @@ class MapLibreMapController(
     }
 
 
-    /*
-     * =====================================
-     * 現在の表示範囲をMainActivityへ通知
-     * =====================================
-     */
     private fun notifyVisibleBoundsChanged() {
 
         if (
             !isMapReady ||
             !isStyleLoaded
         ) {
+
             return
         }
 
+
         val listener =
+
             onVisibleBoundsChanged
                 ?: return
 
+
         val map =
+
             mapLibreMap
                 ?: return
 
+
         val bounds =
+
             map.projection
                 .visibleRegion
                 .latLngBounds
+
 
         val south =
             bounds.latitudeSouth
@@ -534,6 +384,7 @@ class MapLibreMapController(
         val east =
             bounds.longitudeEast
 
+
         if (
             !south.isFinite() ||
             !north.isFinite() ||
@@ -542,8 +393,10 @@ class MapLibreMapController(
             south >= north ||
             west >= east
         ) {
+
             return
         }
+
 
         listener(
             south,
@@ -554,32 +407,32 @@ class MapLibreMapController(
     }
 
 
-    /*
- * =====================================
- * 東京駅へカメラ移動
- *
- * 位置情報が取得できない場合の
- * 初期表示地点として使用する。
- * =====================================
- */
     fun focusOnTokyoStation() {
 
         val map =
+
             mapLibreMap
                 ?: return
+
 
         if (
             !isStyleLoaded
         ) {
+
             return
         }
 
+
         map.cameraPosition =
+
             CameraPosition
                 .Builder()
                 .target(
+
                     LatLng(
+
                         TOKYO_STATION_LATITUDE,
+
                         TOKYO_STATION_LONGITUDE
                     )
                 )
@@ -590,15 +443,6 @@ class MapLibreMapController(
     }
 
 
-    /*
-     * =====================================
-     * ViewModelのトイレ一覧を受け取る
-     * =====================================
-     *
-     * この関数では
-     * トイレデータそのものを
-     * 変更しない。
-     */
     fun showToilets(
         toilets: List<Toilet>
     ) {
@@ -606,18 +450,15 @@ class MapLibreMapController(
         latestToiletsForRendering =
             toilets
 
+
         renderLatestToilets()
     }
 
 
-    /*
-     * =====================================
-     * 最新トイレ一覧を描画
-     * =====================================
-     */
     private fun renderLatestToilets() {
 
         val map =
+
             mapLibreMap
                 ?: return
 
@@ -630,29 +471,17 @@ class MapLibreMapController(
         }
 
 
-        /*
-         * =====================================
-         * 現在のMarkerを全削除
-         * =====================================
-         */
         map.clear()
 
 
-        /*
-         * Marker ID対応表も削除
-         */
         markerIdToToiletId
             .clear()
 
 
-        /*
-         * =====================================
-         * 最新一覧から再描画
-         * =====================================
-         */
         latestToiletsForRendering
             .forEach {
                     toilet ->
+
 
                 addMarkerToMap(
 
@@ -665,16 +494,18 @@ class MapLibreMapController(
             }
 
 
-        /*
-         * 現在地を取得済みなら
-         * トイレピンの再描画後にも表示する。
-         */
         latestCurrentLocation
-            ?.let { currentLocation ->
+            ?.let {
+                    currentLocation ->
+
 
                 addCurrentLocationMarker(
-                    map = map,
-                    position = currentLocation
+
+                    map =
+                        map,
+
+                    position =
+                        currentLocation
                 )
             }
     }
@@ -682,59 +513,170 @@ class MapLibreMapController(
 
     /*
      * =====================================
-     * 現在位置を取得して表示
+     * Last Known Locationが使用可能か
      * =====================================
-     *
-     * MainActivity側で位置情報権限を確認した後に
-     * 呼び出す。
      */
+    private fun isUsableLastKnownLocation(
+        location: Location
+    ): Boolean {
+
+        val locationTime =
+            location.time
+
+
+        /*
+         * 時刻が入っていない。
+         */
+        if (
+            locationTime <= 0L
+        ) {
+
+            return false
+        }
+
+
+        val ageMillis =
+
+            System.currentTimeMillis() -
+                    locationTime
+
+
+        /*
+         * 未来時刻または5分以上前。
+         */
+        if (
+            ageMillis < 0L ||
+            ageMillis >
+            MAX_LAST_KNOWN_LOCATION_AGE_MS
+        ) {
+
+            return false
+        }
+
+
+        /*
+         * 精度情報なし、
+         * または誤差200m超。
+         */
+        if (
+            !location.hasAccuracy() ||
+            !location.accuracy.isFinite() ||
+            location.accuracy >
+            MAX_LAST_KNOWN_LOCATION_ACCURACY_METERS
+        ) {
+
+            return false
+        }
+
+
+        val latitude =
+            location.latitude
+
+
+        val longitude =
+            location.longitude
+
+
+        /*
+         * 不正な緯度経度。
+         */
+        if (
+            !latitude.isFinite() ||
+            !longitude.isFinite() ||
+            latitude !in -90.0..90.0 ||
+            longitude !in -180.0..180.0
+        ) {
+
+            return false
+        }
+
+
+        return true
+    }
+
+
     @SuppressLint("MissingPermission")
     fun showCurrentLocation(
-        onSuccess: () -> Unit = {},
-        onError: (String) -> Unit = {}
+
+        onSuccess:
+            () -> Unit = {},
+
+        onError:
+            (String) -> Unit = {}
+
     ) {
 
         val fineGranted =
+
             ContextCompat.checkSelfPermission(
+
                 activity,
-                Manifest.permission.ACCESS_FINE_LOCATION
+
+                Manifest.permission
+                    .ACCESS_FINE_LOCATION
+
             ) == PackageManager.PERMISSION_GRANTED
+
 
         val coarseGranted =
+
             ContextCompat.checkSelfPermission(
+
                 activity,
-                Manifest.permission.ACCESS_COARSE_LOCATION
+
+                Manifest.permission
+                    .ACCESS_COARSE_LOCATION
+
             ) == PackageManager.PERMISSION_GRANTED
 
 
-        if (!fineGranted && !coarseGranted) {
+        if (
+            !fineGranted &&
+            !coarseGranted
+        ) {
 
             onError(
                 "現在地を表示するには位置情報の許可が必要です"
             )
+
 
             return
         }
 
 
         val locationManager =
+
             activity.getSystemService(
                 Context.LOCATION_SERVICE
             ) as LocationManager
 
 
-        /*
-         * 未清掃画面と同じ取得方法。
-         * 有効な全プロバイダから最後に取得された位置を集め、
-         * 一番新しい位置を現在地として使用する。
-         */
         val enabledProviders =
-            locationManager.getProviders(true)
+
+            locationManager
+                .getProviders(
+                    true
+                )
 
 
+        /*
+         * =====================================
+         * 保存済み位置を確認
+         * =====================================
+         *
+         * 取得済みの中で
+         *
+         * ・5分以内
+         * ・精度200m以内
+         *
+         * の位置だけ候補にする。
+         */
         val lastKnownLocation =
+
             enabledProviders
-                .mapNotNull { provider ->
+                .mapNotNull {
+                        provider ->
+
 
                     try {
 
@@ -750,52 +692,87 @@ class MapLibreMapController(
                         null
                     }
                 }
+                .filter {
+                        location ->
+
+
+                    isUsableLastKnownLocation(
+                        location
+                    )
+                }
                 .maxByOrNull {
+
                     it.time
                 }
 
 
-        if (lastKnownLocation != null) {
+        /*
+         * 使用できる保存済み位置があれば使用。
+         */
+        if (
+            lastKnownLocation != null
+        ) {
 
             showLocationOnMap(
-                latitude = lastKnownLocation.latitude,
-                longitude = lastKnownLocation.longitude
+
+                latitude =
+                    lastKnownLocation.latitude,
+
+                longitude =
+                    lastKnownLocation.longitude
             )
 
+
             onSuccess()
+
 
             return
         }
 
 
         /*
-         * 保存済み位置がまだ無い場合だけ、
-         * 新しい位置を1回取得する。
+         * =====================================
+         * 保存済み位置が使えない
+         * =====================================
+         *
+         * 新しい現在地を取得する。
          */
         val provider =
+
             when {
 
                 fineGranted &&
-                        locationManager.isProviderEnabled(
-                            LocationManager.GPS_PROVIDER
-                        ) ->
+                        locationManager
+                            .isProviderEnabled(
+                                LocationManager.GPS_PROVIDER
+                            ) ->
+
                     LocationManager.GPS_PROVIDER
 
-                locationManager.isProviderEnabled(
-                    LocationManager.NETWORK_PROVIDER
-                ) ->
+
+                locationManager
+                    .isProviderEnabled(
+                        LocationManager.NETWORK_PROVIDER
+                    ) ->
+
                     LocationManager.NETWORK_PROVIDER
 
+
                 else ->
-                    enabledProviders.firstOrNull()
+
+                    enabledProviders
+                        .firstOrNull()
             }
 
 
-        if (provider == null) {
+        if (
+            provider == null
+        ) {
 
             onError(
                 "端末の位置情報がOFFです。位置情報をONにしてからもう一度お試しください"
             )
+
 
             return
         }
@@ -805,44 +782,67 @@ class MapLibreMapController(
             location: Location?
         ) {
 
-            if (location == null) {
+            if (
+                location == null
+            ) {
 
                 onError(
                     "現在位置を取得できませんでした。位置情報をONにして再度お試しください"
                 )
+
 
                 return
             }
 
 
             showLocationOnMap(
-                latitude = location.latitude,
-                longitude = location.longitude
+
+                latitude =
+                    location.latitude,
+
+                longitude =
+                    location.longitude
             )
+
 
             onSuccess()
         }
 
 
+        /*
+         * Android 11以降。
+         */
         if (
             Build.VERSION.SDK_INT >=
             Build.VERSION_CODES.R
         ) {
 
-            locationManager.getCurrentLocation(
-                provider,
-                null,
-                activity.mainExecutor
-            ) { location ->
+            locationManager
+                .getCurrentLocation(
 
-                handleLocation(
-                    location
-                )
-            }
+                    provider,
+
+                    null,
+
+                    activity.mainExecutor
+
+                ) {
+                        location ->
+
+
+                    handleLocation(
+                        location
+                    )
+                }
+
 
         } else {
 
+            /*
+             * Android 10以前。
+             */
             val listener =
+
                 object : LocationListener {
 
                     override fun onLocationChanged(
@@ -854,10 +854,12 @@ class MapLibreMapController(
                                 this
                             )
 
+
                         handleLocation(
                             location
                         )
                     }
+
 
                     override fun onProviderDisabled(
                         provider: String
@@ -868,6 +870,7 @@ class MapLibreMapController(
                                 this
                             )
 
+
                         onError(
                             "位置情報がOFFになりました"
                         )
@@ -876,31 +879,29 @@ class MapLibreMapController(
 
 
             @Suppress("DEPRECATION")
-            locationManager.requestSingleUpdate(
-                provider,
-                listener,
-                Looper.getMainLooper()
-            )
+            locationManager
+                .requestSingleUpdate(
+
+                    provider,
+
+                    listener,
+
+                    Looper.getMainLooper()
+                )
         }
     }
 
 
-    /*
-     * =====================================
-     * 現在地を地図へ反映
-     * =====================================
-     */
     private fun showLocationOnMap(
+
         latitude: Double,
+
         longitude: Double
+
     ) {
 
-        /*
-         * 地図のStyle読み込み前でも位置を保持しておく。
-         * Style読み込み完了後のrenderLatestToilets()で
-         * 現在地マーカーを確実に復元できる。
-         */
         latestCurrentLocation =
+
             LatLng(
                 latitude,
                 longitude
@@ -908,6 +909,7 @@ class MapLibreMapController(
 
 
         val map =
+
             mapLibreMap
                 ?: return
 
@@ -920,19 +922,15 @@ class MapLibreMapController(
         }
 
 
-        /*
-         * トイレピン + 現在地をまとめて再描画
-         */
         renderLatestToilets()
 
 
-        /*
-         * 現在地へカメラ移動
-         */
         map.cameraPosition =
+
             CameraPosition
                 .Builder()
                 .target(
+
                     LatLng(
                         latitude,
                         longitude
@@ -945,17 +943,18 @@ class MapLibreMapController(
     }
 
 
-    /*
-     * =====================================
-     * 現在地マーカーを追加
-     * =====================================
-     */
     private fun addCurrentLocationMarker(
-        map: MapLibreMap,
-        position: LatLng
+
+        map:
+        MapLibreMap,
+
+        position:
+        LatLng
+
     ) {
 
         map.addMarker(
+
             MarkerOptions()
                 .position(
                     position
@@ -970,17 +969,11 @@ class MapLibreMapController(
     }
 
 
-    /*
-     * =====================================
-     * 現在地マーカー画像
-     * =====================================
-     *
-     * 青い円 + 白い縁で、
-     * トイレピンと区別しやすくする。
-     */
-    private fun createCurrentLocationIcon(): Icon {
+    private fun createCurrentLocationIcon():
+            Icon {
 
         val density =
+
             activity
                 .resources
                 .displayMetrics
@@ -988,6 +981,7 @@ class MapLibreMapController(
 
 
         val size =
+
             (
                     28f *
                             density
@@ -995,25 +989,32 @@ class MapLibreMapController(
 
 
         val bitmap =
+
             Bitmap.createBitmap(
+
                 size,
+
                 size,
+
                 Bitmap.Config.ARGB_8888
             )
 
 
         val canvas =
+
             Canvas(
                 bitmap
             )
 
 
         val center =
+
             size /
                     2f
 
 
         val whitePaint =
+
             Paint(
                 Paint.ANTI_ALIAS_FLAG
             ).apply {
@@ -1021,22 +1022,26 @@ class MapLibreMapController(
                 color =
                     Color.WHITE
 
+
                 style =
                     Paint.Style.FILL
             }
 
 
         val bluePaint =
+
             Paint(
                 Paint.ANTI_ALIAS_FLAG
             ).apply {
 
                 color =
+
                     Color.rgb(
                         33,
                         150,
                         243
                     )
+
 
                 style =
                     Paint.Style.FILL
@@ -1044,17 +1049,25 @@ class MapLibreMapController(
 
 
         canvas.drawCircle(
+
             center,
+
             center,
+
             13f * density,
+
             whitePaint
         )
 
 
         canvas.drawCircle(
+
             center,
+
             center,
+
             9f * density,
+
             bluePaint
         )
 
@@ -1069,26 +1082,18 @@ class MapLibreMapController(
     }
 
 
-    /*
-     * =====================================
-     * 指定したトイレへカメラ移動
-     * =====================================
-     *
-     * zoomを指定できる。
-     *
-     * 指定しなかった場合は
-     * 今まで通り16.0。
-     * =====================================
-     */
     fun focusOnToilet(
 
-        toilet: Toilet,
+        toilet:
+        Toilet,
 
-        zoom: Double = 16.0
+        zoom:
+        Double = 16.0
 
     ) {
 
         val map =
+
             mapLibreMap
                 ?: return
 
@@ -1105,27 +1110,22 @@ class MapLibreMapController(
 
             CameraPosition
                 .Builder()
-
                 .target(
+
                     LatLng(
+
                         toilet.latitude,
+
                         toilet.longitude
                     )
                 )
-
                 .zoom(
                     zoom
                 )
-
                 .build()
     }
 
 
-    /*
-     * =====================================
-     * トイレ1件をMarkerとして追加
-     * =====================================
-     */
     private fun addMarkerToMap(
 
         map:
@@ -1136,19 +1136,11 @@ class MapLibreMapController(
 
     ) {
 
-        /*
-         * =====================================
-         * Marker作成
-         * =====================================
-         */
         val marker =
+
             map.addMarker(
 
                 MarkerOptions()
-
-                    /*
-                     * 位置
-                     */
                     .position(
 
                         LatLng(
@@ -1158,27 +1150,17 @@ class MapLibreMapController(
                             toilet.longitude
                         )
                     )
-
-                    /*
-                     * 名前
-                     */
                     .title(
                         toilet.name
                     )
-
-                    /*
-                     * 詳細
-                     */
                     .snippet(
+
                         buildDetailText(
                             toilet
                         )
                     )
-
-                    /*
-                     * 清掃状態に応じた色
-                     */
                     .icon(
+
                         createMarkerIcon(
                             toilet.cleaningStatus
                         )
@@ -1186,11 +1168,6 @@ class MapLibreMapController(
             )
 
 
-        /*
-         * Marker ID
-         * ↓
-         * Toilet ID
-         */
         markerIdToToiletId[
             marker.id
         ] =
@@ -1198,22 +1175,10 @@ class MapLibreMapController(
     }
 
 
-    /*
-     * =====================================
-     * Marker詳細テキスト
-     * =====================================
-     */
     private fun buildDetailText(
         toilet: Toilet
     ): String {
 
-        /*
-         * 清潔度
-         *
-         * 4
-         * ↓
-         * ★★★★☆
-         */
         val stars =
 
             "★".repeat(
@@ -1221,14 +1186,12 @@ class MapLibreMapController(
             ) +
 
                     "☆".repeat(
+
                         5 -
                                 toilet.cleanliness
                     )
 
 
-        /*
-         * 清掃状態
-         */
         val statusText =
 
             when (
@@ -1236,26 +1199,22 @@ class MapLibreMapController(
             ) {
 
                 CleaningStatus.NORMAL ->
-
                     "通常"
 
-                CleaningStatus.REQUESTED ->
 
+                CleaningStatus.REQUESTED ->
                     "清掃依頼中"
 
-                CleaningStatus.IN_PROGRESS ->
 
+                CleaningStatus.IN_PROGRESS ->
                     "清掃中"
 
-                CleaningStatus.COMPLETED ->
 
+                CleaningStatus.COMPLETED ->
                     "清掃完了"
             }
 
 
-        /*
-         * コメントなし
-         */
         return if (
             toilet.comment
                 .isBlank()
@@ -1265,36 +1224,17 @@ class MapLibreMapController(
 
         } else {
 
-            /*
-             * コメントあり
-             */
             "清潔度：$stars / 状態：$statusText / ${toilet.comment}"
         }
     }
 
 
-    /*
-     * =====================================
-     * ピン画像作成
-     * =====================================
-     *
-     * NORMAL
-     * → 赤
-     *
-     * REQUESTED
-     * → 黄色
-     *
-     * IN_PROGRESS
-     * → 青
-     *
-     * COMPLETED
-     * → 緑
-     */
     private fun createMarkerIcon(
         status: CleaningStatus
     ): Icon {
 
         val density =
+
             activity
                 .resources
                 .displayMetrics
@@ -1302,6 +1242,7 @@ class MapLibreMapController(
 
 
         val width =
+
             (
                     42f *
                             density
@@ -1309,16 +1250,15 @@ class MapLibreMapController(
 
 
         val height =
+
             (
                     56f *
                             density
                     ).toInt()
 
 
-        /*
-         * Bitmap
-         */
         val bitmap =
+
             Bitmap.createBitmap(
 
                 width,
@@ -1330,26 +1270,18 @@ class MapLibreMapController(
 
 
         val canvas =
+
             Canvas(
                 bitmap
             )
 
 
-        /*
-         * =====================================
-         * 清掃状態による色
-         * =====================================
-         */
         val pinColor =
 
             when (
                 status
             ) {
 
-                /*
-                 * 通常
-                 * → 赤
-                 */
                 CleaningStatus.NORMAL ->
 
                     Color.rgb(
@@ -1359,10 +1291,6 @@ class MapLibreMapController(
                     )
 
 
-                /*
-                 * 清掃依頼
-                 * → 黄色
-                 */
                 CleaningStatus.REQUESTED ->
 
                     Color.rgb(
@@ -1372,10 +1300,6 @@ class MapLibreMapController(
                     )
 
 
-                /*
-                 * 清掃中
-                 * → 青
-                 */
                 CleaningStatus.IN_PROGRESS ->
 
                     Color.rgb(
@@ -1385,10 +1309,6 @@ class MapLibreMapController(
                     )
 
 
-                /*
-                 * 清掃完了
-                 * → 緑
-                 */
                 CleaningStatus.COMPLETED ->
 
                     Color.rgb(
@@ -1399,10 +1319,8 @@ class MapLibreMapController(
             }
 
 
-        /*
-         * ピン本体
-         */
         val fillPaint =
+
             Paint(
                 Paint.ANTI_ALIAS_FLAG
             ).apply {
@@ -1410,39 +1328,40 @@ class MapLibreMapController(
                 color =
                     pinColor
 
+
                 style =
                     Paint.Style.FILL
             }
 
 
-        /*
-         * 外枠
-         */
         val strokePaint =
+
             Paint(
                 Paint.ANTI_ALIAS_FLAG
             ).apply {
 
                 color =
+
                     Color.rgb(
                         80,
                         80,
                         80
                     )
 
+
                 style =
                     Paint.Style.STROKE
 
+
                 strokeWidth =
+
                     1.5f *
                             density
             }
 
 
-        /*
-         * 中央の白丸
-         */
         val whitePaint =
+
             Paint(
                 Paint.ANTI_ALIAS_FLAG
             ).apply {
@@ -1450,32 +1369,32 @@ class MapLibreMapController(
                 color =
                     Color.WHITE
 
+
                 style =
                     Paint.Style.FILL
             }
 
 
         val centerX =
+
             width /
                     2f
 
 
         val circleCenterY =
+
             18f *
                     density
 
 
         val outerRadius =
+
             14f *
                     density
 
 
-        /*
-         * =====================================
-         * ピンの下部分
-         * =====================================
-         */
         val pointPath =
+
             Path().apply {
 
                 moveTo(
@@ -1488,6 +1407,7 @@ class MapLibreMapController(
                             density
                 )
 
+
                 lineTo(
 
                     centerX,
@@ -1495,6 +1415,7 @@ class MapLibreMapController(
                     52f *
                             density
                 )
+
 
                 lineTo(
 
@@ -1506,13 +1427,11 @@ class MapLibreMapController(
                             density
                 )
 
+
                 close()
             }
 
 
-        /*
-         * 下部分描画
-         */
         canvas.drawPath(
 
             pointPath,
@@ -1529,11 +1448,6 @@ class MapLibreMapController(
         )
 
 
-        /*
-         * =====================================
-         * ピン上部の円
-         * =====================================
-         */
         canvas.drawCircle(
 
             centerX,
@@ -1558,27 +1472,18 @@ class MapLibreMapController(
         )
 
 
-        /*
-         * 中央の白丸
-         */
         canvas.drawCircle(
 
             centerX,
 
             circleCenterY,
 
-            5f *
-                    density,
+            5f * density,
 
             whitePaint
         )
 
 
-        /*
-         * =====================================
-         * MapLibre Iconへ変換
-         * =====================================
-         */
         return IconFactory
             .getInstance(
                 activity
@@ -1589,11 +1494,6 @@ class MapLibreMapController(
     }
 
 
-    /*
-     * =====================================
-     * MapView lifecycle
-     * =====================================
-     */
     override fun onStart(
         owner: LifecycleOwner
     ) {
@@ -1637,6 +1537,7 @@ class MapLibreMapController(
         mapView
             .onDestroy()
 
+
         owner
             .lifecycle
             .removeObserver(
@@ -1645,11 +1546,6 @@ class MapLibreMapController(
     }
 
 
-    /*
-     * =====================================
-     * 状態保存
-     * =====================================
-     */
     fun onSaveInstanceState(
         outState: Bundle
     ) {
@@ -1661,11 +1557,6 @@ class MapLibreMapController(
     }
 
 
-    /*
-     * =====================================
-     * メモリ不足
-     * =====================================
-     */
     fun onLowMemory() {
 
         mapView
