@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -862,6 +863,18 @@ fun MapScreen(
                     Modifier
                         .align(
                             Alignment.CenterEnd
+                        )
+                        /*
+                         * 詳細カード表示中は、右側の地図操作ボタンが
+                         * 詳細カードと重ならないよう少し上へ移動する。
+                         * 詳細を閉じると元の位置へ戻る。
+                         */
+                        .offset(
+                            y = if (selectedToilet != null) {
+                                (-72).dp
+                            } else {
+                                0.dp
+                            }
                         )
                         .padding(
                             end = 14.dp,
