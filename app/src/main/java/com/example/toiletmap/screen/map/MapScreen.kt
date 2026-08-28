@@ -98,6 +98,7 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import kotlin.coroutines.resume
 import kotlin.math.*
+import com.example.toiletmap.screen.map.facilities.ToiletFacilityEditor
 
 
 /*
@@ -2370,8 +2371,6 @@ private fun ToiletDetailCard(
 
     /*
      * cleaning_requests の状態を優先する。
-     * RPC直後に toilets の再読込が完了するまでの間も、
-     * 詳細カードを正しい状態で表示するため。
      */
     val cleaningStatus =
         cleaningRequest?.status
@@ -2388,10 +2387,6 @@ private fun ToiletDetailCard(
                 cleaningRequest?.cleanerId == currentUserId
 
 
-    /*
-     * 清掃依頼・引受はログイン必須。
-     * Repository側にも認証チェックを残し、UIとデータ層の二重で防ぐ。
-     */
     val isLoggedIn =
         currentUserId != null
 
@@ -2576,7 +2571,6 @@ private fun ToiletDetailCard(
                                 1f
                             )
                     )
-
                 }
 
 
@@ -2603,7 +2597,10 @@ private fun ToiletDetailCard(
                 )
 
 
-                if (toilet.sourceType == "USER" && toilet.comment.isNotBlank()) {
+                if (
+                    toilet.sourceType == "USER" &&
+                    toilet.comment.isNotBlank()
+                ) {
 
                     Surface(
                         modifier =
@@ -2640,6 +2637,11 @@ private fun ToiletDetailCard(
                 }
 
 
+                /*
+                 * =====================================
+                 * きれいさ
+                 * =====================================
+                 */
                 Surface(
                     modifier =
                         Modifier.fillMaxWidth(),
@@ -2694,7 +2696,10 @@ private fun ToiletDetailCard(
                                         null,
 
                                     tint =
-                                        if (index < cleanliness) {
+                                        if (
+                                            index <
+                                            cleanliness
+                                        ) {
 
                                             FinderGreen
 
@@ -2748,6 +2753,40 @@ private fun ToiletDetailCard(
                 }
 
 
+                /*
+                 * =====================================
+                 * 設備情報
+                 *
+                 * 2705f4a2 で追加されていた機能
+                 *
+                 * ・男子トイレ
+                 * ・女子トイレ
+                 * ・洋式
+                 * ・和式
+                 * ・ベビーチェア
+                 * ・おむつ交換台
+                 * ・車いす対応
+                 * ・オストメイト
+                 * ・設備情報編集
+                 * =====================================
+                 */
+                ToiletFacilityEditor(
+                    toilet =
+                        toilet,
+
+                    currentUserId =
+                        currentUserId,
+
+                    onOpenAccount =
+                        onOpenAccount
+                )
+
+
+                /*
+                 * =====================================
+                 * 清掃状態の説明
+                 * =====================================
+                 */
                 when (cleaningStatus) {
 
                     CleaningStatus.NORMAL -> {
@@ -2755,22 +2794,33 @@ private fun ToiletDetailCard(
                         CleaningStatusNotice(
                             message =
                                 if (isLoggedIn) {
+
                                     "清掃依頼ポイントを4pt・8pt・12ptから選べます。清掃報酬はそれぞれ5pt・10pt・15ptです。"
+
                                 } else {
+
                                     "清掃を依頼するにはログインが必要です。"
                                 },
 
                             backgroundColor =
                                 if (isLoggedIn) {
+
                                     FinderSoftGreen
+
                                 } else {
-                                    Color(0xFFF3F5F4)
+
+                                    Color(
+                                        0xFFF3F5F4
+                                    )
                                 },
 
                             textColor =
                                 if (isLoggedIn) {
+
                                     FinderGreen
+
                                 } else {
+
                                     FinderMuted
                                 }
                         )
@@ -2782,13 +2832,17 @@ private fun ToiletDetailCard(
                         CleaningStatusNotice(
                             message =
                                 when {
+
                                     !isLoggedIn ->
+
                                         "このトイレは清掃担当者を募集しています。引き受けるにはログインが必要です。"
 
                                     isRequester ->
+
                                         "自分が出した清掃依頼です。別のユーザーが引き受けるまでお待ちください。"
 
                                     else ->
+
                                         "このトイレは清掃担当者を募集しています。"
                                 },
 
@@ -2804,7 +2858,9 @@ private fun ToiletDetailCard(
                         )
 
 
-                        if (cleaningRequest != null) {
+                        if (
+                            cleaningRequest != null
+                        ) {
 
                             CleaningRequestInfo(
                                 label =
@@ -2833,6 +2889,7 @@ private fun ToiletDetailCard(
                                 value =
                                     "${cleaningRequest.rewardPoints} pt"
                             )
+
                         } else {
 
                             CleaningRequestInfo(
@@ -2851,8 +2908,11 @@ private fun ToiletDetailCard(
                         CleaningStatusNotice(
                             message =
                                 if (isCleaner) {
+
                                     "あなたがこの清掃を担当しています。清掃画面から担当状況を確認できます。"
+
                                 } else {
+
                                     "現在、ほかのユーザーが清掃中です。"
                                 },
 
@@ -2912,23 +2972,36 @@ private fun ToiletDetailCard(
                 }
 
 
+                /*
+                 * =====================================
+                 * 清掃操作ボタン
+                 * =====================================
+                 */
                 when (cleaningStatus) {
 
+                    /*
+                     * 通常状態
+                     */
                     CleaningStatus.NORMAL -> {
 
                         CleaningActionButton(
                             text =
                                 when {
+
                                     !isLoggedIn ->
+
                                         "ログインして清掃を依頼"
 
                                     isLoadingCleaning ->
+
                                         "依頼ポイントを確認中"
 
                                     isActionInProgress ->
+
                                         "清掃依頼を送信中"
 
                                     else ->
+
                                         "清掃を依頼する"
                                 },
 
@@ -2942,7 +3015,8 @@ private fun ToiletDetailCard(
                                 Color.White,
 
                             isLoading =
-                                isLoggedIn && isActionInProgress,
+                                isLoggedIn &&
+                                        isActionInProgress,
 
                             enabled =
                                 !isLoggedIn ||
@@ -2967,6 +3041,7 @@ private fun ToiletDetailCard(
                                         true
 
                                 } else {
+
                                     onOpenAccount()
                                 }
                             }
@@ -2974,6 +3049,9 @@ private fun ToiletDetailCard(
                     }
 
 
+                    /*
+                     * 清掃依頼中
+                     */
                     CleaningStatus.REQUESTED -> {
 
                         val request =
@@ -2985,18 +3063,23 @@ private fun ToiletDetailCard(
                                 when {
 
                                     !isLoggedIn ->
+
                                         "ログインして清掃を引き受ける"
 
                                     request == null ->
+
                                         "清掃依頼を読み込み中"
 
                                     isRequester ->
+
                                         "自分の清掃依頼です"
 
                                     isActionInProgress ->
+
                                         "清掃を引受中"
 
                                     else ->
+
                                         "清掃を引き受ける"
                                 },
 
@@ -3010,12 +3093,16 @@ private fun ToiletDetailCard(
                                 FinderDark,
 
                             isLoading =
-                                isLoggedIn && isActionInProgress,
+                                isLoggedIn &&
+                                        isActionInProgress,
 
                             enabled =
                                 if (!isLoggedIn) {
+
                                     true
+
                                 } else {
+
                                     request != null &&
                                             !isRequester &&
                                             !isActionInProgress
@@ -3027,7 +3114,9 @@ private fun ToiletDetailCard(
 
                                     onOpenAccount()
 
-                                } else if (request != null) {
+                                } else if (
+                                    request != null
+                                ) {
 
                                     onAcceptCleaning(
                                         request
@@ -3038,13 +3127,19 @@ private fun ToiletDetailCard(
                     }
 
 
+                    /*
+                     * 清掃中
+                     */
                     CleaningStatus.IN_PROGRESS -> {
 
                         CleaningActionButton(
                             text =
                                 if (isCleaner) {
+
                                     "清掃画面を開く"
+
                                 } else {
+
                                     "ほかのユーザーが清掃中"
                                 },
 
@@ -3069,6 +3164,9 @@ private fun ToiletDetailCard(
                     }
 
 
+                    /*
+                     * 清掃完了
+                     */
                     CleaningStatus.COMPLETED -> {
 
                         CleaningActionButton(
@@ -3096,6 +3194,11 @@ private fun ToiletDetailCard(
                 }
 
 
+                /*
+                 * =====================================
+                 * 口コミ投稿
+                 * =====================================
+                 */
                 Button(
                     onClick =
                         onOpenReviews,
@@ -3152,20 +3255,15 @@ private fun ToiletDetailCard(
                             FontWeight.Bold
                     )
                 }
-
-                /*
-                 * スクロールする詳細内容はここまで。
-                 */
             }
+
 
             /*
              * =====================================
              * 固定の閉じるボタン
              * =====================================
              *
-             * スクロール領域の外に置くことで、
-             * 詳細を下までスクロールしても
-             * 右上から動かず、いつでも閉じられる。
+             * スクロールしても右上に残る
              */
             Surface(
                 modifier =
