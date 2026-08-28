@@ -31,6 +31,7 @@ import com.example.toiletmap.screen.listofuncleaned.UncleanedToilet
 import com.example.toiletmap.screen.map.MapLibreMapController
 import com.example.toiletmap.ui.ToiletMapApp
 import com.example.toiletmap.ui.theme.ToiletMapTheme
+import com.example.toiletmap.viewmodel.CleaningUiEvent
 import com.example.toiletmap.viewmodel.CleaningViewModel
 import com.example.toiletmap.viewmodel.GameViewModel
 import com.example.toiletmap.viewmodel.ReviewViewModel
@@ -198,10 +199,10 @@ class MainActivity : ComponentActivity() {
 
             ToiletMapTheme {
 
-                var cleaningCompleteMessage by
+                var cleaningCompleteEvent by
                 remember {
 
-                    mutableStateOf<String?>(
+                    mutableStateOf<CleaningUiEvent.CleaningCompleted?>(
                         null
                     )
                 }
@@ -375,6 +376,21 @@ class MainActivity : ComponentActivity() {
                     .collectAsState()
 
 
+                LaunchedEffect(Unit) {
+
+                    cleaningViewModel
+                        .events
+                        .collect { event ->
+
+                            when (event) {
+                                is CleaningUiEvent.CleaningCompleted -> {
+                                    cleaningCompleteEvent = event
+                                }
+                            }
+                        }
+                }
+
+
                 LaunchedEffect(
                     cleaningErrorMessage,
                     cleaningSuccessMessage
@@ -387,9 +403,7 @@ class MainActivity : ComponentActivity() {
                         cleaningSuccessMessage
 
 
-                    if (
-                        error != null
-                    ) {
+                    if (error != null) {
 
                         Toast
                             .makeText(
@@ -408,33 +422,7 @@ class MainActivity : ComponentActivity() {
                     }
 
 
-                    if (
-                        success != null &&
-                        (
-                                success.contains(
-                                    "清掃お疲れさまでした"
-                                ) ||
-                                        success.startsWith(
-                                            "清掃完了"
-                                        )
-                                )
-                    ) {
-
-                        cleaningCompleteMessage =
-                            success
-
-
-                        cleaningViewModel
-                            .clearMessages()
-
-
-                        return@LaunchedEffect
-                    }
-
-
-                    if (
-                        success != null
-                    ) {
+                    if (success != null) {
 
                         Toast
                             .makeText(
@@ -456,132 +444,85 @@ class MainActivity : ComponentActivity() {
                  * 清掃完了ダイアログ
                  * =====================================
                  */
-                if (
-                    cleaningCompleteMessage !=
-                    null
-                ) {
+                cleaningCompleteEvent
+                    ?.let { completionEvent ->
 
-                    AlertDialog(
+                        AlertDialog(
 
-                        onDismissRequest = {
+                            onDismissRequest = {
+                                cleaningCompleteEvent = null
+                            },
 
-                            cleaningCompleteMessage =
-                                null
-                        },
-
-                        title = {
-
-                            Text(
-
-                                text =
-                                    "清掃お疲れさまでした！",
-
-                                modifier =
-                                    Modifier.fillMaxWidth(),
-
-                                fontSize =
-                                    28.sp,
-
-                                fontWeight =
-                                    FontWeight.Bold,
-
-                                textAlign =
-                                    TextAlign.Center
-                            )
-                        },
-
-                        text = {
-
-                            val originalMessage =
-                                cleaningCompleteMessage
-                                    .orEmpty()
-
-
-                            val earnedPoints =
-                                Regex(
-                                    "(\\d+)\\s*pt"
-                                )
-                                    .find(
-                                        originalMessage
-                                    )
-                                    ?.groupValues
-                                    ?.getOrNull(
-                                        1
-                                    )
-
-
-                            val rewardText =
-                                if (
-                                    earnedPoints != null
-                                ) {
-
-                                    "＋${earnedPoints}pt\n獲得しました"
-
-                                } else {
-
-                                    originalMessage
-                                        .replace(
-                                            "清掃お疲れさまでした！",
-                                            ""
-                                        )
-                                        .replace(
-                                            "清掃完了！",
-                                            ""
-                                        )
-                                        .trim()
-                                        .ifBlank {
-
-                                            "清掃が完了しました"
-                                        }
-                                }
-
-
-                            Text(
-
-                                text =
-                                    rewardText,
-
-                                modifier =
-                                    Modifier.fillMaxWidth(),
-
-                                fontSize =
-                                    30.sp,
-
-                                fontWeight =
-                                    FontWeight.Bold,
-
-                                textAlign =
-                                    TextAlign.Center,
-
-                                lineHeight =
-                                    40.sp
-                            )
-                        },
-
-                        confirmButton = {
-
-                            Button(
-
-                                onClick = {
-
-                                    cleaningCompleteMessage =
-                                        null
-                                }
-
-                            ) {
+                            title = {
 
                                 Text(
-
                                     text =
-                                        "閉じる",
+                                        "清掃お疲れさまでした！",
+
+                                    modifier =
+                                        Modifier.fillMaxWidth(),
 
                                     fontSize =
-                                        18.sp
+                                        28.sp,
+
+                                    fontWeight =
+                                        FontWeight.Bold,
+
+                                    textAlign =
+                                        TextAlign.Center
                                 )
+                            },
+
+                            text = {
+
+                                val refreshNote =
+                                    if (completionEvent.refreshSucceeded) {
+                                        ""
+                                    } else {
+                                        "\n\n※清掃完了は保存済みです。表示の更新だけに失敗しました。"
+                                    }
+
+
+                                Text(
+                                    text =
+                                        if (completionEvent.earnedPoints > 0) {
+                                            "＋${completionEvent.earnedPoints}pt\n獲得しました\n\n残り報酬ポイント: ${completionEvent.remainingRewardPoints}pt$refreshNote"
+                                        } else {
+                                            "清掃完了を記録しました\n\n残り報酬ポイント: ${completionEvent.remainingRewardPoints}pt$refreshNote"
+                                        },
+
+                                    modifier =
+                                        Modifier.fillMaxWidth(),
+
+                                    fontSize =
+                                        30.sp,
+
+                                    fontWeight =
+                                        FontWeight.Bold,
+
+                                    textAlign =
+                                        TextAlign.Center,
+
+                                    lineHeight =
+                                        40.sp
+                                )
+                            },
+
+                            confirmButton = {
+
+                                Button(
+                                    onClick = {
+                                        cleaningCompleteEvent = null
+                                    }
+                                ) {
+                                    Text(
+                                        text = "閉じる",
+                                        fontSize = 18.sp
+                                    )
+                                }
                             }
-                        }
-                    )
-                }
+                        )
+                    }
 
 
                 /*

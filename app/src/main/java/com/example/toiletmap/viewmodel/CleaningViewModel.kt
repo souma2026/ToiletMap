@@ -6,12 +6,23 @@ import com.example.toiletmap.data.repository.CleaningRepository
 import com.example.toiletmap.model.CleaningRequest
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.hours
+
+sealed interface CleaningUiEvent {
+    data class CleaningCompleted(
+        val earnedPoints: Int,
+        val remainingRewardPoints: Int,
+        val refreshSucceeded: Boolean
+    ) : CleaningUiEvent
+}
 
 class CleaningViewModel : ViewModel() {
 
@@ -23,45 +34,45 @@ class CleaningViewModel : ViewModel() {
 
     private val _requests =
         MutableStateFlow<List<CleaningRequest>>(emptyList())
-
     val requests: StateFlow<List<CleaningRequest>> =
         _requests.asStateFlow()
 
     private val _currentUserId =
         MutableStateFlow<String?>(null)
-
     val currentUserId: StateFlow<String?> =
         _currentUserId.asStateFlow()
 
     private val _requestPoints =
         MutableStateFlow(0)
-
     val requestPoints: StateFlow<Int> =
         _requestPoints.asStateFlow()
 
     private val _isLoading =
         MutableStateFlow(false)
-
     val isLoading: StateFlow<Boolean> =
         _isLoading.asStateFlow()
 
     private val _actionRequestId =
         MutableStateFlow<String?>(null)
-
     val actionRequestId: StateFlow<String?> =
         _actionRequestId.asStateFlow()
 
     private val _errorMessage =
         MutableStateFlow<String?>(null)
-
     val errorMessage: StateFlow<String?> =
         _errorMessage.asStateFlow()
 
     private val _successMessage =
         MutableStateFlow<String?>(null)
-
     val successMessage: StateFlow<String?> =
         _successMessage.asStateFlow()
+
+    private val _events =
+        MutableSharedFlow<CleaningUiEvent>(
+            extraBufferCapacity = 1
+        )
+    val events: SharedFlow<CleaningUiEvent> =
+        _events.asSharedFlow()
 
     private var autoRefreshJob: Job? = null
 
@@ -133,40 +144,46 @@ class CleaningViewModel : ViewModel() {
     fun completeCleaning(
         requestId: String
     ) {
-        /*
-         * 完了後は一覧から消えるため、RPC実行前に
-         * この清掃依頼の報酬ポイントを保存しておく。
-         */
-        val earnedRewardPoints =
-            _requests.value
-                .firstOrNull { request ->
-                    request.id == requestId
-                }
-                ?.rewardPoints
-                ?: 0
+        if (_actionRequestId.value != null) {
+            _successMessage.value = null
+            _errorMessage.value = "別の清掃操作を処理中です"
+            return
+        }
 
-        runCleaningAction(
-            actionId = requestId,
-            failureMessage = "清掃完了の記録に失敗しました",
-            successMessage = {
-                if (earnedRewardPoints > 0) {
-                    "清掃お疲れさまでした！\n＋${earnedRewardPoints}pt獲得しました"
-                } else {
-                    "清掃お疲れさまでした！\n清掃完了を記録しました"
+        _actionRequestId.value = requestId
+        _errorMessage.value = null
+        _successMessage.value = null
+
+        viewModelScope.launch {
+            try {
+                val result =
+                    repository.completeCleaning(requestId)
+
+                val refreshed =
+                    refresh(showError = false)
+
+                _errorMessage.value = null
+
+                _events.emit(
+                    CleaningUiEvent.CleaningCompleted(
+                        earnedPoints = result.earnedPoints,
+                        remainingRewardPoints = result.remainingRewardPoints,
+                        refreshSucceeded = refreshed
+                    )
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+
+                _successMessage.value = null
+                _errorMessage.value =
+                    e.message
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "清掃完了の記録に失敗しました"
+            } finally {
+                if (_actionRequestId.value == requestId) {
+                    _actionRequestId.value = null
                 }
-            },
-            refreshFailureMessage =
-                if (earnedRewardPoints > 0) {
-                    "清掃お疲れさまでした！\n＋${earnedRewardPoints}pt獲得しました\n表示の更新だけに失敗しました"
-                } else {
-                    "清掃完了は記録されました。表示の更新だけに失敗しました"
-                }
-        ) {
-            /*
-             * ポイント付与・履歴追加・清掃完了は
-             * Supabase の complete_cleaning RPC 内でまとめて行う。
-             */
-            repository.completeCleaning(requestId)
+            }
         }
     }
 
@@ -227,25 +244,20 @@ class CleaningViewModel : ViewModel() {
                     refresh(showError = false)
 
                 _errorMessage.value = null
-
                 _successMessage.value =
                     if (refreshed) {
                         successMessage()
                     } else {
                         refreshFailureMessage
                     }
-
             } catch (e: Exception) {
                 e.printStackTrace()
 
                 _successMessage.value = null
                 _errorMessage.value =
                     e.message
-                        ?.takeIf { message ->
-                            message.isNotBlank()
-                        }
+                        ?.takeIf { it.isNotBlank() }
                         ?: failureMessage
-
             } finally {
                 if (_actionRequestId.value == actionId) {
                     _actionRequestId.value = null
@@ -284,16 +296,13 @@ class CleaningViewModel : ViewModel() {
             }
 
             true
-
         } catch (e: Exception) {
             e.printStackTrace()
 
             if (showError) {
                 _errorMessage.value =
                     e.message
-                        ?.takeIf { message ->
-                            message.isNotBlank()
-                        }
+                        ?.takeIf { it.isNotBlank() }
                         ?: "清掃依頼の取得に失敗しました"
             }
 
